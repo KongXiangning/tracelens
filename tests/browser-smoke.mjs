@@ -234,6 +234,71 @@ try {
   await page.unroute("**/api/projects");
   await visible(page.getByRole("heading", { name: "添加你的第一个项目" }));
   await screenshot("empty");
+  await nav("vNext 使用说明");
+  await visible(
+    page.getByRole("heading", { name: "vNext 使用说明", exact: true }),
+  );
+  assert.equal(await page.locator(".guide-scenario").count(), 23);
+  assert.equal(
+    await page.getByRole("button", { name: "刷新", exact: true }).count(),
+    0,
+  );
+  await screenshot("1440-vnext-guide");
+  await page
+    .getByRole("textbox", { name: "搜索 vNext 场景" })
+    .fill("EXECUTE-STEP finish");
+  await page
+    .getByRole("combobox", { name: "筛选 vNext 场景" })
+    .selectOption("交付与提交");
+  assert.equal(await page.locator(".guide-scenario").count(), 1);
+  await page.locator(".guide-scenario summary").click();
+  const guidePrompt = await page
+    .getByRole("textbox", {
+      name: "提示词：步骤已实现和审查：明确收尾",
+      exact: true,
+    })
+    .inputValue();
+  assert.ok(guidePrompt.startsWith("$execute-step 请使用 finish 模式"));
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page
+    .getByRole("button", {
+      name: "复制提示词：步骤已实现和审查：明确收尾",
+      exact: true,
+    })
+    .click();
+  await visible(page.getByText("已复制", { exact: true }));
+  assert.equal(
+    (await page.evaluate(() => navigator.clipboard.readText())).replace(
+      /\r\n/g,
+      "\n",
+    ),
+    guidePrompt.replace(/\r\n/g, "\n"),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".guide-group").scrollIntoViewIfNeeded();
+  await screenshot("390-vnext-guide-prompt");
+  assert.ok(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await page
+    .getByRole("textbox", { name: "搜索 vNext 场景" })
+    .fill("no-matching-vnext-scenario");
+  await visible(page.getByText("没有匹配场景", { exact: true }));
+  await page.getByRole("textbox", { name: "搜索 vNext 场景" }).fill("");
+  await page
+    .getByRole("combobox", { name: "筛选 vNext 场景" })
+    .selectOption("");
+  await page.locator(".guide-intro").scrollIntoViewIfNeeded();
+  await screenshot("390-vnext-guide");
+  assert.equal((await projects()).length, 0);
+  assert.equal(refreshCount, 0);
+  steps.push(
+    "Global vNext guide works without a project; 23 scenarios cover 11 canonical skills; category/search/no-match, real clipboard, 1440/390 layouts; no registration or scan side effects",
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await nav("概览");
   // Invalid local paths are reported inside the form and remain correctable.
   await page
     .getByRole("button", { name: "添加项目", exact: true })
@@ -261,6 +326,15 @@ try {
   );
 
   const readsOnlyStart = refreshCount;
+  await nav("vNext 使用说明");
+  assert.equal(await page.locator(".scan-strip").count(), 0);
+  assert.equal(
+    await page.getByRole("button", { name: "刷新", exact: true }).count(),
+    0,
+  );
+  assert.equal((await view(a.id)).snapshot.id, before.snapshot.id);
+  assert.equal(refreshCount, readsOnlyStart);
+  await nav("概览");
   await page
     .getByRole("button", {
       name: "20261001-001 实现离线目录索引与可恢复读取",

@@ -20,10 +20,12 @@ import {
   LoaderCircle,
   X,
   CheckCircle2,
+  BookOpenCheck,
 } from "lucide-react";
 import { api, session } from "./api";
 import { Empty, IconButton, Modal, ProjectForm } from "./components";
 import { Overview, TasksPage, DocumentsPage } from "./pages";
+import { VNextGuide } from "./vnext-guide";
 import type {
   Project,
   ScanConfig,
@@ -31,7 +33,7 @@ import type {
   SourceRef,
 } from "../shared/types";
 
-type Page = "overview" | "tasks" | "documents" | "relations";
+type Page = "overview" | "tasks" | "documents" | "relations" | "guide";
 const RelationsPage = lazy(() =>
   import("./relations").then((module) => ({ default: module.RelationsPage })),
 );
@@ -40,6 +42,7 @@ const pages = [
   { id: "tasks", name: "任务", icon: ListTodo },
   { id: "documents", name: "文档", icon: BookOpen },
   { id: "relations", name: "关联", icon: Network },
+  { id: "guide", name: "vNext 使用说明", icon: BookOpenCheck },
 ] as const;
 export const time = (value?: string) =>
   value
@@ -232,6 +235,7 @@ export function App() {
     setPage("relations");
   }
   function renderContent() {
+    if (page === "guide") return <VNextGuide />;
     if (loading)
       return (
         <Empty
@@ -383,11 +387,19 @@ export function App() {
           {pages.map((p) => (
             <button
               key={p.id}
+              aria-label={p.name}
               className={page === p.id ? "active" : ""}
               onClick={() => setPage(p.id)}
             >
               <p.icon size={18} />
-              <span>{p.name}</span>
+              <span className={p.id === "guide" ? "nav-label-full" : undefined}>
+                {p.name}
+              </span>
+              {p.id === "guide" && (
+                <span className="nav-label-compact" aria-hidden="true">
+                  指南
+                </span>
+              )}
               {page === p.id && <span className="nav-line" />}
             </button>
           ))}
@@ -400,10 +412,18 @@ export function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="project-heading">
-            <h1>{project?.name || "TraceLens"}</h1>
-            <p title={project?.root}>{project?.root || "本地项目文档"}</p>
+            <h1>
+              {page === "guide"
+                ? "vNext 场景指南"
+                : project?.name || "TraceLens"}
+            </h1>
+            <p title={page === "guide" ? undefined : project?.root}>
+              {page === "guide"
+                ? "业务场景 · Skill 指令 · 使用边界"
+                : project?.root || "本地项目文档"}
+            </p>
           </div>
-          {project && (
+          {project && page !== "guide" && (
             <div className="toolbar">
               <IconButton label="配置扫描范围" onClick={() => setForm("edit")}>
                 <Settings2 size={18} />
@@ -435,7 +455,7 @@ export function App() {
             </IconButton>
           </div>
         )}
-        {project && (
+        {project && page !== "guide" && (
           <div className="scan-strip" role="status">
             <span className={`scan-indicator ${scan.tone}`} />
             <span>{scan.label}</span>
@@ -449,7 +469,7 @@ export function App() {
             )}
           </div>
         )}
-        {view?.attempt?.state === "failed" && (
+        {page !== "guide" && view?.attempt?.state === "failed" && (
           <div className="banner error" role="alert">
             <AlertTriangle size={18} />
             <div>
@@ -474,8 +494,12 @@ export function App() {
         </div>
         <footer className="workspace-footer">
           <CheckCircle2 size={13} />
-          <span>文档记录的状态</span>
-          {snapshot && (
+          <span>
+            {page === "guide"
+              ? "静态使用说明 · 不执行项目指令"
+              : "文档记录的状态"}
+          </span>
+          {snapshot && page !== "guide" && (
             <span>
               快照 {snapshot.id.slice(0, 8)} · {snapshot.documents.length}{" "}
               份文档

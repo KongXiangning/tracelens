@@ -1,0 +1,5 @@
+schema_version: 1
+paths:
+  workflow_home: notes/工作记录
+  requirements_files:
+    - notes/需求.md

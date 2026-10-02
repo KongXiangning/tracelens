@@ -1,0 +1,7 @@
+schema_version: 1
+project:
+  name: Gamma 文档导航合成示例
+paths:
+  workflow_home: docs/workflow
+  documentation_files:
+    - docs/README.md

@@ -1,0 +1,11 @@
+schema_version: 1
+project:
+  name: Alpha 合成示例
+paths:
+  workflow_home: docs/workflow
+  requirements_files:
+    - docs/requirements.md
+  design_files:
+    - docs/design/*.md
+  planning_files:
+    - docs/workflow/ROADMAP.md

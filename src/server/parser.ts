@@ -1,0 +1,504 @@
+import path from "node:path";
+import { createHash } from "node:crypto";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import { visit } from "unist-util-visit";
+import { toString } from "mdast-util-to-string";
+import type {
+  Root,
+  RootContent,
+  ListItem,
+  Heading as MdHeading,
+  Link,
+  Definition,
+} from "mdast";
+import { parseDocument } from "yaml";
+import type {
+  Document,
+  Entry,
+  SourceRef,
+  Statement,
+  StatementKind,
+  Task,
+  Warning,
+} from "../shared/types.js";
+import type { InputFile } from "./scanner.js";
+
+export function stableId(projectId: string, value: string): string {
+  return `${projectId}:${createHash("sha256").update(value).digest("hex").slice(0, 20)}`;
+}
+export function normalizeHeading(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/[\s_\-：:]/g, "");
+}
+export function anchor(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+    .replace(/\s/g, "-");
+}
+export function taskNumbers(value: string): string[] {
+  return [
+    ...new Set(
+      value.match(
+        /(?<![\w-])(?:TASK-)?(?:\d{8}-\d{3}|[A-Z]{2,10}-\d{2,6}|TASK-\d{2,6})(?![\w-])/g,
+      ) || [],
+    ),
+  ].map((n) => n.replace(/^TASK-(?=\d{8})/, ""));
+}
+export function stateKey(value: string): string | null {
+  const text = value.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    done: "completed",
+    complete: "completed",
+    completed: "completed",
+    已完成: "completed",
+    完成: "completed",
+    active: "active",
+    in_progress: "active",
+    "in-progress": "active",
+    进行中: "active",
+    执行中: "active",
+    paused: "paused",
+    暂停: "paused",
+    已暂停: "paused",
+    terminated: "terminated",
+    cancelled: "terminated",
+    已终止: "terminated",
+    终止: "terminated",
+    skipped: "skipped",
+    跳过: "skipped",
+    已跳过: "skipped",
+    draft: "draft",
+    草稿: "draft",
+    archived: "archived",
+    已归档: "archived",
+    blocked: "blocked",
+    阻塞: "blocked",
+    pending: "pending",
+    待开始: "pending",
+  };
+  return aliases[text] || null;
+}
+export interface PendingReference {
+  raw: string;
+  target: string;
+  section: string | null;
+  revision: string | null;
+  label: string;
+  method: "markdown" | "structured" | "task-number";
+  source: SourceRef;
+}
+export interface Parsed {
+  document: Document;
+  task: Task | null;
+  statements: Statement[];
+  references: PendingReference[];
+  warnings: Warning[];
+}
+const processor = unified().use(remarkParse).use(remarkGfm);
+export function parseMarkdown(raw: string): Root {
+  return processor.parse(raw) as Root;
+}
+const categoryPatterns: [StatementKind, RegExp][] = [
+  ["currentStep", /^(当前步骤|currentstep|currentphase)$/],
+  ["todo", /^(待办.*|待处理.*|下一步.*|todos?|nextsteps?|pendingitems)$/],
+  ["risk", /^(.*风险.*|risks?|风险与问题)$/],
+  ["planning", /^(.*规划.*|路线图|roadmap|plans?|planned|未来.*)$/],
+  ["achievement", /^(已完成.*|.*成果.*|交付摘要|achievements?|completed.*)$/],
+];
+const taskGroups: [
+  keyof Pick<Task, "goals" | "steps" | "checks" | "issues">,
+  RegExp,
+][] = [
+  ["goals", /^(任务目标|目标|goals?|objective|背景与上下文)$/],
+  ["steps", /^(实施步骤|执行步骤|步骤|steps?|implementationsteps)$/],
+  ["checks", /^(验收.*|回归检查项|acceptance.*|checklist|definitionofdone)$/],
+  [
+    "issues",
+    /^(问题.*|待确认问题|审查问题队列|阻塞.*|issues?|questions?|blockers?)$/,
+  ],
+];
+export function parseInput(projectId: string, input: InputFile): Parsed {
+  const id = stableId(projectId, input.path);
+  const document: Document = {
+    ...input,
+    id,
+    title: path.posix.basename(input.path),
+    headings: [],
+    recognized: false,
+  };
+  const warnings: Warning[] = [];
+  const statements: Statement[] = [];
+  const references: PendingReference[] = [];
+  function source(line: number): SourceRef {
+    return {
+      documentId: id,
+      path: input.path,
+      line,
+      digest: input.digest,
+      section:
+        document.headings.filter((h) => h.line <= line).at(-1)?.title || null,
+    };
+  }
+  if (/\.ya?ml$/i.test(input.path)) {
+    try {
+      const parsed = parseDocument(input.raw);
+      if (parsed.errors.length)
+        throw new Error(parsed.errors.map((e) => e.message).join("; "));
+      parsed.toJS({ maxAliasCount: 20 });
+      document.recognized = true;
+      for (const warning of parsed.warnings)
+        warnings.push({
+          code: "yaml-warning",
+          path: input.path,
+          message: warning.message,
+        });
+    } catch (error) {
+      warnings.push({
+        code: "yaml",
+        path: input.path,
+        line: 1,
+        message: `YAML 解析失败，原文保留：${String(error)}`,
+      });
+    }
+    return { document, task: null, statements, references, warnings };
+  }
+  const frontmatter = input.raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (frontmatter) {
+    try {
+      const metadata = parseDocument(frontmatter[1]);
+      if (metadata.errors.length) throw new Error(metadata.errors[0].message);
+      const value = metadata.toJS({ maxAliasCount: 20 });
+      for (const field of ["related_docs", "superseded_by"]) {
+        const targets =
+          field === "related_docs"
+            ? value?.[field]
+            : typeof value?.[field] === "string"
+              ? [value[field]]
+              : [];
+        if (!Array.isArray(targets)) continue;
+        const line =
+          input.raw
+            .split("\n")
+            .findIndex((text) => new RegExp(`^\\s*${field}:`).test(text)) + 1;
+        for (const target of targets.slice(0, 64)) {
+          if (typeof target !== "string") continue;
+          const [filename, section] = target.split("#");
+          references.push({
+            raw: target,
+            target: filename,
+            section: section || null,
+            revision: null,
+            label: field,
+            method: "structured",
+            source: source(line || 1),
+          });
+        }
+        if (targets.length > 64)
+          warnings.push({
+            code: "metadata-limit",
+            path: input.path,
+            line,
+            message: `${field} 引用超过 64 项，关系提取不完整`,
+          });
+      }
+    } catch (error) {
+      warnings.push({
+        code: "metadata",
+        path: input.path,
+        line: 1,
+        message: `文档元数据解析失败，原文保留：${String(error)}`,
+      });
+    }
+  }
+  const tree = processor.parse(input.raw) as Root;
+  const duplicates = new Map<string, number>();
+  visit(tree, "heading", (node: MdHeading) => {
+    const title = toString(node);
+    const slug = anchor(title);
+    const count = duplicates.get(slug) || 0;
+    duplicates.set(slug, count + 1);
+    document.headings.push({
+      title,
+      depth: node.depth,
+      line: node.position!.start.line,
+      anchor: count ? `${slug}-${count}` : slug,
+    });
+  });
+  document.title =
+    document.headings.find((h) => h.depth === 1)?.title || document.title;
+  const fields: {
+    label: string;
+    value: string;
+    entry: Entry;
+    headings: string[];
+  }[] = [];
+  const entries: { entry: Entry; headings: string[] }[] = [];
+  let stack: { depth: number; title: string }[] = [];
+  function addEntry(
+    node: RootContent | ListItem,
+    checked: boolean | null = null,
+  ): void {
+    let text = toString(node).trim();
+    if (node.type === "listItem")
+      text = node.children
+        .filter((c) => c.type !== "list")
+        .map((c) => toString(c))
+        .join("\n")
+        .trim();
+    if (!text) return;
+    const entry: Entry = {
+      text,
+      checked,
+      source: source(node.position!.start.line),
+    };
+    const headings = stack.map((s) => normalizeHeading(s.title));
+    entries.push({ entry, headings });
+    const field = text.match(/^([^：:\n]{1,50})\s*[：:]\s*([^\n]*)/);
+    if (field)
+      fields.push({
+        label: normalizeHeading(field[1]),
+        value: field[2].trim(),
+        entry,
+        headings,
+      });
+  }
+  for (const node of tree.children) {
+    if (node.type === "heading") {
+      stack = stack.filter((h) => h.depth < node.depth);
+      stack.push({ depth: node.depth, title: toString(node) });
+    } else if (node.type === "list")
+      visit(node, "listItem", (item: ListItem) =>
+        addEntry(item, typeof item.checked === "boolean" ? item.checked : null),
+      );
+    else if (node.type === "paragraph" || node.type === "blockquote")
+      addEntry(node);
+    else if (node.type === "table") {
+      for (const row of node.children.slice(1)) {
+        const [key, ...rest] = row.children.map((c) => toString(c));
+        const entry: Entry = {
+          text: `${key}：${rest.join(" | ")}`,
+          checked: null,
+          source: source(row.position!.start.line),
+        };
+        const headings = stack.map((s) => normalizeHeading(s.title));
+        entries.push({ entry, headings });
+        fields.push({
+          label: normalizeHeading(key),
+          value: rest.join(" | "),
+          entry,
+          headings,
+        });
+      }
+    } else if (
+      node.type === "code" &&
+      stack.some((h) => normalizeHeading(h.title) === "projectdocuments")
+    ) {
+      if (node.lang !== "json") {
+        warnings.push({
+          code: "structured",
+          path: input.path,
+          line: node.position!.start.line,
+          message: "Project documents 中非 JSON 引用未识别，原文保留",
+        });
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(node.value);
+        if (!Array.isArray(parsed.sources))
+          throw new Error("缺少 sources 数组");
+        for (const item of parsed.sources) {
+          if (
+            !item ||
+            typeof item.path !== "string" ||
+            !item.path.trim() ||
+            (item.section != null && typeof item.section !== "string") ||
+            (item.revision != null && typeof item.revision !== "string")
+          ) {
+            warnings.push({
+              code: "structured",
+              path: input.path,
+              line: node.position!.start.line,
+              message: "结构化引用条目未识别，原文保留",
+            });
+            continue;
+          }
+          references.push({
+            raw: JSON.stringify(item),
+            target: item.path,
+            section: item.section || null,
+            revision: item.revision || null,
+            label: typeof item.purpose === "string" ? item.purpose : item.path,
+            method: "structured",
+            source: source(node.position!.start.line),
+          });
+        }
+        document.recognized = true;
+      } catch (error) {
+        warnings.push({
+          code: "structured",
+          path: input.path,
+          line: node.position!.start.line,
+          message: `结构化引用解析失败，原文保留：${String(error)}`,
+        });
+      }
+    }
+  }
+  const metadata = (field: (typeof fields)[number]) =>
+    field.headings.length <= 1 ||
+    field.headings.some((h) =>
+      /^(任务信息|taskinfo|taskinformation|metadata)$/.test(h),
+    );
+  const numberField = fields.find(
+    (f) => /^(任务id|任务编号|taskid|tasknumber)$/.test(f.label) && metadata(f),
+  );
+  const validNumber =
+    numberField && !/[{}]/.test(numberField.value) ? numberField.value : null;
+  const filenameNumber =
+    taskNumbers(path.posix.basename(input.path))[0] || null;
+  const isCurrentFile = /(^|\/)CURRENT_TASK\.md$/i.test(input.path);
+  const isTask = Boolean(
+    numberField || isCurrentFile || /(^|\/)TASKS\//i.test(input.path),
+  );
+  const titleField = fields.find(
+    (f) => /^(任务标题|tasktitle|title)$/.test(f.label) && metadata(f),
+  );
+  let task: Task | null = null;
+  // Placeholder templates remain readable documents, not invented active tasks.
+  if (
+    isTask &&
+    !(numberField && !validNumber && /[{}]/.test(numberField.value))
+  ) {
+    const number = validNumber || filenameNumber;
+    task = {
+      id: stableId(projectId, `task:${input.path}`),
+      number,
+      title: titleField?.value || document.title,
+      current: isCurrentFile,
+      source: numberField?.entry.source || source(1),
+      statuses: [],
+      goals: [],
+      steps: [],
+      checks: [],
+      issues: [],
+    };
+    for (const f of fields) {
+      if (
+        /^(当前状态|生命周期状态|任务状态|status|state|lifecyclestatus)$/.test(
+          f.label,
+        ) &&
+        metadata(f) &&
+        f.value
+      )
+        task.statuses.push({ ...f.entry, text: f.value });
+      if (/^(任务目标|goal|objective)$/.test(f.label) && f.value)
+        task.goals.push({ ...f.entry, text: f.value });
+    }
+    for (const { entry, headings } of entries) {
+      if (headings.includes("projectdocuments")) continue;
+      for (const [group, expression] of taskGroups)
+        if (headings.some((h) => expression.test(h))) task[group].push(entry);
+    }
+    if (task.current)
+      statements.push({
+        kind: "currentTask",
+        text: `${number ? `${number} · ` : ""}${task.title}`,
+        checked: null,
+        source: task.source,
+        taskNumber: number,
+      });
+    document.recognized = true;
+  }
+  for (const f of fields) {
+    if (
+      /^(当前状态|项目状态|任务状态|status|state)$/.test(f.label) &&
+      (metadata(f) || /STATUS\.md$/i.test(input.path)) &&
+      f.value
+    ) {
+      const currentDeclaration = fields.find(
+        (item) =>
+          /^(当前任务|currenttask)$/.test(item.label) &&
+          JSON.stringify(item.headings) === JSON.stringify(f.headings),
+      );
+      const numbers = currentDeclaration
+        ? taskNumbers(currentDeclaration.value)
+        : [];
+      const number =
+        f.label === "项目状态"
+          ? null
+          : task?.number || (numbers.length === 1 ? numbers[0] : null);
+      statements.push({
+        kind: "status",
+        text: f.value,
+        checked: null,
+        source: f.entry.source,
+        taskNumber: number,
+      });
+      document.recognized = true;
+    }
+    if (
+      /^(当前任务|currenttask|当前步骤|currentstep)$/.test(f.label) &&
+      f.value
+    ) {
+      statements.push({
+        kind: /步骤|step/.test(f.label) ? "currentStep" : "currentTask",
+        text: f.value,
+        checked: null,
+        source: f.entry.source,
+        taskNumber: taskNumbers(f.value)[0] || null,
+      });
+      document.recognized = true;
+    }
+  }
+  for (const { entry, headings } of entries) {
+    for (const [kind, expression] of categoryPatterns) {
+      if (headings.some((h) => expression.test(h))) {
+        statements.push({
+          ...entry,
+          kind,
+          taskNumber: taskNumbers(entry.text)[0] || null,
+        });
+        document.recognized = true;
+        break;
+      }
+    }
+    // Task numbers in prose and inline code are mentions; fenced code is intentionally excluded.
+    for (const number of taskNumbers(entry.text))
+      if (number !== task?.number)
+        references.push({
+          raw: number,
+          target: number,
+          section: null,
+          revision: null,
+          label: number,
+          method: "task-number",
+          source: entry.source,
+        });
+  }
+  const definitions = new Map<string, Definition>();
+  visit(tree, "definition", (node) => {
+    definitions.set(node.identifier.toLowerCase(), node);
+  });
+  function addLink(node: Link | RootContent, url: string, label: string): void {
+    references.push({
+      raw: url,
+      target: url,
+      section: null,
+      revision: null,
+      label,
+      method: "markdown",
+      source: source(node.position!.start.line),
+    });
+    document.recognized = true;
+  }
+  visit(tree, "link", (node) => addLink(node, node.url, toString(node)));
+  visit(tree, "linkReference", (node) => {
+    const definition = definitions.get(node.identifier.toLowerCase());
+    if (definition) addLink(node, definition.url, toString(node));
+  });
+  return { document, task, statements, references, warnings };
+}

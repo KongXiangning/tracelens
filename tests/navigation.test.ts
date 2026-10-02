@@ -7,6 +7,7 @@ import {
   rm,
   symlink,
   writeFile,
+  unlink,
 } from "node:fs/promises";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createApp } from "../src/server/app.js";
@@ -197,6 +198,86 @@ it("refresh discovers newly registered documents, removes withdrawn registration
     third.navigation.entries.find((e) => e.path === "docs/product/new.md")
       ?.availability,
   ).toBe("excluded");
+});
+it("follows paragraph full, collapsed and shortcut reference links with source positions and excludes", async () => {
+  await file(
+    "docs/README.md",
+    "# 文档中心\n\n需求入口：[正式需求][req]\n\n[草案][]\n\n[补充说明]\n\n[req]: product/REQ-1.md\n[草案]: product/draft.md\n[补充说明]: misc.md\n",
+  );
+  const project = await register();
+  const first = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(first.documents.some((d) => d.path === "docs/product/REQ-1.md")).toBe(
+    true,
+  );
+  expect(first.documents.some((d) => d.path === "docs/product/draft.md")).toBe(
+    true,
+  );
+  expect(
+    first.navigation.entries.find((e) => e.path === "docs/product/REQ-1.md")
+      ?.sources,
+  ).toContainEqual({ path: "docs/README.md", line: 3, label: "正式需求" });
+  expect(first.relations.find((r) => r.raw === "product/REQ-1.md")?.state).toBe(
+    "resolved",
+  );
+  await runtime.registry.update(project.id, {
+    name: project.name,
+    config: { ...project.config, excludes: ["docs/product/draft.md"] },
+  });
+  const excluded = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(
+    excluded.documents.some((d) => d.path === "docs/product/draft.md"),
+  ).toBe(false);
+});
+it("recovers a deleted known optional index with fresh content but honors deliberate exclusions and later withdrawal", async () => {
+  await file(
+    ".workflow-system/PROJECT_PROFILE.yaml",
+    "paths:\n  workflow_home: notes/治理\n  documentation_files: []\n",
+  );
+  const project = await register();
+  const first = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(first.documents.some((d) => d.path === "docs/product/REQ-1.md")).toBe(
+    true,
+  );
+  await unlink(path.join(root, "docs/README.md"));
+  await file("docs/product/REQ-1.md", "# 更新的需求正文\n\n必须重新读取。\n");
+  const recovered = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(recovered.navigation.incomplete).toBe(true);
+  expect(
+    recovered.documents.find((d) => d.path === "docs/product/REQ-1.md")?.raw,
+  ).toContain("必须重新读取");
+  expect(
+    recovered.navigation.entries.find((e) => e.path === "docs/README.md")
+      ?.availability,
+  ).toBe("missing");
+  expect(
+    recovered.warnings.some(
+      (w) => w.path === "docs/README.md" && w.code === "navigation-read",
+    ),
+  ).toBe(true);
+  expect(
+    recovered.navigation.entries
+      .find((e) => e.path === "docs/product/REQ-1.md")
+      ?.sources.some((s) => s.label.includes("上次登记范围")),
+  ).toBe(true);
+  await runtime.registry.update(project.id, {
+    name: project.name,
+    config: { ...project.config, excludes: ["docs/README.md"] },
+  });
+  const excluded = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(
+    excluded.documents.some((d) => d.path === "docs/product/REQ-1.md"),
+  ).toBe(false);
+  expect(excluded.navigation.incomplete).toBe(false);
+  await runtime.registry.update(project.id, {
+    name: project.name,
+    config: project.config,
+  });
+  await file("docs/README.md", "# 文档中心\n\n不再登记这些材料。\n");
+  const withdrawn = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(
+    withdrawn.documents.some((d) => d.path === "docs/product/REQ-1.md"),
+  ).toBe(false);
+  expect(withdrawn.navigation.incomplete).toBe(false);
 });
 it("an unreadable index rereads previously registered files while marking source uncertainty instead of dropping usable content", async () => {
   const project = await register();

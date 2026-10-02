@@ -15,6 +15,7 @@ import {
 import {
   AppError,
   assertNoLinks,
+  documentPathKey,
   safePattern,
   validateRoot,
   within,
@@ -160,7 +161,7 @@ export async function scanFiles(
   const root = await validateRoot(project.root);
   const files: ScanFile[] = [];
   const warnings: Warning[] = [];
-  const selected = new Map<string, DocumentKind>();
+  const selected = new Map<string, { path: string; kind: DocumentKind }>();
   const { DocumentNavigation } = await import("./navigation.js");
   const navigation = project.config.autoDiscover
     ? new DocumentNavigation(root, project.config)
@@ -275,20 +276,25 @@ export async function scanFiles(
       });
       return;
     }
-    if (selected.has(relative) && selected.get(relative) !== kind)
+    const key = documentPathKey(relative);
+    const existing = selected.get(key);
+    if (existing && existing.kind !== kind)
       warnings.push({
         code: "classification",
         path: relative,
-        message: `文件匹配多种类型，按配置顺序使用 ${selected.get(relative)}`,
+        message: `文件匹配多种类型，按配置顺序使用 ${existing.kind}`,
       });
-    else selected.set(relative, kind);
+    else if (!existing) selected.set(key, { path: relative, kind });
   }
   for (const kind of kinds) {
     for (const pattern of effectiveRules[kind]) {
       if (excluded(pattern)) continue;
       const wildcard = pattern.search(/[*?{[\]]/);
       if (wildcard < 0) {
-        if (selected.size >= limits.files) {
+        if (
+          selected.size >= limits.files &&
+          !selected.has(documentPathKey(pattern))
+        ) {
           truncated = true;
           warnings.push({
             code: "limit",
@@ -304,7 +310,7 @@ export async function scanFiles(
           : "";
         await walk(directory, 0, kind, pattern);
         if (
-          ![...selected.keys()].some((file) => matches(file, pattern)) &&
+          ![...selected.values()].some((file) => matches(file.path, pattern)) &&
           !files.some((f) => f.path === directory)
         )
           warnings.push({
@@ -319,7 +325,8 @@ export async function scanFiles(
   function selectNavigation(): void {
     for (const entry of navigation?.entries.values() || []) {
       if (entry.availability === "excluded") continue;
-      if (selected.size >= limits.files && !selected.has(entry.path)) {
+      const key = documentPathKey(entry.path);
+      if (selected.size >= limits.files && !selected.has(key)) {
         truncated = true;
         break;
       }
@@ -328,8 +335,8 @@ export async function scanFiles(
           matches(entry.path, pattern),
         ),
       );
-      if (!manual && selected.has(entry.path))
-        selected.set(entry.path, entry.kind);
+      const existing = selected.get(key);
+      if (!manual && existing) existing.kind = entry.kind;
       else select(entry.path, manual || entry.kind);
       if (!effectiveRules[manual || entry.kind].includes(entry.path))
         effectiveRules[manual || entry.kind].push(entry.path);
@@ -342,7 +349,7 @@ export async function scanFiles(
     if (!excluded(".workflow-system/PROJECT_PROFILE.yaml")) {
       if (
         selected.size < limits.files ||
-        selected.has(".workflow-system/PROJECT_PROFILE.yaml")
+        selected.has(documentPathKey(".workflow-system/PROJECT_PROFILE.yaml"))
       )
         select(".workflow-system/PROJECT_PROFILE.yaml", "management");
       else
@@ -361,19 +368,22 @@ export async function scanFiles(
   let failed = files.filter((f) => f.status === "error").length;
   const attempted = new Set<string>();
   async function readSelected(): Promise<void> {
-    for (const [relative, kind] of selected) {
-      if (attempted.has(relative)) continue;
-      attempted.add(relative);
+    for (const [key, { path: relative, kind }] of selected) {
+      if (attempted.has(key)) continue;
+      attempted.add(key);
       try {
-        const key =
-          process.platform === "win32" ? relative.toLowerCase() : relative;
         const cached = navigation?.inputs.get(key);
-        const input = cached || (await readBounded(root, relative));
+        const input =
+          cached ||
+          (await readBounded(
+            root,
+            navigation?.entries.get(key)?.path || relative,
+          ));
         if (bytes + (cached ? 0 : input.bytes) > limits.totalBytes)
           throw new AppError("超过总读取量 20 MiB 上限，扫描不完整");
         bytes += cached ? 0 : input.bytes;
         inputs.push({ ...input, kind });
-        files.push({ path: relative, kind, status: "read" });
+        files.push({ path: input.path, kind, status: "read" });
       } catch (error) {
         const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
         if (!missing) failed++;
@@ -404,16 +414,17 @@ export async function scanFiles(
       });
     else await readSelected();
     for (const input of inputs) {
-      const key =
-        process.platform === "win32" ? input.path.toLowerCase() : input.path;
+      const key = documentPathKey(input.path);
       input.kind = navigation.entries.get(key)?.kind || input.kind;
       const scanned = files.find(
-        (file) => file.path === input.path && file.status === "read",
+        (file) => documentPathKey(file.path) === key && file.status === "read",
       );
       if (scanned) scanned.kind = input.kind;
     }
     for (const entry of navigation.entries.values()) {
-      const file = files.find((f) => f.path === entry.path);
+      const file = files.find(
+        (f) => documentPathKey(f.path) === documentPathKey(entry.path),
+      );
       if (file)
         entry.availability =
           file.status === "skipped" ? "excluded" : file.status;

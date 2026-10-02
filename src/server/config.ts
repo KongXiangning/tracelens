@@ -22,6 +22,10 @@ export function within(root: string, target: string): boolean {
       !path.isAbsolute(relative))
   );
 }
+export function documentPathKey(relative: string): string {
+  const normalized = path.posix.normalize(relative);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
 export function safePattern(value: string): boolean {
   return (
     value.length > 0 &&

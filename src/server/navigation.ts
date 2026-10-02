@@ -3,7 +3,12 @@ import { parseDocument } from "yaml";
 import { visit } from "unist-util-visit";
 import { toString } from "mdast-util-to-string";
 import type { ListItem, TableRow } from "mdast";
-import { defaultConfig, safePattern, within } from "./config.js";
+import {
+  defaultConfig,
+  documentPathKey,
+  safePattern,
+  within,
+} from "./config.js";
 import {
   blockedPath,
   matches,
@@ -79,12 +84,13 @@ export class DocumentNavigation {
   private classificationConflicts = new Set<string>();
   private queue: string[] = [];
   private profileUnavailable = false;
+  private unavailableSources = new Set<string>();
   constructor(
     private root: string,
     private config: ScanConfig,
   ) {}
   private key(filename: string): string {
-    return process.platform === "win32" ? filename.toLowerCase() : filename;
+    return documentPathKey(filename);
   }
   private excluded(filename: string): boolean {
     return (
@@ -317,6 +323,7 @@ export class DocumentNavigation {
           label: "文档导航入口",
         });
       } catch (error) {
+        this.unavailableSources.add(this.key(filename));
         if ((error as NodeJS.ErrnoException).code !== "ENOENT")
           this.warnings.push({
             code: "navigation-read",
@@ -333,17 +340,19 @@ export class DocumentNavigation {
     for (const entry of previous.entries) {
       const unavailable = entry.sources.some(
         (s) =>
-          (s.path === profilePath &&
-            this.profileUnavailable &&
-            !this.excluded(profilePath)) ||
-          ["missing", "error"].includes(
-            this.entries.get(this.key(s.path))?.availability || "",
-          ) ||
-          this.warnings.some(
-            (w) =>
-              w.path === s.path &&
-              ["navigation-read", "navigation-metadata"].includes(w.code),
-          ),
+          !this.excluded(s.path) &&
+          ((this.key(s.path) === this.key(profilePath) &&
+            this.profileUnavailable) ||
+            this.unavailableSources.has(this.key(s.path)) ||
+            ["missing", "error"].includes(
+              this.entries.get(this.key(s.path))?.availability || "",
+            ) ||
+            this.warnings.some(
+              (w) =>
+                w.path &&
+                this.key(w.path) === this.key(s.path) &&
+                ["navigation-read", "navigation-metadata"].includes(w.code),
+            )),
       );
       if (!unavailable || entry.availability === "excluded") continue;
       this.incomplete = true;
@@ -578,6 +587,19 @@ export class DocumentNavigation {
           depth + 1,
         ),
       );
+      visit(tree, "linkReference", (link) => {
+        const target = definitions.get(link.identifier.toLowerCase());
+        if (target)
+          this.reference(
+            entry.path,
+            target,
+            toString(link).slice(0, 180),
+            (link.position?.start.line || 1) + offset,
+            null,
+            false,
+            depth + 1,
+          );
+      });
     }
     if (entry.kind === "management") {
       const parsed = parseInput("navigation", { ...input, kind: entry.kind });
@@ -666,7 +688,7 @@ export class DocumentNavigation {
       )
     )
       gaps.push("已登记的文档中存在缺失或不可读项");
-    if (this.incomplete) gaps.push("本次导航核对不完整，请查看读取限制提示");
+    if (this.incomplete) gaps.push("本次导航核对不完整，请查看导航与读取提示");
     return {
       enabled: true,
       profileUsed: this.profileUsed,

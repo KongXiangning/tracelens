@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/server/app.js";
 import { defaultConfig } from "../src/server/config.js";
 import { SnapshotStore, buildSnapshot } from "../src/server/snapshot.js";
+import { ProjectRegistry } from "../src/server/registry.js";
 import type { Project, SnapshotView } from "../src/shared/types.js";
 
 let directory: string;
@@ -74,6 +75,169 @@ afterEach(async () => {
 });
 
 describe("local service acceptance", () => {
+  it.runIf(process.platform === "win32").each([false, true])(
+    "deduplicates Windows case aliases with auto-discovery=%s and stable identities",
+    async (autoDiscover) => {
+      await writeFile(
+        path.join(root, "case-task.md"),
+        "# Case task\n\nTask ID: TASK-930\n",
+      );
+      const config = {
+        autoDiscover,
+        rules: {
+          management: ["case-task.md", "CASE-TASK.MD"],
+          requirements: [],
+          design: ["docs/design/storage.md", "DOCS/DESIGN/STORAGE.MD"],
+          planning: [],
+        },
+        excludes: [],
+      };
+      const project = await runtime.registry.add({
+        name: "Case aliases",
+        root,
+        config,
+      });
+      const first = (await refresh(project.id)).snapshot!;
+      expect(
+        first.documents.filter(
+          (d) => d.path.toLowerCase() === "docs/design/storage.md",
+        ),
+      ).toHaveLength(1);
+      expect(
+        first.files.filter(
+          (f) =>
+            f.path.toLowerCase() === "docs/design/storage.md" &&
+            f.status === "read",
+        ),
+      ).toHaveLength(1);
+      expect(new Set(first.documents.map((d) => d.id)).size).toBe(
+        first.documents.length,
+      );
+      const task = first.tasks.filter((t) => t.number === "TASK-930");
+      expect(task).toHaveLength(1);
+      if (autoDiscover) {
+        expect(
+          first.navigation.entries.find(
+            (e) => e.path.toLowerCase() === "docs/design/storage.md",
+          )?.availability,
+        ).toBe("read");
+        expect(
+          first.documents.find(
+            (d) => d.path.toLowerCase() === "docs/design/storage.md",
+          )?.kind,
+        ).toBe("design");
+      }
+      await runtime.registry.update(project.id, {
+        name: project.name,
+        config: {
+          ...config,
+          rules: {
+            ...config.rules,
+            management: ["CASE-TASK.MD"],
+            design: ["DOCS/DESIGN/STORAGE.MD"],
+          },
+        },
+      });
+      const second = (await refresh(project.id)).snapshot!;
+      expect(second.tasks.find((t) => t.number === "TASK-930")?.id).toBe(
+        task[0].id,
+      );
+      expect(
+        second.documents.find(
+          (d) => d.path.toLowerCase() === "docs/design/storage.md",
+        )?.id,
+      ).toBe(
+        first.documents.find(
+          (d) => d.path.toLowerCase() === "docs/design/storage.md",
+        )?.id,
+      );
+    },
+  );
+  it("matches prefixed date task declarations and mentions without changing their displayed spelling", async () => {
+    await writeFile(
+      path.join(root, "numbered.md"),
+      "# Task\n\n- Task ID: TASK-20261001-009\n- Status: active\n",
+    );
+    await writeFile(
+      path.join(root, "mentions.md"),
+      "# Notes\n\nTASK-20261001-009 and 20261001-009.\n",
+    );
+    const project = await runtime.registry.add({
+      name: "Task mentions",
+      root,
+      config: {
+        rules: {
+          management: ["numbered.md", "mentions.md"],
+          requirements: [],
+          design: [],
+          planning: [],
+        },
+        excludes: [],
+      },
+    });
+    const snapshot = (await refresh(project.id)).snapshot!;
+    expect(snapshot.tasks[0].number).toBe("TASK-20261001-009");
+    const refs = snapshot.relations.filter((r) => r.method === "task-number");
+    expect(refs).toHaveLength(2);
+    expect(refs.map((r) => r.raw)).toEqual([
+      "TASK-20261001-009",
+      "20261001-009",
+    ]);
+    expect(
+      refs.every(
+        (r) => r.state === "resolved" && r.to === snapshot.tasks[0].id,
+      ),
+    ).toBe(true);
+    expect(
+      snapshot.relations.some((r) => r.from === snapshot.tasks[0].id),
+    ).toBe(false);
+    await writeFile(
+      path.join(root, "duplicate.md"),
+      "# Duplicate\n\n- Task ID: 20261001-009\n- Status: completed\n",
+    );
+    await runtime.registry.update(project.id, {
+      name: project.name,
+      config: {
+        ...project.config,
+        rules: {
+          ...project.config.rules,
+          management: ["numbered.md", "mentions.md", "duplicate.md"],
+        },
+      },
+    });
+    const duplicate = (await refresh(project.id)).snapshot!;
+    expect(duplicate.warnings.some((w) => w.code === "status-conflict")).toBe(
+      true,
+    );
+    expect(
+      duplicate.relations
+        .filter((r) => r.method === "task-number")
+        .every((r) => r.state === "ambiguous"),
+    ).toBe(true);
+  });
+  it("rejects migrated registration inside an observed project without rewriting the registration", async () => {
+    await add();
+    const movedData = path.join(root, "tool-data");
+    await mkdir(movedData);
+    const persisted = JSON.stringify(runtime.registry.list());
+    const filename = path.join(movedData, "projects.json");
+    await writeFile(filename, persisted);
+    const registry = new ProjectRegistry(movedData);
+    await expect(registry.load()).rejects.toThrow(
+      "工具配置目录不能位于被观察项目内",
+    );
+    expect(await readFile(filename, "utf8")).toBe(persisted);
+    expect(registry.list()).toEqual([]);
+  });
+  it("keeps inaccessible project registrations manageable at restart", async () => {
+    const project = await add();
+    await rename(root, `${root}-moved`);
+    const registry = new ProjectRegistry(runtime.registry.dataDir);
+    await registry.load();
+    expect(registry.get(project.id).root).toBe(project.root);
+    await registry.remove(project.id);
+    expect(registry.list()).toEqual([]);
+  });
   it("registers two independent projects, preserves config on restart and never implicitly scans", async () => {
     const before = await readFile(
       path.join(root, "docs/workflow/CURRENT_TASK.md"),

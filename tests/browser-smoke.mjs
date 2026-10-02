@@ -10,6 +10,7 @@ import {
   readFile,
   rename,
   rm,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { chromium } from "playwright";
@@ -694,7 +695,7 @@ try {
     gammaIndexFile,
     gammaIndex.replace(
       "## 需求",
-      "## 需求\n\n- 新增需求：[补充需求](requirements/added.md)",
+      "## 需求\n\n新增需求：[补充需求][added]\n\n[added]: requirements/added.md",
     ),
   );
   assert.equal((await view(g.id)).snapshot.id, firstGamma.id);
@@ -749,6 +750,43 @@ try {
     }
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await unlink(gammaIndexFile);
+  await writeFile(
+    path.join(gamma, "docs/requirements/added.md"),
+    "# 索引失效后重新读取的新正文\n\n索引失效不能复用旧正文。\n",
+  );
+  await refresh();
+  const missingIndex = (await view(g.id)).snapshot;
+  assert.ok(missingIndex.navigation.incomplete);
+  assert.ok(
+    missingIndex.navigation.entries.some(
+      (e) => e.path === "docs/README.md" && e.availability === "missing",
+    ),
+  );
+  assert.ok(
+    missingIndex.documents
+      .find((d) => d.path === "docs/requirements/added.md")
+      .raw.includes("重新读取的新正文"),
+  );
+  await visible(
+    page.getByText("本次导航核对不完整，请查看导航与读取提示", { exact: true }),
+  );
+  await page.locator(".navigation-audit").scrollIntoViewIfNeeded();
+  await screenshot("deleted-index-diagnostics");
+  await nav("文档");
+  await page
+    .getByRole("combobox", { name: "文档类型", exact: true })
+    .selectOption("all");
+  await page
+    .locator(".document-item")
+    .filter({ hasText: "索引失效后重新读取的新正文" })
+    .click();
+  await visible(
+    page
+      .locator(".document-reader")
+      .getByText("索引失效不能复用旧正文。", { exact: true }),
+  );
+  await screenshot("deleted-index-fresh-source");
   await page.getByRole("button", { name: "移除项目", exact: true }).click();
   const gammaRemoved = page.waitForResponse(
     (r) =>
@@ -759,7 +797,7 @@ try {
   await gammaRemoved;
   assert.equal((await projects()).length, 2);
   steps.push(
-    "Standard vNext documentation_files > existing index > automatic requirements/design/planning with status and unknown classifications; prompt copied; real index edits discovered on refresh; registration evidence opens exact source; 1440/390 audit layouts",
+    "Standard vNext documentation_files > existing index > automatic requirements/design/planning with status and unknown classifications; prompt copied; paragraph reference-link index edits discovered on refresh; deleted known index shows diagnostics and rereads fresh source; registration evidence opens exact source; 1440/390 audit layouts",
   );
   await nav("概览");
   assert.deepEqual(errors, []);

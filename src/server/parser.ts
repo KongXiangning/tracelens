@@ -24,9 +24,10 @@ import type {
   Warning,
 } from "../shared/types.js";
 import type { InputFile } from "./scanner.js";
+import { documentPathKey } from "./config.js";
 
 export function stableId(projectId: string, value: string): string {
-  return `${projectId}:${createHash("sha256").update(value).digest("hex").slice(0, 20)}`;
+  return `${projectId}:${createHash("sha256").update(documentPathKey(value)).digest("hex").slice(0, 20)}`;
 }
 export function normalizeHeading(value: string): string {
   return value
@@ -40,6 +41,9 @@ export function anchor(value: string): string {
     .replace(/[^\p{L}\p{N}\s_-]/gu, "")
     .replace(/\s/g, "-");
 }
+export function taskNumberKey(value: string): string {
+  return value.trim().replace(/^TASK-(?=\d{8}-\d{3}$)/, "");
+}
 export function taskNumbers(value: string): string[] {
   return [
     ...new Set(
@@ -47,7 +51,7 @@ export function taskNumbers(value: string): string[] {
         /(?<![\w-])(?:TASK-)?(?:\d{8}-\d{3}|[A-Z]{2,10}-\d{2,6}|TASK-\d{2,6})(?![\w-])/g,
       ) || [],
     ),
-  ].map((n) => n.replace(/^TASK-(?=\d{8})/, ""));
+  ];
 }
 export function stateKey(value: string): string | null {
   const text = value.trim().toLowerCase();
@@ -359,7 +363,8 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
   const validNumber =
     numberField && !/[{}]/.test(numberField.value) ? numberField.value : null;
   const filenameNumber =
-    taskNumbers(path.posix.basename(input.path))[0] || null;
+    taskNumberKey(taskNumbers(path.posix.basename(input.path))[0] || "") ||
+    null;
   const isCurrentFile = /(^|\/)CURRENT_TASK\.md$/i.test(input.path);
   const isTask = Boolean(
     numberField || isCurrentFile || /(^|\/)TASKS\//i.test(input.path),
@@ -468,10 +473,10 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     }
     // Task numbers in prose and inline code are mentions; fenced code is intentionally excluded.
     for (const number of taskNumbers(entry.text))
-      if (number !== task?.number)
+      if (taskNumberKey(number) !== taskNumberKey(task?.number || ""))
         references.push({
           raw: number,
-          target: number,
+          target: taskNumberKey(number),
           section: null,
           revision: null,
           label: number,

@@ -8,13 +8,14 @@ import type {
   RefreshAttempt,
   Warning,
 } from "../shared/types.js";
-import { AppError, within } from "./config.js";
+import { AppError, documentPathKey, within } from "./config.js";
 import { scanFiles } from "./scanner.js";
 import {
   anchor,
   parseInput,
   stableId,
   stateKey,
+  taskNumberKey,
   type Parsed,
   type PendingReference,
 } from "./parser.js";
@@ -58,12 +59,7 @@ export async function buildSnapshot(
     ...scan.warnings,
     ...parsed.flatMap((p) => p.warnings),
   ];
-  const byPath = new Map(
-    documents.map((d) => [
-      process.platform === "win32" ? d.path.toLowerCase() : d.path,
-      d,
-    ]),
-  );
+  const byPath = new Map(documents.map((d) => [documentPathKey(d.path), d]));
   const relations: Relation[] = [];
   function resolve(ref: PendingReference, from: string): Relation {
     const base: Relation = {
@@ -77,7 +73,9 @@ export async function buildSnapshot(
       state: "outside",
     };
     if (ref.method === "task-number") {
-      const matches = tasks.filter((t) => t.number === ref.target);
+      const matches = tasks.filter(
+        (t) => taskNumberKey(t.number || "") === taskNumberKey(ref.target),
+      );
       if (matches.length === 1)
         return {
           ...base,
@@ -119,13 +117,11 @@ export async function buildSnapshot(
       /[\x00-\x1f]/.test(resolved)
     )
       return { ...base, state: "unsafe" };
-    const doc = byPath.get(
-      process.platform === "win32" ? resolved.toLowerCase() : resolved,
-    );
+    const doc = byPath.get(documentPathKey(resolved));
     if (!doc) {
       const unavailable = scan.files.some(
         (f) =>
-          f.path === resolved &&
+          documentPathKey(f.path) === documentPathKey(resolved) &&
           ["missing", "error", "skipped"].includes(f.status),
       );
       return {
@@ -167,7 +163,9 @@ export async function buildSnapshot(
     for (const ref of item.references) {
       if (
         ref.method === "task-number" &&
-        !tasks.some((t) => t.number === ref.target) &&
+        !tasks.some(
+          (t) => taskNumberKey(t.number || "") === taskNumberKey(ref.target),
+        ) &&
         !/^(?:TASK-\d+|\d{8}-\d{3})$/.test(ref.target)
       )
         continue;
@@ -176,6 +174,7 @@ export async function buildSnapshot(
         ref.target,
         ref.section,
         ref.source.line,
+        ref.method === "task-number" ? ref.raw : null,
       ]);
       if (seen.has(key)) continue;
       seen.add(key);
@@ -195,7 +194,7 @@ export async function buildSnapshot(
     { value: string; source: (typeof statements)[number]["source"] }[]
   >();
   for (const task of tasks) {
-    const key = task.number || task.id;
+    const key = taskNumberKey(task.number || "") || task.id;
     const declarations = statusGroups.get(key) || [];
     declarations.push(
       ...task.statuses.map((s) => ({ value: s.text, source: s.source })),
@@ -207,7 +206,7 @@ export async function buildSnapshot(
       s.kind === "status" &&
       !tasks.some((t) => t.source.documentId === s.source.documentId),
   )) {
-    const key = statement.taskNumber || "项目状态";
+    const key = taskNumberKey(statement.taskNumber || "") || "项目状态";
     const group = statusGroups.get(key) || [];
     group.push({ value: statement.text, source: statement.source });
     statusGroups.set(key, group);

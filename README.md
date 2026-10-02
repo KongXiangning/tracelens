@@ -37,7 +37,7 @@ Codex 快捷列表只读服务机器用户的 `$CODEX_HOME/.codex-global-state.j
 
 默认读取 `.workflow-system/PROJECT_PROFILE.yaml` 的 `paths.workflow_home` 和 `paths.documentation_files`，后者是导航种子，不是全量分类或确认清单。读取已登记的文档中心、目录与需求索引，并跟随已知 `related_docs`、任务中的 `Project documents` 和 Markdown 引用。补充可用的 `README.md`、`docs/README.md`、管理目录中的 `DOCUMENT_CATALOG.md`，不遍历全仓库推断用途。分类优先依据目录明确用途／分类或 `document_type`／`doc_type`／`type` 元数据；仅有标题／路径提示时标为“建议分类”，未知或冲突保留“待分类”。旧 `requirements_files`、`design_files`、`planning_files` 分类扩展仍兼容，但不是 vNext 必需标准。不执行其他 Profile 字段。
 
-每次刷新重新读取导航入口，新增或撤回的登记会更新范围。入口损坏时，可重新读取上次快照由该入口发现的文件并明确登记核对不完整，不使用旧正文充当本次结果。重启后没有旧快照，无法恢复这些临时发现路径。Profile 本身如存在则作为管理 YAML 收录（除非排除）；管理目录没有声明时使用以下默认候选：
+每次刷新重新读取导航入口，新增或撤回的登记会更新范围。入口损坏或曾可读的可选索引被删除时，可重新读取上次快照由该入口发现的文件并明确登记核对不完整，不使用旧正文充当本次结果；主动排除入口或有效索引撤回条目时不恢复旧范围。重启后没有旧快照，无法恢复这些临时发现路径。Profile 本身如存在则作为管理 YAML 收录（除非排除）；管理目录没有声明时使用以下默认候选：
 
 ```text
 管理：docs/workflow/CURRENT_TASK.md
@@ -62,7 +62,7 @@ Codex 快捷列表只读服务机器用户的 `$CODEX_HOME/.codex-global-state.j
 - “实施步骤 / Steps”“验收标准、验收清单 / Acceptance criteria”“问题、审查问题队列 / Issues”等章节中的条目；概览收录已知成果、待办、风险和规划章节。只展示明文声明及已勾选数量，不生成开发完成率。
 - `CURRENT_TASK.md`、`TASKS/` 中的任务文档，以及包含明确任务 ID 字段的文档。占位模板 `{{TASK_ID}}` 不生成活跃任务；同编号文件分别保留，并提示歧义或冲突。`paused`、`terminated`、`skipped`、`archived` 各自保留，不并入 completed。
 - `### Project documents` 下的 JSON `sources` 数组（`path`、可选 `section`、`revision`、`purpose`）。结构化路径从项目根解析，Markdown 路径从来源文件所在目录解析。章节尝试精确标题或标题锚点匹配，不猜相似章节。revision 仅作为声明展示。
-- 唯一任务编号提及：`20261001-001`、`TASK-20261001-001`、`TASK-001`、`ABC-001`。普通提及不会升级为实现／完成／验证关系。
+- 唯一任务编号提及：`20261001-001`、`TASK-20261001-001`、`TASK-001`、`ABC-001`。日期编号的前两种写法统一匹配，声明及提及保留原文；不同文件的同编号声明仍提示歧义，不合并身份。普通提及不会升级为实现／完成／验证关系。
 - YAML 使用安全解析并保留原文；已知 frontmatter 类型、状态、`related_docs`、`superseded_by` 用于登记与引用导航，其余内容不解释为 Runtime 状态。未知格式、未知状态、无匹配字段和错误结构化引用保持可读，不要求修改原文。
 
 首版不解释任意 YAML frontmatter 字段、Runtime Schema、代码块内任务编号、自定义状态机或非显式自然语言关联；只在已识别文档索引的列表／表格中解释带用途的反引号路径，不跟随任意正文代码片段。不解析 PDF、Word、任意二进制或非 UTF-8 文档。不还原 vNext Runtime，不处理 journal、执行、审批、Git、AI 推断或实时监听。Markdown 禁用原始 HTML / MDX 执行，危险链接不可操作，图片均以文字占位，不自动加载远程资源。
@@ -75,7 +75,7 @@ Codex 快捷列表只读服务机器用户的 `$CODEX_HOME/.codex-global-state.j
 
 - Windows：`%LOCALAPPDATA%\TraceLens\projects.json`。
 - Linux / macOS：`$XDG_DATA_HOME/tracelens/projects.json`，未设置则使用 `~/.local/share/tracelens/projects.json`。
-- `TRACELENS_DATA_DIR` 可指定独立的本机绝对路径。该目录不能位于被观察项目内，避免向观察目录写入工具配置。
+- `TRACELENS_DATA_DIR` 可指定独立的本机绝对路径。该目录不能位于被观察项目内，避免向观察目录写入工具配置；启动加载已有登记及保存前也检查此边界。迁移后越界会拒绝启动并保留原文件，需将工具数据目录移到项目之外。项目目录暂时不可用不阻止恢复或移除其登记。
 
 UI 校验 Host / Origin，配置写入、刷新及只读路径来源接口需要本次服务会话令牌。文档 API 只返回登记项目的内存快照；路径来源接口只列出 Codex 登记与目录元数据，不提供任意文件正文读取或文件写入接口。配置文件损坏时启动明确失败并保留原文件；不要在服务运行中手工修改登记。
 
@@ -94,8 +94,8 @@ npm run test:browser
 
 可选真实文档核对：构建后设置 `TRACELENS_REAL_PROJECT` 为 TermLink 的本机绝对路径，执行 `npm run test:real`。该脚本只复制列明的 10 份 Markdown/YAML（含原有文档中心与目录）到本工具 `output/playwright/real-documents-*`，通过原有登记自动发现需求和设计，核对归档状态、步骤、清单、占位模板、来源与浏览器原文；比较扫描前后原文件和副本摘要，不执行原项目脚本。它是指定样本回归，不能宣称所有 vNext 版本兼容或用户需求完整。
 
-2026-10-02 在 Windows / Node 24.12 / Edge 154 实际执行并通过：`npm ci`、`npm run check`（类型检查、24 项解析／服务／项目来源／文档导航／使用说明测试、生产构建）、`npm run format:check`、`npm run test:browser`、`npm run test:real`。`npm run dev` 的页面及 API 代理均返回 200，浏览器正常加载；Ctrl+C 结束后两个服务均退出。生产构建无告警；依赖安装审计未发现漏洞。
+2026-10-02 在 Windows / Node 24.12 / Edge 154 实际执行并通过：`npm run check`（类型检查、31 项解析／服务／项目来源／文档导航／使用说明测试、生产构建）、`npm run format:check`、`npm run test:browser`、`npm run test:real`。本次修复回归覆盖 Windows 路径别名去重和稳定身份、带／不带 TASK- 日期编号的原文保留与歧义、段落引用式链接、已知可选索引删除及主动排除／撤回、配置目录迁移越界拒绝和离线项目登记恢复。首次交付还通过了 `npm ci` 和开发服务的页面／API 代理检查，Ctrl+C 后两个开发服务均退出；本次未重新安装依赖或复测开发服务。生产构建无告警。
 
-最终浏览器验收结果与截图保存在 [output/playwright/acceptance-4jidK4/result.json](output/playwright/acceptance-4jidK4/result.json)。检查四页完整闭环及异常状态、1440/1024/390 视口、Codex 快捷添加、服务机器目录导航、失效／重复登记禁用、标准 Profile 自动导航、文档状态与待分类提示、整理提示词复制、真实索引变更后刷新和登记来源跳转；新增使用说明页验证无项目访问、23 个场景、搜索／类别／无匹配、真实剪贴板、1440/390 布局及无隐式扫描。无非预期浏览器错误或自动外部资源请求；无效目录测试按预期收到 400 并在表单展示错误，测试用 Codex 登记内容保持不变。另用当前服务与本机真实 Codex 登记核对了项目列表、搜索和范围发现（取消登记，不污染用户项目配置）。真实副本核对结果保存在 [output/playwright/real-documents-8Lekf9/result.json](output/playwright/real-documents-8Lekf9/result.json)：10 份文档、2 个历史任务，通过原有文档中心自动发现需求和设计，核对占位模板、归档状态、步骤、清单与来源行，并确认原件／副本内容摘要未变。237 条提示主要对应这份有意收窄的副本中的缺失登记、读取限制及引用诊断，均保留可用内容，不据此宣称真实项目完整扫描或用户需求齐备。本次静态使用说明改动未重复运行真实副本测试，扫描实现未变。
+最终浏览器验收结果与截图保存在 [output/playwright/acceptance-LBXJyr/result.json](output/playwright/acceptance-LBXJyr/result.json)。检查四页完整闭环及异常状态、1440/1024/390 视口、Codex 快捷添加、服务机器目录导航、失效／重复登记禁用、标准 Profile 自动导航、文档状态与待分类提示、整理提示词复制、段落引用式索引变更后刷新、索引删除后的失效提示及新正文阅读、登记来源跳转；使用说明页验证无项目访问、23 个场景、搜索／类别／无匹配、真实剪贴板、1440/390 布局及无隐式扫描。无非预期浏览器错误或自动外部资源请求；无效目录测试按预期收到 400 并在表单展示错误，测试用 Codex 登记内容保持不变。首次交付还用本机真实 Codex 登记核对了项目列表、搜索和范围发现（取消登记，不污染用户项目配置）。本次真实副本核对结果保存在 [output/playwright/real-documents-G7KCFu/result.json](output/playwright/real-documents-G7KCFu/result.json)：10 份文档、2 个历史任务，通过原有文档中心自动发现需求和设计，核对占位模板、归档状态、步骤、清单与来源行，并确认原件／副本内容摘要未变。237 条提示主要对应这份有意收窄的副本中的缺失登记、读取限制及引用诊断，均保留可用内容，不据此宣称真实项目完整扫描或用户需求齐备。
 
 已知限制：只验证以上系统和指定真实样本，未运行 Linux／macOS、Node 22 或其他浏览器，不宣称真实 vNext 全版本兼容。Codex 快捷读取适配当前已验证的本地登记格式；后续格式变化可能需要调整，届时目录选择器仍可使用。不支持远程 Codex 主机、云项目、UNC／WSL 网络路径或链接目录。自定义文档索引／类型可能保留待分类，可使用高级扫描设置明确范围；导航登记不证明全部用户需求、设计已被确认。单次扫描没有跨文件事务保证；需要一致视图时应避免扫描期间编辑，并在变动后再刷新。当前首版验收及本次导航改进无未完成项；范围外能力未实现。

@@ -11,6 +11,7 @@ import {
   inputSchema,
   validate,
   validateRoot,
+  within,
 } from "./config.js";
 
 const persisted = z
@@ -28,12 +29,14 @@ export class ProjectRegistry {
   async load(): Promise<void> {
     try {
       await assertNoLinks(path.resolve(this.dataDir));
-      this.projects = validate(
+      const projects = validate(
         persisted,
         JSON.parse(
           await readFile(path.join(this.dataDir, "projects.json"), "utf8"),
         ),
       );
+      this.assertDataDirectoryOutsideProjects(projects);
+      this.projects = projects;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
         throw new AppError(
@@ -56,6 +59,7 @@ export class ProjectRegistry {
     return operation;
   }
   private async save(next: Project[]): Promise<void> {
+    this.assertDataDirectoryOutsideProjects(next);
     try {
       await assertNoLinks(path.resolve(this.dataDir));
     } catch (error) {
@@ -74,6 +78,16 @@ export class ProjectRegistry {
     } finally {
       await unlink(temporary).catch(() => {});
     }
+  }
+  private assertDataDirectoryOutsideProjects(projects: Project[]): void {
+    if (
+      projects.some((project) =>
+        within(path.resolve(project.root), path.resolve(this.dataDir)),
+      )
+    )
+      throw new AppError(
+        "工具配置目录不能位于被观察项目内，请使用独立的数据目录",
+      );
   }
   add(body: unknown): Promise<Project> {
     return this.mutate(async () => {

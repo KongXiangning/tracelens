@@ -313,3 +313,47 @@ it("does not erase charged bytes when post-read file-change checks reject the co
   ).rejects.toThrow(/变化/);
   expect(charged).toBe(Buffer.byteLength(data));
 });
+
+it("does not let an unread local navigation allowance poison a later globally permitted PRODUCT read", async () => {
+  await file("shared.md", "x".repeat(1024));
+  const session = new ScanReadSession(root);
+  await expect(
+    session.read("shared.md", false, { remainingBytes: () => 512 }),
+  ).rejects.toThrow(/字节预算/);
+  expect(session.bytes).toBe(0);
+  expect((await session.read("shared.md")).bytes).toBe(1024);
+  expect(session.bytes).toBe(1024);
+});
+it("lets a coalesced broader reader recover only a zero-byte local allowance rejection", async () => {
+  await file("shared.md", "x".repeat(1024));
+  const session = new ScanReadSession(root);
+  const [local, global] = await Promise.allSettled([
+    session.read("shared.md", false, { remainingBytes: () => 512 }),
+    session.read("shared.md"),
+  ]);
+  expect(local.status).toBe("rejected");
+  expect(global.status).toBe("fulfilled");
+  expect(session.bytes).toBe(1024);
+});
+it("cannot bypass exhausted global or unique-file budgets with a broader local allowance", async () => {
+  Object.assign(limits, { totalBytes: 1024, fileBytes: 2048, files: 2 });
+  await file("filled.txt", "f".repeat(1024));
+  await file("later.txt", "l".repeat(1024));
+  const session = new ScanReadSession(root);
+  await session.read("filled.txt");
+  await expect(
+    session.read("later.txt", false, { remainingBytes: () => 512 }),
+  ).rejects.toThrow(/上限/);
+  await expect(
+    session.read("later.txt", false, { remainingBytes: () => 99999 }),
+  ).rejects.toThrow(/上限/);
+  expect(session.bytes).toBe(1024);
+  limits.totalBytes = 4096;
+  limits.files = 1;
+  const limited = new ScanReadSession(root);
+  await expect(
+    limited.read("filled.txt", false, { remainingBytes: () => 512 }),
+  ).rejects.toThrow(/字节预算/);
+  expect((await limited.read("filled.txt")).bytes).toBe(1024);
+  await expect(limited.read("later.txt")).rejects.toThrow(/文件读取上限/);
+});

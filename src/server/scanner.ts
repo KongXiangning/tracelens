@@ -81,9 +81,16 @@ export interface ReadAllowance {
   onBytesRead?: (bytes: number) => void;
   onResolvedPath?: (relative: string) => void;
 }
+class ReadBudgetError extends AppError {
+  localOnly = false;
+  constructor(readonly requiredBytes: number) {
+    super("超过读取字节预算上限，未完整读取");
+  }
+}
 export class ScanReadSession {
   readonly inputs = new Map<string, Omit<InputFile, "kind">>();
   private attempts = new Map<string, Promise<Omit<InputFile, "kind">>>();
+  private attemptedPaths = new Set<string>();
   private canonicalPaths = new Map<string, string>();
   private productExclusions: string[] = [];
   private pending: Promise<void> = Promise.resolve();
@@ -125,39 +132,77 @@ export class ScanReadSession {
     relative: string,
     includeRecords = false,
     allowance?: ReadAllowance,
-  ) {
+  ): Promise<Omit<InputFile, "kind">> {
     // Policy is checked before cached success or failure is returned.
     this.assertAllowed(relative, includeRecords);
     const key = documentPathKey(relative);
     const cached = this.attempts.get(key);
-    if (cached) return cached;
-    if (this.attempts.size >= limits.files)
+    if (cached) {
+      try {
+        return await cached;
+      } catch (error) {
+        // A coalesced caller may have a broader local allowance. Retrying is
+        // permitted only when no bytes were read and the global budget fits.
+        if (
+          error instanceof ReadBudgetError &&
+          error.localOnly &&
+          (allowance?.remainingBytes?.() ?? Infinity) >= error.requiredBytes &&
+          limits.totalBytes - this.bytes >= error.requiredBytes
+        )
+          return this.read(relative, includeRecords, allowance);
+        throw error;
+      }
+    }
+    if (
+      !this.attemptedPaths.has(key) &&
+      this.attemptedPaths.size >= limits.files
+    )
       throw new AppError("达到 500 文件读取上限，扫描不完整");
+    this.attemptedPaths.add(key);
     // Serialize physical reads so concurrent callers cannot each spend the same
     // remaining budget. Coalesced requests still reuse one promise/byte image.
-    const reading = this.pending.then(async () => {
-      this.assertAllowed(relative, includeRecords);
-      if (this.bytes >= limits.totalBytes)
-        throw new AppError("达到总读取量 20 MiB 上限，未读取");
-      const input = await readBounded(this.root, relative, includeRecords, {
-        remainingBytes: () =>
-          Math.min(
-            limits.totalBytes - this.bytes,
-            allowance?.remainingBytes?.() ?? Infinity,
-          ),
-        onBytesRead: (count) => {
-          this.bytes += count;
-          allowance?.onBytesRead?.(count);
-        },
-        onResolvedPath: (canonical) => {
-          this.canonicalPaths.set(key, canonical);
-          this.assertAllowed(relative, includeRecords);
-          allowance?.onResolvedPath?.(canonical);
-        },
+    let charged = 0;
+    const reading = this.pending
+      .then(async () => {
+        this.assertAllowed(relative, includeRecords);
+        if (this.bytes >= limits.totalBytes)
+          throw new AppError("达到总读取量 20 MiB 上限，未读取");
+        const input = await readBounded(this.root, relative, includeRecords, {
+          remainingBytes: () =>
+            Math.min(
+              limits.totalBytes - this.bytes,
+              allowance?.remainingBytes?.() ?? Infinity,
+            ),
+          onBytesRead: (count) => {
+            this.bytes += count;
+            charged += count;
+            allowance?.onBytesRead?.(count);
+          },
+          onResolvedPath: (canonical) => {
+            this.canonicalPaths.set(key, canonical);
+            this.assertAllowed(relative, includeRecords);
+            allowance?.onResolvedPath?.(canonical);
+          },
+        });
+        this.inputs.set(key, input);
+        return input;
+      })
+      .catch((error) => {
+        // A navigation-local preflight rejection is not a captured file failure.
+        // Do not let it constrain a later explicitly registered PRODUCT read.
+        // Real I/O failures, partial reads and global exhaustion stay memoized.
+        if (
+          error instanceof ReadBudgetError &&
+          charged === 0 &&
+          allowance?.remainingBytes &&
+          allowance.remainingBytes() < error.requiredBytes &&
+          limits.totalBytes - this.bytes >= error.requiredBytes
+        ) {
+          error.localOnly = true;
+          if (this.attempts.get(key) === reading) this.attempts.delete(key);
+        }
+        throw error;
       });
-      this.inputs.set(key, input);
-      return input;
-    });
     this.attempts.set(key, reading);
     this.pending = reading.then(
       () => undefined,
@@ -196,15 +241,14 @@ export async function readBounded(
     if (before.size > limits.fileBytes)
       throw new AppError("单文件超过 2 MiB 上限，扫描不完整");
     if (before.size > (allowance?.remainingBytes?.() ?? Infinity))
-      throw new AppError("超过读取字节预算上限，未读取");
+      throw new ReadBudgetError(before.size);
     // Read only the preflight size. Post-read stat checks still reject growth,
     // shrinkage or replacement. No extra EOF probe can overspend the budget.
     const buffer = Buffer.alloc(before.size);
     let length = 0;
     while (length < buffer.length) {
       const remaining = allowance?.remainingBytes?.() ?? Infinity;
-      if (remaining <= 0)
-        throw new AppError("达到读取字节预算上限，扫描不完整");
+      if (remaining <= 0) throw new ReadBudgetError(buffer.length - length);
       const { bytesRead } = await handle.read(
         buffer,
         length,

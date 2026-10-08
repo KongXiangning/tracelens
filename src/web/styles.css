@@ -332,11 +332,22 @@
   font-size: 13px;
 }
 .navigation-audit summary,
+.candidate-documents summary,
 .advanced-scope summary {
   cursor: pointer;
   font-size: 13px;
   font-weight: 550;
   padding: 9px 0;
+}
+.candidate-documents {
+  margin-top: 12px;
+}
+.candidate-documents > input {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.candidate-documents small {
+  overflow-wrap: anywhere;
 }
 .advanced-scope {
   border-top: 1px solid #dfe5e1;

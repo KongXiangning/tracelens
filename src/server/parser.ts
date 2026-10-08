@@ -25,6 +25,10 @@ import type {
 } from "../shared/types.js";
 import type { InputFile } from "./scanner.js";
 import { documentPathKey } from "./config.js";
+import {
+  metadataReferenceFields,
+  metadataTargets,
+} from "./document-metadata.js";
 
 export function stableId(projectId: string, value: string): string {
   return `${projectId}:${createHash("sha256").update(documentPathKey(value)).digest("hex").slice(0, 20)}`;
@@ -48,7 +52,7 @@ export function taskNumbers(value: string): string[] {
   return [
     ...new Set(
       value.match(
-        /(?<![\w-])(?:TASK-)?(?:\d{8}-\d{3}|[A-Z]{2,10}-\d{2,6}|TASK-\d{2,6})(?![\w-])/g,
+        /(?<![\w-])(?:TASK-)?(?:\d{8}-\d{3}|[A-Z]{2,10}-\d{2,10})(?![\w-])/g,
       ) || [],
     ),
   ];
@@ -102,6 +106,7 @@ export interface Parsed {
   statements: Statement[];
   references: PendingReference[];
   warnings: Warning[];
+  adoptedPlan?: { path: string; step: string; source: SourceRef };
 }
 const processor = unified().use(remarkParse).use(remarkGfm);
 export function parseMarkdown(raw: string): Root {
@@ -138,6 +143,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
   const warnings: Warning[] = [];
   const statements: Statement[] = [];
   const references: PendingReference[] = [];
+  let adoptedPlan: Parsed["adoptedPlan"];
   function source(line: number): SourceRef {
     return {
       documentId: id,
@@ -172,19 +178,18 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     return { document, task: null, statements, references, warnings };
   }
   const frontmatter = input.raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  let taskViewMetadata = false;
   if (frontmatter) {
     try {
       const metadata = parseDocument(frontmatter[1]);
       if (metadata.errors.length) throw new Error(metadata.errors[0].message);
       const value = metadata.toJS({ maxAliasCount: 20 });
-      for (const field of ["related_docs", "superseded_by"]) {
-        const targets =
-          field === "related_docs"
-            ? value?.[field]
-            : typeof value?.[field] === "string"
-              ? [value[field]]
-              : [];
-        if (!Array.isArray(targets)) continue;
+      taskViewMetadata = value?.kind === "vnext-task-view";
+      for (const field of metadataReferenceFields) {
+        const targets = metadataTargets(
+          value && typeof value === "object" ? value : {},
+          field,
+        );
         const line =
           input.raw
             .split("\n")
@@ -484,6 +489,72 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
           source: entry.source,
         });
   }
+  // Generated views declare their focus in Current work, not in the Tasks history table.
+  const isTaskView =
+    /<!--\s*vnext-task-view\/v1\s*-->/.test(input.raw) || taskViewMetadata;
+  if (
+    isTaskView &&
+    (isCurrentFile || fields.some((f) => f.headings.includes("currentwork")))
+  ) {
+    const focusFields = fields.filter((f) =>
+      f.headings.includes("currentwork"),
+    );
+    const focuses = focusFields.filter((f) => f.label === "task");
+    const focus = focuses.length === 1 ? focuses[0] : null;
+    const number = focus
+      ? taskNumbers(focus.value).find((n) => focus.value.startsWith(n))
+      : null;
+    const step = focusFields.find((f) => f.label === "step");
+    const plan = focusFields.find((f) => f.label === "adoptedplan");
+    for (let i = statements.length - 1; i >= 0; i--)
+      if (["currentTask", "currentStep"].includes(statements[i].kind))
+        statements.splice(i, 1);
+    task = null;
+    if (focus && number) {
+      const title = focus.value.match(/\s[—–]\s(.+)$/)?.[1] || number;
+      const lifecycle = fields.find(
+        (f) =>
+          f.headings.includes("tasks") && f.label === normalizeHeading(number),
+      );
+      const stepEntry =
+        step && !/^(none|null|n\/a|无)$/i.test(step.value)
+          ? { ...step.entry, text: step.value }
+          : null;
+      if (plan && stepEntry && !/^(none|null|n\/a|无)$/i.test(plan.value))
+        adoptedPlan = {
+          path: plan.value,
+          step: stepEntry.text,
+          source: plan.entry.source,
+        };
+      task = {
+        id: stableId(projectId, `task:${input.path}`),
+        number,
+        title,
+        current: isCurrentFile,
+        source: focus.entry.source,
+        statuses: lifecycle
+          ? [{ ...lifecycle.entry, text: lifecycle.value.split("|")[0].trim() }]
+          : [],
+        goals: [],
+        steps: stepEntry ? [stepEntry] : [],
+        checks: [],
+        issues: [],
+      };
+      statements.push({
+        ...focus.entry,
+        text: `${number} · ${title}`,
+        kind: "currentTask",
+        taskNumber: number,
+      });
+      if (stepEntry)
+        statements.push({
+          ...stepEntry,
+          kind: "currentStep",
+          taskNumber: number,
+        });
+    }
+    document.recognized = true;
+  }
   const definitions = new Map<string, Definition>();
   visit(tree, "definition", (node) => {
     definitions.set(node.identifier.toLowerCase(), node);
@@ -505,5 +576,5 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     const definition = definitions.get(node.identifier.toLowerCase());
     if (definition) addLink(node, definition.url, toString(node));
   });
-  return { document, task, statements, references, warnings };
+  return { document, task, statements, references, warnings, adoptedPlan };
 }

@@ -1,10 +1,12 @@
 import path from "node:path";
+import { lstat } from "node:fs/promises";
 import { parseDocument } from "yaml";
 import { visit } from "unist-util-visit";
 import { toString } from "mdast-util-to-string";
 import type { ListItem, TableRow } from "mdast";
 import {
   defaultConfig,
+  assertNoLinks,
   documentPathKey,
   safePattern,
   within,
@@ -16,6 +18,11 @@ import {
   type InputFile,
 } from "./scanner.js";
 import { parseInput, parseMarkdown } from "./parser.js";
+import {
+  examplePath,
+  metadataReferenceFields,
+  metadataTargets,
+} from "./document-metadata.js";
 import {
   kinds,
   type ConfiguredKind,
@@ -36,7 +43,7 @@ const navigationLimits = {
 type Evidence = DocumentRegistration["sources"][number];
 function category(value: string): ConfiguredKind | null {
   if (
-    /workflow-(?:governance|catalog|registry|reference)|^(?:management|管理|治理)$/i.test(
+    /workflow-(?:governance|catalog|registry|reference)|^(?:management|governance-document|vnext-task-view|vnext-project-profile|管理|治理)$/i.test(
       value,
     )
   )
@@ -76,6 +83,7 @@ export class DocumentNavigation {
   readonly entries = new Map<string, DocumentRegistration>();
   rules = defaultConfig().rules;
   profileUsed = false;
+  currentTaskPath = "docs/workflow/CURRENT_TASK.md";
   incomplete = false;
   bytes = 0;
   private reads = 0;
@@ -85,6 +93,14 @@ export class DocumentNavigation {
   private queue: string[] = [];
   private profileUnavailable = false;
   private unavailableSources = new Set<string>();
+  private shorthands: {
+    from: string;
+    raw: string;
+    label: string;
+    line: number;
+    kind: ConfiguredKind | null;
+    depth: number;
+  }[] = [];
   constructor(
     private root: string,
     private config: ScanConfig,
@@ -94,17 +110,22 @@ export class DocumentNavigation {
   }
   private excluded(filename: string): boolean {
     return (
-      blockedPath(filename) ||
+      blockedPath(filename, this.config.includeRecords) ||
       this.config.excludes.some(
         (p) => matches(filename, p) || matches(`${filename}/`, p),
       )
     );
   }
-  private limit(): void {
-    if (!this.incomplete)
+  private limit(reason: string): void {
+    const message = `文档导航达到${reason}，登记核对不完整`;
+    if (
+      !this.warnings.some(
+        (w) => w.code === "navigation-limit" && w.message === message,
+      )
+    )
       this.warnings.push({
         code: "navigation-limit",
-        message: "文档导航达到读取数量、字节、路径或深度上限，登记核对不完整",
+        message,
       });
     this.incomplete = true;
   }
@@ -116,6 +137,15 @@ export class DocumentNavigation {
     if (/^(?:https?:|mailto:|tel:|#)/i.test(raw)) return null;
     try {
       const value = decodeURIComponent(raw.split(/[?#]/)[0].trim());
+      if (examplePath(value)) {
+        this.warnings.push({
+          code: "navigation-example",
+          path: from,
+          level: "info",
+          message: `示例或占位路径未作为文件登记：${raw.slice(0, 300)}`,
+        });
+        return null;
+      }
       if (!value || /[\\:\x00-\x1f]/.test(value) || value.startsWith("/"))
         throw new Error("不是项目内相对路径");
       const filename = path.posix.normalize(
@@ -148,6 +178,11 @@ export class DocumentNavigation {
     const key = this.key(filename);
     const existing = this.entries.get(key);
     if (existing) {
+      if (depth < (this.depths.get(key) ?? depth)) {
+        this.depths.set(key, depth);
+        this.processed.delete(key);
+        if (existing.availability !== "excluded") this.queue.push(key);
+      }
       if (
         !existing.sources.some(
           (s) =>
@@ -157,7 +192,16 @@ export class DocumentNavigation {
         )
       ) {
         if (existing.sources.length < 16) existing.sources.push(source);
-        else this.limit();
+        else if (!existing.sourcesTruncated) {
+          existing.sourcesTruncated = true;
+          this.warnings.push({
+            code: "navigation-source-limit",
+            path: filename,
+            level: "info",
+            message:
+              "此文档的登记来源超过 16 条，来源列表已截断；不影响文件读取或后续导航。",
+          });
+        }
       }
       if (classification === "manual") this.classificationConflicts.delete(key);
       if (this.classificationConflicts.has(key)) return;
@@ -186,7 +230,7 @@ export class DocumentNavigation {
       return;
     }
     if (this.entries.size >= navigationLimits.paths) {
-      this.limit();
+      this.limit("500 个登记路径上限");
       return;
     }
     const excluded = this.excluded(filename);
@@ -307,6 +351,7 @@ export class DocumentNavigation {
           });
       }
     }
+    this.currentTaskPath = path.posix.join(home, "CURRENT_TASK.md");
     // Optional conventional entry points supplement declared seeds without searching the repository.
     for (const filename of [
       `${home}/DOCUMENT_CATALOG.md`,
@@ -332,7 +377,25 @@ export class DocumentNavigation {
           });
       }
     }
-    // Missing default governance files remain scan diagnostics; their task references are followed after enumeration.
+    // Both layouts occur in projects. An absent optional task directory is not a missing document.
+    this.rules.management = this.rules.management.filter(
+      (rule) => rule !== `${home}/TASKS/**/*.md`,
+    );
+    for (const directory of new Set([`${home}/TASKS`, "TASKS"])) {
+      if (this.excluded(directory)) continue;
+      try {
+        await assertNoLinks(path.resolve(this.root, directory));
+        if ((await lstat(path.resolve(this.root, directory))).isDirectory())
+          this.rules.management.push(`${directory}/**/*.md`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+          this.warnings.push({
+            code: "navigation-read",
+            path: directory,
+            message: `任务目录不可读：${String(error)}`,
+          });
+      }
+    }
     await this.drain();
   }
   async recoverUnavailableSources(previous?: NavigationReport): Promise<void> {
@@ -381,13 +444,21 @@ export class DocumentNavigation {
       this.reads >= navigationLimits.reads ||
       this.bytes >= navigationLimits.bytes
     ) {
-      this.limit();
+      this.limit(
+        this.reads >= navigationLimits.reads
+          ? "120 次读取上限"
+          : "10 MiB 字节上限",
+      );
       throw new Error("文档导航读取上限");
     }
     this.reads++;
-    const input = await readBounded(this.root, filename);
+    const input = await readBounded(
+      this.root,
+      filename,
+      this.config.includeRecords,
+    );
     if (this.bytes + input.bytes > navigationLimits.bytes) {
-      this.limit();
+      this.limit("10 MiB 字节上限");
       throw new Error("文档导航总读取量超过 10 MiB");
     }
     this.bytes += input.bytes;
@@ -395,14 +466,18 @@ export class DocumentNavigation {
     return input;
   }
   private async drain(): Promise<void> {
-    while (this.queue.length) {
+    while (this.queue.length || this.shorthands.length) {
+      if (!this.queue.length) {
+        await this.resolveShorthands();
+        continue;
+      }
       const key = this.queue.shift()!;
       const entry = this.entries.get(key)!;
       const depth = this.depths.get(key) || 0;
       if (this.processed.has(key)) continue;
       this.processed.add(key);
       if (depth > navigationLimits.depth) {
-        this.limit();
+        this.limit("3 层跳转上限");
         continue;
       }
       try {
@@ -420,6 +495,51 @@ export class DocumentNavigation {
           message: `已登记文档${entry.availability === "missing" ? "缺失" : "不可读"}：${String(error)}`,
         });
       }
+    }
+  }
+  private async resolveShorthands(): Promise<void> {
+    const shorthands = this.shorthands.splice(0);
+    for (const ref of shorthands) {
+      const candidates = new Set([
+        path.posix.join(path.posix.dirname(ref.from), ref.raw),
+        ref.raw,
+        ...[...this.entries.values()]
+          .filter(
+            (entry) =>
+              this.key(path.posix.basename(entry.path)) === this.key(ref.raw),
+          )
+          .map((entry) => entry.path),
+      ]);
+      const found = new Map<string, string>();
+      for (const candidate of candidates) {
+        if (!safePattern(candidate) || this.excluded(candidate)) continue;
+        try {
+          const absolute = path.resolve(this.root, candidate);
+          await assertNoLinks(absolute);
+          if ((await lstat(absolute)).isFile())
+            found.set(this.key(candidate), candidate);
+        } catch {
+          /* A shorthand is not a declaration that an absent path must exist. */
+        }
+      }
+      if (found.size === 1)
+        this.reference(
+          ref.from,
+          [...found.values()][0],
+          `简写路径：${ref.label}`,
+          ref.line,
+          ref.kind,
+          true,
+          ref.depth,
+        );
+      else
+        this.warnings.push({
+          code: "navigation-shorthand",
+          path: ref.from,
+          line: ref.line,
+          level: "info",
+          message: `简写路径${found.size > 1 ? "有多个候选" : "无法定位"}，请使用明确的相对路径：${ref.raw}`,
+        });
     }
   }
   private inspect(
@@ -443,39 +563,44 @@ export class DocumentNavigation {
           metadata.superseded_by
         ) {
           entry.supersededBy = metadata.superseded_by.slice(0, 400);
-          this.reference(
-            input.path,
-            metadata.superseded_by,
-            "替代文档 superseded_by",
-            this.fieldLine(raw, "superseded_by"),
-            null,
-            true,
-            depth + 1,
-          );
         }
-        for (const field of ["document_type", "doc_type", "type"]) {
+        for (const field of [
+          "document_type",
+          "doc_type",
+          "type",
+          "document_kind",
+          "kind",
+        ]) {
           if (typeof metadata[field] === "string") {
             const kind = category(metadata[field]);
             if (kind)
-              this.add(entry.path, kind, "declared", {
-                path: entry.path,
-                line: this.fieldLine(raw, field),
-                label: `文档元数据 ${field}`,
-              });
+              this.add(
+                entry.path,
+                kind,
+                "declared",
+                {
+                  path: entry.path,
+                  line: this.fieldLine(raw, field),
+                  label: `文档元数据 ${field}`,
+                },
+                depth,
+              );
           }
         }
-        if (Array.isArray(metadata.related_docs))
-          for (const related of metadata.related_docs)
-            if (typeof related === "string")
-              this.reference(
-                input.path,
-                related,
-                "related_docs",
-                this.fieldLine(raw, "related_docs"),
-                null,
-                true,
-                depth + 1,
-              );
+        for (const field of metadataReferenceFields) {
+          const targets = metadataTargets(metadata, field);
+          for (const related of targets.slice(0, 64))
+            this.reference(
+              input.path,
+              related,
+              field,
+              this.fieldLine(raw, field),
+              null,
+              true,
+              depth + 1,
+            );
+          if (targets.length > 64) this.limit(`${field} 单字段 64 项引用上限`);
+        }
       } catch (error) {
         this.warnings.push({
           code: "navigation-metadata",
@@ -506,6 +631,10 @@ export class DocumentNavigation {
       entry.status ||= "template";
     if (/(?:^|\/)archive(?:\/|$)|归档/i.test(entry.path))
       entry.status ||= "archived";
+    const definitions = new Map<string, string>();
+    visit(tree, "definition", (node) => {
+      definitions.set(node.identifier.toLowerCase(), node.url);
+    });
     if (
       indexFile(entry.path) ||
       (title &&
@@ -514,10 +643,6 @@ export class DocumentNavigation {
         ))
     ) {
       const headings: string[] = [];
-      const definitions = new Map<string, string>();
-      visit(tree, "definition", (node) => {
-        definitions.set(node.identifier.toLowerCase(), node.url);
-      });
       const register = (node: ListItem | TableRow, context: string) => {
         const text = toString(node);
         const codes: string[] = [];
@@ -554,8 +679,25 @@ export class DocumentNavigation {
               depth + 1,
             );
         });
-        for (const code of codes)
-          if (/\.(?:md|markdown|ya?ml)(?:#.*)?$/i.test(code))
+        for (const code of codes) {
+          if (/\.(?:md|markdown|ya?ml)(?:#.*)?$/i.test(code)) {
+            if (
+              !code.includes("/") &&
+              !/[\\:#?]/.test(code) &&
+              !examplePath(code)
+            ) {
+              if (this.shorthands.length < navigationLimits.paths)
+                this.shorthands.push({
+                  from: entry.path,
+                  raw: code,
+                  label: text.slice(0, 180),
+                  line,
+                  kind,
+                  depth: depth + 1,
+                });
+              else this.limit("500 项待核对简写路径上限");
+              continue;
+            }
             this.reference(
               entry.path,
               code,
@@ -565,6 +707,8 @@ export class DocumentNavigation {
               !code.startsWith("."),
               depth + 1,
             );
+          }
+        }
       };
       for (const node of tree.children) {
         if (node.type === "heading") {
@@ -576,31 +720,32 @@ export class DocumentNavigation {
         else if (node.type === "table")
           for (const row of node.children.slice(1)) register(row, "");
       }
-      visit(tree, "link", (link) =>
+    }
+    // Explicit Markdown links in ordinary documents are navigation evidence too.
+    visit(tree, "link", (link) =>
+      this.reference(
+        entry.path,
+        link.url,
+        toString(link).slice(0, 180),
+        (link.position?.start.line || 1) + offset,
+        null,
+        false,
+        depth + 1,
+      ),
+    );
+    visit(tree, "linkReference", (link) => {
+      const target = definitions.get(link.identifier.toLowerCase());
+      if (target)
         this.reference(
           entry.path,
-          link.url,
+          target,
           toString(link).slice(0, 180),
           (link.position?.start.line || 1) + offset,
           null,
           false,
           depth + 1,
-        ),
-      );
-      visit(tree, "linkReference", (link) => {
-        const target = definitions.get(link.identifier.toLowerCase());
-        if (target)
-          this.reference(
-            entry.path,
-            target,
-            toString(link).slice(0, 180),
-            (link.position?.start.line || 1) + offset,
-            null,
-            false,
-            depth + 1,
-          );
-      });
-    }
+        );
+    });
     if (entry.kind === "management") {
       const parsed = parseInput("navigation", { ...input, kind: entry.kind });
       if (
@@ -628,12 +773,28 @@ export class DocumentNavigation {
       const manual = kinds.find((kind) =>
         this.config.rules[kind].some((p) => matches(input.path, p)),
       );
-      if (!this.entries.has(key))
-        this.add(input.path, input.kind, manual ? "manual" : "declared", {
-          path: manual ? "TraceLens 配置" : profilePath,
-          line: 1,
-          label: manual ? "手动分类规则" : "管理文档默认范围／Profile 分类扩展",
-        });
+      const fallback = kinds.find((kind) =>
+        this.rules[kind].some((p) => matches(input.path, p)),
+      );
+      if (
+        !this.entries.has(key) ||
+        (fallback &&
+          ["unclassified", "suggested"].includes(
+            this.entries.get(key)!.classification,
+          ))
+      )
+        this.add(
+          input.path,
+          manual || fallback || input.kind,
+          manual ? "manual" : "declared",
+          {
+            path: manual ? "TraceLens 配置" : profilePath,
+            line: 1,
+            label: manual
+              ? "手动分类规则"
+              : "管理文档默认范围／Profile 分类扩展",
+          },
+        );
       else if (manual)
         this.add(input.path, manual, "manual", {
           path: "TraceLens 配置",
@@ -643,7 +804,7 @@ export class DocumentNavigation {
       const entry = this.entries.get(key);
       if (!entry) continue;
       entry.availability = "read";
-      if (!this.processed.has(key)) {
+      if (!this.processed.has(key) || (fallback && entry.kind !== input.kind)) {
         this.processed.add(key);
         this.inspect(input, entry, 0);
       }
@@ -691,6 +852,7 @@ export class DocumentNavigation {
     if (this.incomplete) gaps.push("本次导航核对不完整，请查看导航与读取提示");
     return {
       enabled: true,
+      currentTaskPath: this.currentTaskPath,
       profileUsed: this.profileUsed,
       entries,
       incomplete: this.incomplete,

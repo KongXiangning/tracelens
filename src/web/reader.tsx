@@ -31,11 +31,11 @@ export function DocumentReader({
   open: OpenSource;
   relations: () => void;
 }) {
-  const [raw, setRaw] = useState(/\.ya?ml$/i.test(document.path));
+  const [raw, setRaw] = useState(/\.(ya?ml|json)$/i.test(document.path));
   const content = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState(line);
   useEffect(() => {
-    setRaw(/\.ya?ml$/i.test(document.path));
+    setRaw(/\.(ya?ml|json)$/i.test(document.path));
     setTarget(line);
   }, [document.id]);
   useEffect(() => {

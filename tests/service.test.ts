@@ -401,7 +401,7 @@ describe("local service acceptance", () => {
     expect(
       third.relations.find((r) => r.targetPath === "docs/design/storage.md")
         ?.state,
-    ).toBe("outside");
+    ).toBe("excluded");
   });
   it("publishes partial content with unreadable files and parse failures, retaining diagnostic evidence", async () => {
     const project = await add();

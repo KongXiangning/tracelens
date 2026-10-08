@@ -1,5 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { lstat } from "node:fs/promises";
 import type {
   Project,
   Relation,
@@ -8,8 +9,16 @@ import type {
   RefreshAttempt,
   Warning,
 } from "../shared/types.js";
-import { AppError, documentPathKey, within } from "./config.js";
-import { scanFiles } from "./scanner.js";
+import {
+  AppError,
+  assertNoLinks,
+  documentPathKey,
+  safePattern,
+  within,
+} from "./config.js";
+import { blockedPath, matches, scanFiles } from "./scanner.js";
+import { examplePath } from "./document-metadata.js";
+import { attachCurrentPlan } from "./current-plan.js";
 import {
   anchor,
   parseInput,
@@ -52,16 +61,47 @@ export async function buildSnapshot(
       };
     }
   });
+  const manualCurrent = parsed
+    .flatMap((p) => (p.task ? [p.task] : []))
+    .filter(
+      (t) =>
+        t.current &&
+        !/(^|\/)(legacy|archive|archives|history|templates?)(\/|$)/i.test(
+          t.source.path,
+        ),
+    );
+  const currentPath = scan.navigation.enabled
+    ? scan.navigation.currentTaskPath
+    : manualCurrent.length === 1
+      ? manualCurrent[0].source.path
+      : undefined;
+  await attachCurrentPlan(project, scan, parsed, currentPath);
   const documents = parsed.map((p) => p.document);
   const tasks = parsed.flatMap((p) => (p.task ? [p.task] : []));
-  const statements = parsed.flatMap((p) => p.statements);
+  const isCurrentSource = (filename: string) =>
+    Boolean(
+      currentPath && documentPathKey(filename) === documentPathKey(currentPath),
+    );
+  for (const task of tasks)
+    task.current = task.current && isCurrentSource(task.source.path);
+  const statements = parsed
+    .flatMap((p) => p.statements)
+    .filter(
+      (s) =>
+        !["currentTask", "currentStep"].includes(s.kind) ||
+        isCurrentSource(s.source.path),
+    );
   const warnings: Warning[] = [
     ...scan.warnings,
     ...parsed.flatMap((p) => p.warnings),
   ];
   const byPath = new Map(documents.map((d) => [documentPathKey(d.path), d]));
   const relations: Relation[] = [];
-  function resolve(ref: PendingReference, from: string): Relation {
+  const existence = new Map<string, Relation["state"]>();
+  async function resolve(
+    ref: PendingReference,
+    from: string,
+  ): Promise<Relation> {
     const base: Relation = {
       ...ref,
       id: `relation-${relations.length}`,
@@ -103,6 +143,7 @@ export async function buildSnapshot(
     } catch {
       return { ...base, state: "unsafe" };
     }
+    if (examplePath(target)) return { ...base, state: "example" };
     const resolved =
       ref.method === "structured"
         ? path.posix.normalize(target)
@@ -119,16 +160,48 @@ export async function buildSnapshot(
       return { ...base, state: "unsafe" };
     const doc = byPath.get(documentPathKey(resolved));
     if (!doc) {
-      const unavailable = scan.files.some(
-        (f) =>
-          documentPathKey(f.path) === documentPathKey(resolved) &&
-          ["missing", "error", "skipped"].includes(f.status),
-      );
+      const key = documentPathKey(resolved);
+      let state = existence.get(key);
+      if (!state) {
+        const file = scan.files.find((f) => documentPathKey(f.path) === key);
+        if (!safePattern(resolved) || /[*?{[\]]/.test(resolved))
+          state = "unsafe";
+        else if (
+          blockedPath(resolved, project.config.includeRecords) ||
+          project.config.excludes.some(
+            (p) => matches(resolved, p) || matches(`${resolved}/`, p),
+          )
+        )
+          state = "excluded";
+        else if (file?.status === "missing") state = "missing";
+        else if (file && file.status !== "read") state = "unavailable";
+        else if (existence.size >= 500) {
+          state = "outside";
+          if (!warnings.some((w) => w.code === "reference-check-limit"))
+            warnings.push({
+              code: "reference-check-limit",
+              message:
+                "引用目标存在性核对达到 500 个路径上限，其余目标保留未核对状态。",
+            });
+        } else {
+          try {
+            const absolute = path.resolve(project.root, resolved);
+            await assertNoLinks(absolute);
+            state = (await lstat(absolute)).isFile() ? "available" : "outside";
+          } catch (error) {
+            state =
+              (error as NodeJS.ErrnoException).code === "ENOENT"
+                ? "missing"
+                : "unavailable";
+          }
+        }
+        if (existence.size < 500) existence.set(key, state);
+      }
       return {
         ...base,
         section,
         targetPath: resolved,
-        state: unavailable ? "unavailable" : "outside",
+        state,
       };
     }
     let line = 1;
@@ -178,11 +251,14 @@ export async function buildSnapshot(
       ]);
       if (seen.has(key)) continue;
       seen.add(key);
-      const relation = resolve(ref, item.task?.id || item.document.id);
+      const relation = await resolve(ref, item.task?.id || item.document.id);
       relations.push(relation);
       if (!["resolved", "external"].includes(relation.state))
         warnings.push({
           code: `reference-${relation.state}`,
+          level: ["example", "excluded", "available"].includes(relation.state)
+            ? "info"
+            : "warning",
           path: ref.source.path,
           line: ref.source.line,
           message: `${ref.raw}：${relationLabels[relation.state]}`,
@@ -239,6 +315,10 @@ export async function buildSnapshot(
 export const relationLabels = {
   resolved: "已定位",
   outside: "未纳入扫描",
+  available: "文件存在，未纳入扫描",
+  missing: "引用路径不存在",
+  excluded: "已排除",
+  example: "示例或占位路径",
   "section-missing": "章节无法唯一定位",
   unavailable: "扫描目标缺失或不可读",
   external: "外部引用（未读取）",

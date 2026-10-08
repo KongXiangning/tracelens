@@ -47,6 +47,16 @@ const pattern = z
   );
 export const configSchema = z.object({
   autoDiscover: z.boolean().optional(),
+  includeRecords: z.boolean().optional(),
+  candidateRoots: z
+    .array(
+      pattern.refine(
+        (p) => !/[*?{[\]]/.test(p),
+        "候选目录须为相对目录路径，不能包含匹配规则",
+      ),
+    )
+    .max(32)
+    .optional(),
   rules: z.object({
     management: z.array(pattern).max(64),
     requirements: z.array(pattern).max(64),
@@ -147,6 +157,8 @@ export async function validateRoot(
 export function configFingerprint(config: ScanConfig): string {
   return JSON.stringify([
     Boolean(config.autoDiscover),
+    Boolean(config.includeRecords),
+    config.candidateRoots ?? ["docs", "TASKS"],
     kinds.map((k) => config.rules[k]),
     config.excludes,
   ]);

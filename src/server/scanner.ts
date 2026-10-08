@@ -38,10 +38,14 @@ const blocked = new Set([
   ".vnext",
   "journal",
 ]);
-export function blockedPath(relative: string): boolean {
+export function blockedPath(relative: string, includeRecords = false): boolean {
   return relative
     .split("/")
-    .some((segment) => blocked.has(segment.toLowerCase()));
+    .some(
+      (segment) =>
+        blocked.has(segment.toLowerCase()) &&
+        !(includeRecords && segment.toLowerCase() === "records"),
+    );
 }
 export function matches(file: string, pattern: string): boolean {
   return minimatch(file, pattern, {
@@ -67,11 +71,12 @@ export interface ScanResult {
 export async function readBounded(
   root: string,
   relative: string,
+  includeRecords = false,
 ): Promise<Omit<InputFile, "kind">> {
   if (
     !safePattern(relative) ||
     /[*?{[\]]/.test(relative) ||
-    blockedPath(relative)
+    blockedPath(relative, includeRecords)
   )
     throw new AppError("文件路径超出允许范围");
   const filename = path.resolve(root, relative);
@@ -182,7 +187,7 @@ export async function scanFiles(
   let visited = 0;
   let truncated = false;
   const excluded = (p: string) =>
-    blockedPath(p) ||
+    blockedPath(p, project.config.includeRecords) ||
     project.config.excludes.some(
       (pattern) => matches(p, pattern) || matches(`${p}/`, pattern),
     );
@@ -378,6 +383,7 @@ export async function scanFiles(
           (await readBounded(
             root,
             navigation?.entries.get(key)?.path || relative,
+            project.config.includeRecords,
           ));
         if (bytes + (cached ? 0 : input.bytes) > limits.totalBytes)
           throw new AppError("超过总读取量 20 MiB 上限，扫描不完整");
@@ -438,17 +444,30 @@ export async function scanFiles(
       "匹配范围内文档全部读取失败；请检查目录权限、链接和大小限制",
       422,
     );
+  const report: NavigationReport = navigation?.report() || {
+    enabled: false,
+    profileUsed: false,
+    entries: [],
+    incomplete: truncated,
+    gaps: ["当前使用手动范围，未核对 vNext 文档登记"],
+  };
+  if (navigation) {
+    const { inventoryDocuments } = await import("./inventory.js");
+    report.inventory = await inventoryDocuments(
+      root,
+      project.config,
+      new Set([
+        ...inputs.map((input) => documentPathKey(input.path)),
+        ...report.entries.map((entry) => documentPathKey(entry.path)),
+      ]),
+      warnings,
+    );
+  }
   return {
     inputs,
     files,
     warnings,
     effectiveRules,
-    navigation: navigation?.report() || {
-      enabled: false,
-      profileUsed: false,
-      entries: [],
-      incomplete: truncated,
-      gaps: ["当前使用手动范围，未核对 vNext 文档登记"],
-    },
+    navigation: report,
   };
 }

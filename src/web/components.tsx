@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { ProjectPicker } from "./project-picker";
-import { RegistrationList } from "./navigation-audit";
+import { CandidateList, RegistrationList } from "./navigation-audit";
 import {
   kinds,
   kindLabels,
@@ -114,7 +114,21 @@ export function EntryList({
             </span>
           )}
           <div>
-            <p>{entry.text}</p>
+            <p>
+              {entry.link?.target ? (
+                <button
+                  type="button"
+                  className="text-link"
+                  onClick={() => open(entry.link!.target!)}
+                >
+                  {entry.link.label}
+                  <ArrowUpRight size={13} />
+                </button>
+              ) : (
+                entry.link?.label || entry.text
+              )}
+            </p>
+            {entry.link?.detail && <p className="muted">{entry.link.detail}</p>}
             <SourceButton source={entry.source} open={open} />
           </div>
         </li>
@@ -293,7 +307,10 @@ export function ProjectForm({
               <div className="form-section">
                 <h3>文档发现预览</h3>
                 {discovery && (
-                  <RegistrationList report={discovery.navigation} />
+                  <>
+                    <RegistrationList report={discovery.navigation} />
+                    <CandidateList report={discovery.navigation} />
+                  </>
                 )}
                 <details className="advanced-scope" open={Boolean(project)}>
                   <summary>高级扫描设置</summary>
@@ -308,6 +325,41 @@ export function ProjectForm({
                     />
                     刷新时从 vNext 文档入口自动发现
                   </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(config.includeRecords)}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          includeRecords: event.target.checked,
+                        })
+                      }
+                    />
+                    允许读取 records 目录中的 Markdown / YAML 文档
+                  </label>
+                  {config.autoDiscover && (
+                    <label>
+                      候选文档盘点目录（每行一个项目相对目录）
+                      <textarea
+                        rows={2}
+                        value={(
+                          config.candidateRoots ?? ["docs", "TASKS"]
+                        ).join("\n")}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setConfig({
+                            ...config,
+                            candidateRoots: event.target.value.split("\n"),
+                          })
+                        }
+                      />
+                      <small>
+                        仅列出未登记文件；清空后停用候选盘点。盘点不会将文件自动登记为需求或设计。
+                      </small>
+                    </label>
+                  )}
                   <p className="muted">
                     {config.autoDiscover
                       ? "以下规则补充或覆盖自动分类；排除规则优先。"
@@ -362,8 +414,9 @@ export function ProjectForm({
                     />
                   </label>
                   <p className="muted">
-                    固定跳过 .git、node_modules、构建产物、records、journal
-                    和符号链接；仅读取 Markdown / YAML。
+                    固定跳过 .git、node_modules、构建产物、.vnext、journal
+                    和符号链接；仅读取 Markdown / YAML。 records
+                    默认跳过，可通过上方选项允许；允许后仍需通过文档导航或手动规则纳入正文扫描。
                   </p>
                 </details>
               </div>

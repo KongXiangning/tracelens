@@ -18,6 +18,8 @@ export interface ScanConfig {
   rules: Record<ConfiguredKind, string[]>;
   excludes: string[];
   autoDiscover?: boolean;
+  candidateRoots?: string[];
+  includeRecords?: boolean;
 }
 export interface Project {
   id: string;
@@ -43,6 +45,7 @@ export interface Entry {
   text: string;
   checked: boolean | null;
   source: SourceRef;
+  link?: { label: string; target: SourceRef | null; detail?: string };
 }
 export type StatementKind =
   | "status"
@@ -83,6 +86,10 @@ export interface Document {
 export type RelationState =
   | "resolved"
   | "outside"
+  | "available"
+  | "missing"
+  | "excluded"
+  | "example"
   | "section-missing"
   | "unavailable"
   | "external"
@@ -158,14 +165,23 @@ export interface DocumentRegistration {
   sources: { path: string; line: number; label: string }[];
   status: string | null;
   supersededBy?: string;
+  sourcesTruncated?: boolean;
   availability: "read" | "missing" | "error" | "excluded" | "pending";
 }
 export interface NavigationReport {
   enabled: boolean;
+  currentTaskPath?: string;
   profileUsed: boolean;
   entries: DocumentRegistration[];
   incomplete: boolean;
   gaps: string[];
+  inventory?: DocumentInventory;
+}
+export interface DocumentInventory {
+  roots: string[];
+  candidates: string[];
+  excluded: { path: string; reason: string }[];
+  incomplete: boolean;
 }
 export interface ProjectCandidate {
   name: string;

@@ -50,6 +50,8 @@ export const time = (value?: string) =>
     : "尚未扫描";
 const cleanConfig = (config: ScanConfig): ScanConfig => ({
   autoDiscover: config.autoDiscover,
+  includeRecords: config.includeRecords,
+  candidateRoots: config.candidateRoots?.map((r) => r.trim()).filter(Boolean),
   rules: Object.fromEntries(
     Object.entries(config.rules).map(([kind, rules]) => [
       kind,

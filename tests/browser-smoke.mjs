@@ -43,6 +43,17 @@ await cp(path.join(workspace, "examples", "示例项目 Beta"), beta, {
 await cp(path.join(workspace, "examples", "示例项目 Gamma vNext"), gamma, {
   recursive: true,
 });
+await mkdir(path.join(gamma, "docs/records"));
+await writeFile(
+  path.join(gamma, "docs/disconnected-design.md"),
+  "# 尚未登记的设计\n\n候选正文在手动纳入后可读。\n",
+);
+await writeFile(path.join(gamma, "docs/records/change.md"), "# 可选变更记录\n");
+const gammaSeedIndexPath = path.join(gamma, "docs/README.md");
+await writeFile(
+  gammaSeedIndexPath,
+  `${await readFile(gammaSeedIndexPath, "utf8")}\n[变更记录](records/change.md)\n`,
+);
 const socket = createServer();
 socket.listen(0, "127.0.0.1");
 await once(socket, "listening");
@@ -665,6 +676,32 @@ try {
     "unclassified",
   );
   assert.ok(firstGamma.navigation.entries.some((e) => e.status === "draft"));
+  assert.ok(
+    firstGamma.navigation.inventory.candidates.includes(
+      "docs/disconnected-design.md",
+    ),
+  );
+  assert.ok(
+    !firstGamma.documents.some((d) => d.path === "docs/disconnected-design.md"),
+  );
+  const candidatePanel = page.locator(".navigation-audit .candidate-documents");
+  await candidatePanel.locator(":scope > summary").click();
+  await page
+    .getByRole("textbox", { name: "搜索未登记文档" })
+    .fill("disconnected");
+  await visible(
+    candidatePanel.getByText("docs/disconnected-design.md", { exact: true }),
+  );
+  await page
+    .getByRole("textbox", { name: "搜索未登记文档" })
+    .fill("no-candidate-match");
+  await visible(
+    candidatePanel.getByText("本次盘点范围内没有匹配的未登记文件", {
+      exact: true,
+    }),
+  );
+  await page.getByRole("textbox", { name: "搜索未登记文档" }).fill("");
+  assert.equal((await view(g.id)).snapshot.id, firstGamma.id);
   await page
     .getByRole("button", { name: "文档整理提示词", exact: true })
     .click();
@@ -673,6 +710,8 @@ try {
     .inputValue();
   assert.ok(prompt.includes("docs/product/requirements.md"));
   assert.ok(prompt.includes("不要补造"));
+  assert.ok(prompt.includes("的 agent"));
+  assert.ok(prompt.includes("docs/disconnected-design.md"));
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "复制提示词", exact: true }).click();
   await visible(page.getByRole("button", { name: "已复制", exact: true }));
@@ -712,9 +751,12 @@ try {
     .selectOption("unclassified");
   await visible(page.locator(".document-item").filter({ hasText: "misc.md" }));
   await nav("概览");
-  await page.locator(".navigation-audit summary").evaluate((el) => {
-    el.parentElement.open = true;
-  });
+  await page
+    .locator(".navigation-audit summary")
+    .first()
+    .evaluate((el) => {
+      el.parentElement.open = true;
+    });
   await page
     .getByRole("combobox", { name: "登记文档类型" })
     .selectOption("requirements");
@@ -730,12 +772,21 @@ try {
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(size);
-    await page.locator(".navigation-audit summary").evaluate((el) => {
-      el.parentElement.open = true;
-    });
+    await page
+      .locator(".navigation-audit summary")
+      .first()
+      .evaluate((el) => {
+        el.parentElement.open = true;
+      });
     await page.locator(".navigation-audit").scrollIntoViewIfNeeded();
     await noOverflow();
     await screenshot(`${size.width}-navigation-audit`);
+    await candidatePanel.locator(":scope > summary").evaluate((el) => {
+      el.parentElement.open = true;
+    });
+    await candidatePanel.scrollIntoViewIfNeeded();
+    await noOverflow();
+    await screenshot(`${size.width}-candidate-documents`);
     if (size.width === 390) {
       await page
         .getByRole("button", { name: "文档整理提示词", exact: true })
@@ -750,6 +801,48 @@ try {
     }
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
+  const beforeCandidateConfig = (await view(g.id)).snapshot.id;
+  await page.getByRole("button", { name: "配置扫描范围", exact: true }).click();
+  await page
+    .getByRole("checkbox", {
+      name: "允许读取 records 目录中的 Markdown / YAML 文档",
+    })
+    .check();
+  await page
+    .getByRole("textbox", { name: "候选文档盘点目录", exact: false })
+    .fill("docs");
+  await page
+    .getByRole("textbox", { name: "设计文档", exact: true })
+    .fill("docs/disconnected-design.md");
+  await page.getByRole("button", { name: "保存配置", exact: true }).click();
+  await visible(page.getByText("配置已变更，需刷新", { exact: true }));
+  const storedCandidateConfig = (await projects()).find(
+    (p) => p.id === g.id,
+  ).config;
+  assert.equal(storedCandidateConfig.includeRecords, true);
+  assert.deepEqual(storedCandidateConfig.candidateRoots, ["docs"]);
+  assert.equal((await view(g.id)).snapshot.id, beforeCandidateConfig);
+  const includedCandidates = (await refresh()).snapshot;
+  assert.ok(
+    includedCandidates.documents.some(
+      (d) =>
+        d.path === "docs/disconnected-design.md" &&
+        d.raw.includes("手动纳入后可读"),
+    ),
+  );
+  assert.ok(
+    includedCandidates.documents.some(
+      (d) => d.path === "docs/records/change.md",
+    ),
+  );
+  assert.ok(
+    !includedCandidates.navigation.inventory.candidates.includes(
+      "docs/disconnected-design.md",
+    ),
+  );
+  steps.push(
+    "Candidate inventory and search distinguish unregistered files without reading bodies; project-agent prompt includes candidates; records opt-in and candidate roots persist without implicit refresh; explicit inclusion reads the document; desktop/mobile candidate layouts",
+  );
   await unlink(gammaIndexFile);
   await writeFile(
     path.join(gamma, "docs/requirements/added.md"),

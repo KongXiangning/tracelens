@@ -35,6 +35,10 @@ const methodLabels = {
 export const relationLabels: Record<Relation["state"], string> = {
   resolved: "已定位",
   outside: "未纳入扫描",
+  available: "文件存在，未纳入扫描",
+  missing: "引用路径不存在",
+  excluded: "已排除",
+  example: "示例或占位路径",
   "section-missing": "章节无法唯一定位",
   unavailable: "扫描目标缺失或不可读",
   external: "外部引用（未读取）",

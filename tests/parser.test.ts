@@ -14,6 +14,66 @@ function parse(raw: string, filename = "docs/workflow/CURRENT_TASK.md") {
   return parseInput("project-a", input);
 }
 describe("document extraction with provenance", () => {
+  it("reads generated task focus and step instead of historical table rows", () => {
+    const result = parse(`---
+kind: vnext-task-view
+---
+<!-- vnext-task-view/v1 -->
+# CURRENT_TASK
+## Current work
+- Task: TASK-811 (task-abc) — 法规导入修复
+- Step: P4
+## Tasks
+| Task | Lifecycle | Plan | Step |
+| --- | --- | --- | --- |
+| TASK-810 | closed | adopted | none |
+| TASK-811 | active | adopted | P4 |
+## 当前步骤
+- 历史内容
+`);
+    expect(result.task).toMatchObject({
+      number: "TASK-811",
+      title: "法规导入修复",
+      current: true,
+      source: { line: 7 },
+    });
+    expect(result.task?.statuses.map((s) => s.text)).toEqual(["active"]);
+    expect(
+      result.statements.filter((s) => s.kind === "currentStep"),
+    ).toMatchObject([
+      { text: "P4", taskNumber: "TASK-811", source: { line: 8 } },
+    ]);
+  });
+  it("does not infer generated focus from active table rows when Current work has no focus", () => {
+    const result = parse(`<!-- vnext-task-view/v1 -->
+# CURRENT_TASK
+## Current work
+- No unambiguous active work focus.
+- Step: none
+## Tasks
+| Task | Lifecycle | Plan | Step |
+| --- | --- | --- | --- |
+| TASK-811 | active | adopted | P4 |
+`);
+    expect(result.task).toBeNull();
+    expect(
+      result.statements.filter((s) =>
+        ["currentTask", "currentStep"].includes(s.kind),
+      ),
+    ).toEqual([]);
+  });
+  it("recognizes date-based generated task numbers without a serial suffix", () => {
+    const result = parse(
+      "<!-- vnext-task-view/v1 -->\n# CURRENT_TASK\n## Current work\n- Task: TASK-20260831 (task-abc) — 历史全链路验证\n- Step: S2\n",
+    );
+    expect(result.task).toMatchObject({
+      number: "TASK-20260831",
+      title: "历史全链路验证",
+    });
+    expect(result.statements.find((s) => s.kind === "currentStep")?.text).toBe(
+      "S2",
+    );
+  });
   it("extracts known Chinese fields, steps, checklists and references from AST positions", () => {
     const result = parse(
       '# Task\n\n## 任务信息\n\n- 任务 ID：20261002-001\n- 任务标题：中文任务\n- 当前状态：paused\n- 任务目标：只读\n\n## 实施步骤\n\n1. [x] 第一步\n2. [ ] 第二步\n\n## 验收清单\n\n- [x] 范围\n- [ ] 刷新\n\n### Project documents\n\n```json\n{"sources":[{"path":"docs/design.md","section":"恢复策略","revision":"vNext-draft"}]}\n```\n\n[设计](../design.md#恢复策略)',

@@ -99,6 +99,7 @@ export function RegistrationList({
                     <span>替代文档：{entry.supersededBy}</span>
                   )}
                   <span>{availability[entry.availability]}</span>
+                  {entry.sourcesTruncated && <span>登记来源已截断</span>}
                 </span>
               </div>
               <div className="registration-evidence">
@@ -135,6 +136,60 @@ export function RegistrationList({
         {!entries.length && <p className="muted">本次范围内没有此类登记</p>}
       </div>
     </>
+  );
+}
+
+export function CandidateList({ report }: { report: NavigationReport }) {
+  const [query, setQuery] = useState("");
+  const inventory = report.inventory;
+  if (!inventory) return null;
+  const candidates = inventory.candidates.filter((path) =>
+    path.toLowerCase().includes(query.toLowerCase()),
+  );
+  return (
+    <details className="candidate-documents">
+      <summary>
+        磁盘存在但未登记 <span>{inventory.candidates.length}</span>
+      </summary>
+      <p className="muted">
+        盘点目录：{inventory.roots.join("、") || "未配置"}。
+        {inventory.incomplete ? "盘点不完整。" : "已完成本次目录盘点。"}
+        这里只确认文件存在，尚未读取正文或确认用途；可在高级扫描设置中按用途添加文件路径，也可将整理提示词交给该项目的
+        agent 核对登记。
+      </p>
+      <input
+        aria-label="搜索未登记文档"
+        placeholder="搜索路径"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <div className="registration-list">
+        {candidates.map((path) => (
+          <div className="registration-row" key={path}>
+            <code>{path}</code>
+            <small>存在 · 未登记 · 未读取正文</small>
+          </div>
+        ))}
+        {!candidates.length && (
+          <p className="muted">本次盘点范围内没有匹配的未登记文件</p>
+        )}
+      </div>
+      {inventory.excluded.length > 0 && (
+        <details>
+          <summary>
+            未盘点的路径 <span>{inventory.excluded.length}</span>
+          </summary>
+          <div className="registration-list">
+            {inventory.excluded.map((entry, index) => (
+              <div className="registration-row" key={`${entry.path}:${index}`}>
+                <code>{entry.path}</code>
+                <small>{entry.reason}</small>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </details>
   );
 }
 
@@ -199,6 +254,7 @@ export function NavigationAudit({
         </summary>
         <RegistrationList report={report} snapshot={snapshot} open={open} />
       </details>
+      <CandidateList report={report} />
       {promptOpen && (
         <Modal title="文档整理提示词" close={() => setPromptOpen(false)}>
           <div className="modal-body">

@@ -12,6 +12,7 @@ import {
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createApp } from "../src/server/app.js";
 import { discover } from "../src/server/scanner.js";
+import { buildSnapshot } from "../src/server/snapshot.js";
 import { organizationPrompt } from "../src/shared/organization-prompt.js";
 import type { Project } from "../src/shared/types.js";
 
@@ -90,6 +91,55 @@ afterEach(async () => {
   expect(path.dirname(directory)).toBe(path.resolve(os.tmpdir()));
   expect(path.basename(directory)).toMatch(/^tracelens-navigation-/);
   await rm(directory, { recursive: true, force: true });
+});
+it("uses the Profile current task source and never promotes archived current declarations", async () => {
+  await file(
+    "TASKS/legacy/CURRENT_TASK.md",
+    "# 历史任务\n- 任务 ID: TASK-001\n- 当前步骤: 归档步骤\n",
+  );
+  await file(
+    "TASKS/legacy/CURRENT_TASK-hash.md",
+    "# 历史视图\n- 当前任务: TASK-002\n- 当前步骤: 另一个归档步骤\n",
+  );
+  await file(
+    "notes/治理/CURRENT_TASK.md",
+    "<!-- vnext-task-view/v1 -->\n# CURRENT_TASK\n## Current work\n- Task: TASK-811 (task-abc) — 法规导入修复\n- Step: P4\n",
+  );
+  const project = await register();
+  const snapshot = await buildSnapshot(project, new Date().toISOString());
+  expect(snapshot.navigation.currentTaskPath).toBe(
+    "notes/治理/CURRENT_TASK.md",
+  );
+  expect(snapshot.tasks.filter((t) => t.current)).toMatchObject([
+    { number: "TASK-811", title: "法规导入修复" },
+  ]);
+  expect(
+    snapshot.statements.filter((s) => s.kind === "currentStep"),
+  ).toMatchObject([
+    { text: "P4", source: { path: "notes/治理/CURRENT_TASK.md", line: 5 } },
+  ]);
+  expect(
+    snapshot.documents.some((d) => d.path === "TASKS/legacy/CURRENT_TASK.md"),
+  ).toBe(true);
+  await file(
+    "notes/治理/CURRENT_TASK.md",
+    "<!-- vnext-task-view/v1 -->\n# CURRENT_TASK\n## Current work\n- No unambiguous active work focus.\n- Step: none\n",
+  );
+  const noFocus = await buildSnapshot(project, new Date().toISOString());
+  expect(noFocus.tasks.filter((t) => t.current)).toEqual([]);
+  expect(
+    noFocus.statements.filter((s) =>
+      ["currentTask", "currentStep"].includes(s.kind),
+    ),
+  ).toEqual([]);
+  await unlink(path.join(root, "notes/治理/CURRENT_TASK.md"));
+  const missing = await buildSnapshot(project, new Date().toISOString());
+  expect(missing.tasks.filter((t) => t.current)).toEqual([]);
+  expect(
+    missing.statements.filter((s) =>
+      ["currentTask", "currentStep"].includes(s.kind),
+    ),
+  ).toEqual([]);
 });
 it("discovers real Profile seeds, index labels, metadata and task sources with provenance and no invented completeness", async () => {
   const project = await register();
@@ -366,4 +416,257 @@ it("keeps contradictory declarations unresolved and preserves supersession rathe
   expect(
     snapshot.warnings.some((w) => w.code === "navigation-classification"),
   ).toBe(true);
+});
+
+it("inventories disconnected documents without reading or declaring them, supports explicit roots, and preserves project files", async () => {
+  await file("docs/disconnected/architecture.md", "# NOT_READ_OR_CLASSIFIED\n");
+  await file("docs/records/receipt.md", "# DEFAULT_EXCLUDED\n");
+  await file("notes/extra.md", "# CUSTOM_CANDIDATE\n");
+  const project = await register();
+  const first = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(first.navigation.inventory?.candidates).toContain(
+    "docs/disconnected/architecture.md",
+  );
+  expect(
+    first.navigation.entries.some((e) => e.path.includes("disconnected")),
+  ).toBe(false);
+  expect(
+    first.documents.some((d) => d.raw.includes("NOT_READ_OR_CLASSIFIED")),
+  ).toBe(false);
+  expect(first.navigation.inventory?.excluded).toContainEqual({
+    path: "docs/records",
+    reason: "默认跳过的目录",
+  });
+  expect(organizationPrompt(project.name, root, first.navigation)).toContain(
+    "的 agent",
+  );
+  expect(organizationPrompt(project.name, root, first.navigation)).toContain(
+    "docs/disconnected/architecture.md",
+  );
+  await runtime.registry.update(project.id, {
+    name: project.name,
+    config: {
+      ...project.config,
+      candidateRoots: ["notes"],
+      excludes: ["notes/治理"],
+    },
+  });
+  expect(runtime.store.view(project.id).configChanged).toBe(true);
+  const second = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(second.navigation.inventory?.candidates).toEqual(["notes/extra.md"]);
+  await runtime.registry.update(project.id, {
+    name: project.name,
+    config: { ...project.config, candidateRoots: [] },
+  });
+  expect(
+    (await runtime.store.refresh(project.id)).snapshot!.navigation.inventory
+      ?.candidates,
+  ).toEqual([]);
+  for (const [filename, content] of originals)
+    expect(await readFile(path.join(root, filename), "utf8")).toBe(content);
+});
+
+it("recognizes canonical metadata and root task directories while following ordinary links without promoting reference purposes", async () => {
+  await file(
+    "docs/workflow/gov.md",
+    "---\ndocument_kind: governance-document\npath_references:\n  - kind: repo-relative\n    raw: docs/design.md\n    normalized: docs/design.md\n  - kind: external\n    normalized: docs/ignored.md\n---\n# Canonical document\n",
+  );
+  await file("docs/design.md", "# Design\n\n[细节](detail.md)\n");
+  await file("docs/detail.md", "# Details\n");
+  await file("docs/ignored.md", "# Ignored reference kind\n");
+  await file(
+    "TASKS/task.md",
+    "---\nkind: vnext-task-view\n---\n# Historical task\n\n- Task ID: TASK-123\n- Status: archived\n\n[治理](../docs/workflow/gov.md)\n",
+  );
+  const project = await register();
+  const s = (await runtime.store.refresh(project.id)).snapshot!;
+  expect(s.documents.find((d) => d.path === "docs/workflow/gov.md")?.kind).toBe(
+    "management",
+  );
+  expect(s.documents.some((d) => d.path === "docs/detail.md")).toBe(true);
+  expect(s.documents.some((d) => d.path === "docs/ignored.md")).toBe(false);
+  expect(s.tasks.find((t) => t.number === "TASK-123")?.statuses[0].text).toBe(
+    "archived",
+  );
+  expect(
+    s.relations.find(
+      (r) =>
+        r.source.path === "docs/workflow/gov.md" &&
+        r.targetPath === "docs/design.md",
+    )?.state,
+  ).toBe("resolved");
+  expect(
+    s.navigation.entries.find((e) => e.path === "docs/design.md")
+      ?.classification,
+  ).toBe("suggested");
+  expect(
+    s.files.some(
+      (f) => f.path === "notes/治理/TASKS" && f.status === "missing",
+    ),
+  ).toBe(false);
+});
+
+it("keeps default governance classification when a bare catalog entry has no purpose label", async () => {
+  await file(
+    "notes/治理/DOCUMENT_CATALOG.md",
+    "# 文档目录\n- `notes/治理/CURRENT_TASK.md`\n- `notes/治理/ROADMAP.md`\n",
+  );
+  await file("notes/治理/ROADMAP.md", "# Roadmap\n");
+  const s = (await runtime.store.refresh((await register()).id)).snapshot!;
+  expect(
+    s.documents.find((d) => d.path === "notes/治理/CURRENT_TASK.md")?.kind,
+  ).toBe("management");
+  expect(
+    s.navigation.entries.find((e) => e.path === "notes/治理/ROADMAP.md")
+      ?.classification,
+  ).toBe("declared");
+});
+
+it("ignores naming placeholders, resolves unique registered shorthand, and reports ambiguous shorthand without missing files", async () => {
+  await file("docs/changes/CHANGELOG.md", "# Changes\n");
+  await file("docs/a/NOTES.md", "# A\n");
+  await file("docs/b/NOTES.md", "# B\n");
+  await file(
+    "docs/README.md",
+    `${index}\n## 维护\n- 日志：\`docs/changes/CHANGELOG.md\`\n- 摘要：\`CHANGELOG.md\`\n- 新建 \`REQ-YYYYMMDD-<slug>.md\`\n- 示例：\`docs/{{topic}}.md\`\n- A：\`docs/a/NOTES.md\`\n- B：\`docs/b/NOTES.md\`\n- 说明：\`NOTES.md\`\n- 实际缺失：[正文](missing.md)\n`,
+  );
+  const s = (await runtime.store.refresh((await register()).id)).snapshot!;
+  expect(
+    s.files.filter((f) => f.status === "missing").map((f) => f.path),
+  ).toContain("docs/missing.md");
+  expect(
+    s.navigation.entries.some((e) =>
+      /YYYY|slug|\{\{|^CHANGELOG|^NOTES/.test(e.path),
+    ),
+  ).toBe(false);
+  expect(
+    s.navigation.entries
+      .find((e) => e.path === "docs/changes/CHANGELOG.md")
+      ?.sources.some((source) => source.label.startsWith("简写路径")),
+  ).toBe(true);
+  expect(
+    s.warnings.some(
+      (w) =>
+        w.code === "navigation-shorthand" && w.message.includes("多个候选"),
+    ),
+  ).toBe(true);
+  expect(s.warnings.some((w) => w.code === "navigation-example")).toBe(true);
+});
+
+it("reports evidence truncation separately from navigation limits and continues following references", async () => {
+  let entries = index;
+  for (let i = 0; i < 20; i++) {
+    entries += `\n- [Reference ${i}](ref-${i}.md)`;
+    await file(
+      `docs/ref-${i}.md`,
+      "---\nrelated_docs: [docs/common.md]\n---\n# Reference\n",
+    );
+  }
+  await file("docs/README.md", entries);
+  await file("docs/common.md", "# Common\n\n[Child](child.md)\n");
+  await file("docs/child.md", "# Child\n");
+  const s = (await runtime.store.refresh((await register()).id)).snapshot!;
+  expect(
+    s.navigation.entries.find((e) => e.path === "docs/common.md")
+      ?.sourcesTruncated,
+  ).toBe(true);
+  expect(
+    s.navigation.entries.find((e) => e.path === "docs/common.md")?.sources,
+  ).toHaveLength(16);
+  expect(s.navigation.incomplete).toBe(false);
+  expect(
+    s.warnings.some(
+      (w) => w.code === "navigation-source-limit" && w.level === "info",
+    ),
+  ).toBe(true);
+  expect(s.warnings.some((w) => w.code === "navigation-limit")).toBe(false);
+  expect(s.documents.some((d) => d.path === "docs/child.md")).toBe(true);
+});
+
+it("can opt into document records while preserving hard exclusions and configuration snapshots", async () => {
+  await file("docs/records/INDEX.md", "# Records\n\n[Change](change.md)\n");
+  await file("docs/records/change.md", "# Change\n");
+  await file("docs/journal/entry.md", "# JOURNAL_SECRET\n");
+  await file(
+    "docs/README.md",
+    `${index}\n[变更记录](records/INDEX.md)\n[日志](journal/entry.md)\n`,
+  );
+  const p = await register();
+  const first = (await runtime.store.refresh(p.id)).snapshot!;
+  expect(first.documents.some((d) => d.path.includes("/records/"))).toBe(false);
+  const updated = await runtime.registry.update(p.id, {
+    name: p.name,
+    config: { ...p.config, includeRecords: true },
+  });
+  expect(updated.configVersion).toBe(p.configVersion + 1);
+  expect(runtime.store.view(p.id).configChanged).toBe(true);
+  expect(runtime.store.view(p.id).snapshot?.id).toBe(first.id);
+  const second = (await runtime.store.refresh(p.id)).snapshot!;
+  expect(
+    second.documents.some((d) => d.path === "docs/records/change.md"),
+  ).toBe(true);
+  expect(second.documents.some((d) => d.raw.includes("JOURNAL_SECRET"))).toBe(
+    false,
+  );
+  expect(
+    second.relations.find((r) => r.targetPath === "docs/journal/entry.md")
+      ?.state,
+  ).toBe("excluded");
+});
+
+it("preserves malformed metadata and continues explicit Markdown navigation from the readable body", async () => {
+  const content =
+    "---\nowner: @maintainer\nrelated_docs: [docs/untrusted-meta.md]\n---\n# Document\n\n[正文引用](body.md)\n";
+  await file("docs/broken.md", content);
+  await file("docs/body.md", "# Body\n");
+  await file("docs/untrusted-meta.md", "# Untrusted metadata\n");
+  await file("docs/README.md", `${index}\n[格式错误](broken.md)\n`);
+  const s = (await runtime.store.refresh((await register()).id)).snapshot!;
+  expect(s.documents.find((d) => d.path === "docs/broken.md")?.raw).toBe(
+    content,
+  );
+  expect(
+    s.warnings.some(
+      (w) => w.code === "navigation-metadata" && w.path === "docs/broken.md",
+    ),
+  ).toBe(true);
+  expect(s.documents.some((d) => d.path === "docs/body.md")).toBe(true);
+  expect(s.documents.some((d) => d.path === "docs/untrusted-meta.md")).toBe(
+    false,
+  );
+  expect(await readFile(path.join(root, "docs/broken.md"), "utf8")).toBe(
+    content,
+  );
+});
+
+it("checks unresolved reference existence without reading out-of-scope content", async () => {
+  await file(
+    "docs/refs.md",
+    "# References\n\n[Exists](present.md)\n[Missing](absent.md)\n[Excluded](excluded.md)\n[Example](REQ-YYYYMMDD-example.md)\n[Unsafe](../../outside.md)\n",
+  );
+  await file("docs/present.md", "# OUT_OF_SCOPE_BODY\n");
+  await file("docs/excluded.md", "# EXCLUDED_BODY\n");
+  const p = await runtime.registry.add({
+    name: "Manual references",
+    root,
+    config: {
+      autoDiscover: false,
+      rules: {
+        management: [],
+        requirements: [],
+        design: ["docs/refs.md"],
+        planning: [],
+      },
+      excludes: ["docs/excluded.md"],
+    },
+  });
+  const s = (await runtime.store.refresh(p.id)).snapshot!;
+  const state = (label: string) =>
+    s.relations.find((r) => r.label === label)?.state;
+  expect(state("Exists")).toBe("available");
+  expect(state("Missing")).toBe("missing");
+  expect(state("Excluded")).toBe("excluded");
+  expect(state("Example")).toBe("example");
+  expect(state("Unsafe")).toBe("unsafe");
+  expect(s.documents.map((d) => d.path)).not.toContain("docs/present.md");
 });

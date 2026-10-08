@@ -173,7 +173,7 @@ Markdown 禁用原始 HTML 和 MDX 执行，过滤危险链接协议，不自动
 
 ## 9. PRODUCT 标准产品通路
 
-与通用 Profile/navigation 并行，`product-reader.ts` 只枚举显式启用入口的 managed_paths，按固定契约的大小写敏感 `*`／`**`／`?` 路径语义，不使用通用花括号扩展。无旧范围恢复，来源不反向扩张通用导航。`ScanReadSession` 在单次刷新共享成功和失败读取缓存以及 500 文件／20 MiB 全局预算，导航仍另有 120 次／10 MiB／三层上限；PRODUCT 受全局预算而不受该三层上限。文件无链接、真实路径、UTF-8、二进制和读取期间变更检查继续适用。
+与通用 Profile/navigation 并行，`product-reader.ts` 只枚举显式启用入口的 managed_paths，按固定契约的大小写敏感 `*`／`**`／`?` 路径语义，不使用通用花括号扩展。无旧范围恢复，来源不反向扩张通用导航。启用中的有效 PRODUCT manifest 在通用导航前读取；其 exclude_paths 使用契约专用匹配器，统一约束通用导航、手动范围、候选盘点、PRODUCT 来源、adopted-plan 及缓存命中，不并入通用 minimatch 规则。禁用、撤回或入口损坏不沿用上次 PRODUCT 定义或排除策略；普通配置仍只保有其原来明确授权的范围。`ScanReadSession` 在单次刷新共享成功和失败读取缓存以及 500 文件／20 MiB 全局预算，导航仍另有 120 次／10 MiB／三层上限；PRODUCT 受全局预算而不受该三层上限。文件无链接、真实路径、UTF-8、二进制和读取期间变更检查继续适用。读取前核对文件大小与剩余字节额度，每个实际读取块立即计费；解码、二进制或后置变化检查失败不退回消耗。物理读取串行，重复请求复用同一结果，导航的独立字节预算也按实际 I/O 计费。
 
 `product-parser.ts` 使用固定上游 813d314 的 v1/v2 production Schema、Ajv 2020 和根级 Markdown AST。JSON 兼容 YAML 禁止重复键、自定义 tag、anchor、alias、merge（允许契约的 JSON 内建标签）；整体不安全时停止条目解释。安全 metadata 逐项校验，必要三级章节与唯一二级标题核对；完整 body、metadata、绝对行号、文件摘要及不可用项均保存。同文件不按业务类型拆成多个 Document，标准正文不进入通用状态／任务推断。
 
@@ -184,3 +184,5 @@ Markdown 禁用原始 HTML 和 MDX 执行，过滤危险链接协议，不自动
 `product-index.ts` 只依据明确真实 task_id 和受约束来源匹配任务，保留多来源和状态矛盾；不同文件 UI task ID 不做中央任务合并。同 CURRENT_TASK 改焦点后重核，历史 null 来源可读但无假任务。计划原顺序和同计划依赖保持，单／多／无计划分别展示；只沿 requirement.assessment_id 选择报告，不合成完成率，不把 repair 关闭转换为 PASS。
 
 产品读取配置 `product: { enabled, manifestPath }` 纳入校验、持久化及 configVersion；缺省关闭，预览允许只读核对而不启用。官方 offline-reader.mjs 仅随隔离测试夹具作为固定版本 oracle，生产无 shell-out、网络契约下载或 Runtime 分发。资产及合成资料出处、哈希和许可见 product-assets 与测试 oracle 的来源说明。
+
+产品原文的普通 Markdown 链接由 `product-markdown.ts` 单独提取并进入原有 reference 依据，不进入任务／状态提取，不升级为业务关系，也不因补关系而读取额外正文。解析与分段展示都使用同快照完整文件的引用定义上下文，按 Markdown 第一条定义生效；展示仅保留所选条目的 AST 范围及不可见定义，原始绝对行号不变。YAML 元数据屏蔽但保留换行，正文不能借元数据里的定义或 HTML 改变解析；TXT／JSON／YAML 仍按纯文本原文处理。

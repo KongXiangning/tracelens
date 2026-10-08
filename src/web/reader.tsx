@@ -3,9 +3,36 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Braces, FileText, Network } from "lucide-react";
 import type { Root, Element } from "hast";
+import type { Definition, Root as MarkdownRoot } from "mdast";
+import { visit } from "unist-util-visit";
 import { kindLabels, type Document, type Snapshot } from "../shared/types";
 import type { OpenSource } from "./components";
 import { documentSource } from "./pages";
+
+type LineRange = { start: number; end: number };
+function selectLines(options: { range?: LineRange }) {
+  return (tree: MarkdownRoot) => {
+    if (!options.range) return;
+    const { start, end } = options.range;
+    // Parse the complete captured document first: reference syntax can depend on
+    // definitions outside the item. Keep their original first-definition order;
+    // definition nodes are invisible and do not change any source positions.
+    const definitions: Definition[] = [];
+    visit(tree, "definition", (node) => {
+      definitions.push(node);
+    });
+    tree.children = [
+      ...definitions,
+      ...tree.children.filter(
+        (node) =>
+          node.type !== "definition" &&
+          node.position &&
+          node.position.start.line >= start &&
+          node.position.end.line <= end,
+      ),
+    ];
+  };
+}
 
 function annotate(options: { lineOffset?: number } = {}) {
   return (tree: Root) => {
@@ -142,6 +169,7 @@ export function SnapshotMarkdown({
   snapshot,
   open,
   startLine = 1,
+  lineRange,
 }: {
   text: string;
   documentId: string;
@@ -149,10 +177,11 @@ export function SnapshotMarkdown({
   snapshot: Snapshot;
   open: OpenSource;
   startLine?: number;
+  lineRange?: LineRange;
 }) {
   return (
     <Markdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, [selectLines, { range: lineRange }]]}
       rehypePlugins={[[annotate, { lineOffset: startLine - 1 }]]}
       skipHtml
       urlTransform={(url) =>

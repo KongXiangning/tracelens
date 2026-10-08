@@ -14,6 +14,7 @@ export async function inventoryDocuments(
   config: ScanConfig,
   registered: Set<string>,
   warnings: Warning[],
+  sharedExclusion?: (relative: string) => string | null,
 ): Promise<DocumentInventory> {
   const report: DocumentInventory = {
     roots: [...new Set(config.candidateRoots ?? ["docs", "TASKS"])],
@@ -36,7 +37,7 @@ export async function inventoryDocuments(
       )
     )
       return "扫描配置已排除";
-    return null;
+    return sharedExclusion?.(relative) || null;
   }
   async function walk(relative: string, depth: number): Promise<void> {
     const key = documentPathKey(relative);

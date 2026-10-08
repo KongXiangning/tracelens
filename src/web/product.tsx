@@ -602,6 +602,21 @@ function Body({
   item: ProductItem;
   context: Pick<ProductContext, "snapshot" | "open">;
 }) {
+  const document = item.body
+    ? context.snapshot.documents.find(
+        (entry) =>
+          entry.id === item.source.documentId &&
+          entry.path === item.source.path &&
+          entry.digest === item.source.digest,
+      )
+    : undefined;
+  // YAML is not item Markdown. Mask its envelope without moving the original
+  // lines, so metadata strings cannot become definitions or swallow the body.
+  const text =
+    document?.raw.replace(
+      /^(?:\uFEFF)?---[ \t]*(?:\r\n|\n|\r)(?:[\s\S]*?(?:\r\n|\n|\r))?---[ \t]*(?=\r\n|\n|\r|$)/,
+      (frontmatter) => frontmatter.replace(/[^\r\n]/g, " "),
+    ) ?? item.body;
   return (
     <section className="product-body">
       <div className="section-heading">
@@ -613,10 +628,15 @@ function Body({
       </p>
       <div className="markdown">
         <SnapshotMarkdown
-          text={item.body}
+          text={text}
           documentId={item.source.documentId}
           path={item.source.path}
-          startLine={item.source.line}
+          startLine={document ? 1 : item.source.line}
+          lineRange={
+            document
+              ? { start: item.source.line, end: item.endLine }
+              : undefined
+          }
           snapshot={context.snapshot}
           open={context.open}
         />

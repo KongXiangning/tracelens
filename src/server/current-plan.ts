@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { Entry, Project, SourceRef } from "../shared/types.js";
 import { documentPathKey, safePattern } from "./config.js";
-import { limits, matches, readBounded, type ScanResult } from "./scanner.js";
+import { limits, matches, type ScanResult } from "./scanner.js";
 import {
   parseInput,
   stableId,
@@ -63,14 +63,16 @@ export async function attachCurrentPlan(
       )
     )
       throw new Error("计划引用被显式排除");
+    scan.readSession.assertAllowed(filename, true);
     const existing = parsed.find(
       (p) => documentPathKey(p.document.path) === documentPathKey(filename),
     );
-    if (existing) return existing.document;
+    if (existing) {
+      scan.readSession.assertAllowed(existing.document.path, true);
+      return existing.document;
+    }
     // Explicit records are bounded reads even when general historical records are disabled.
-    const input = scan.readSession
-      ? await scan.readSession.read(filename, true)
-      : await readBounded(project.root, filename, true);
+    const input = await scan.readSession.read(filename, true);
     const bytes = parsed.reduce((sum, p) => sum + p.document.bytes, 0);
     if (
       parsed.length >= limits.files ||

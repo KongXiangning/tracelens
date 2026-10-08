@@ -81,9 +81,9 @@
 
 PRODUCT 默认入口是 `.workflow-system/PRODUCT.yaml`，高级配置可选择一个其他 YAML 入口，不自动合并。新项目添加预览展示 managed/source 范围，用户勾选后启用；旧配置缺少 `product` 保持关闭，与 autoDiscover、includeRecords 独立。保存只改本工具配置，手动刷新后生效；maintenance paused 仍可读。未启用、入口缺失、排除、不可读、不支持版本、部分可用、有效空结果分别显示。
 
-仅 managed_paths 枚举当前标准文档，不受通用三层导航限制，仍受相同全局文件／字节／安全预算。source_paths 只许可按条目直接 SourceRef 有界读取 Markdown、YAML、JSON、TXT；capture_paths 不授予扫描或写入权限。历史／raw 不进入当前定义；精确 records 来源可读，不扫描 records 或重放 journal，不运行被观察项目 helper。有效 manifest 撤回文件后退出当前集合，入口损坏不恢复旧产品定义；整次刷新失败仍保留整份旧快照及时间。
+仅 managed_paths 枚举当前标准文档，不受通用三层导航限制，仍受相同全局文件／字节／安全预算。有效 PRODUCT 排除在通用导航之前生效，统一覆盖手动规则、候选盘点、来源及 adopted-plan 精确读取；缓存命中不能绕过排除。失败读取已经消耗的字节仍计入共享预算。source_paths 只许可按条目直接 SourceRef 有界读取 Markdown、YAML、JSON、TXT；capture_paths 不授予扫描或写入权限。历史／raw 不进入当前定义；精确 records 来源可读，不扫描 records 或重放 journal，不运行被观察项目 helper。有效 manifest 撤回文件后退出当前集合，入口损坏不恢复旧产品定义；整次刷新失败仍保留整份旧快照及时间。
 
-v1/v2 按固定生产 Schema 只读解释，未知版本保留原文。根级 AST 二级标题对应条目，代码／引用／列表伪标题不产生条目，正文至下一根级二级标题；一文件多类型只保存一份原文。非法 YAML、不可解码输入保留文件级错误，不信任残缺对象；可安全定位的单项 Schema／章节错误隔离保留。重复当前 ID 不取最新文件获胜。标题与原文绝对行号同快照，原始字节 SHA、需求定义 SHA 与 Git SHA 互不替代。
+v1/v2 按固定生产 Schema 只读解释，未知版本保留原文。根级 AST 二级标题对应条目，代码／引用／列表伪标题不产生条目，正文至下一根级二级标题；一文件多类型只保存一份原文。非法 YAML、不可解码输入保留文件级错误，不信任残缺对象；可安全定位的单项 Schema／章节错误隔离保留。重复当前 ID 不取最新文件获胜。条目片段保留完整原文件的引用式 Markdown 定义上下文；普通 Markdown 引用继续显示在既有依据列表，不提升为实现或验证关系。标题与原文绝对行号同快照，原始字节 SHA、需求定义 SHA 与 Git SHA 互不替代。
 
 current 是当前业务范围，不是未完成；retired 不是完成；intent_state、工作项安排、任务文档状态、交付报告分维度展示。真实任务身份只从明确字段／支持的焦点声明取得；null 不回填，显示编号不猜身份。同文件焦点变化重核身份，多来源状态冲突并列。step_id 是任务内步骤，产品 plan_id 不等于 Runtime plan_ref。没有绑定只代表未记录关联。
 

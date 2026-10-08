@@ -22,6 +22,7 @@ import {
   within,
 } from "./config.js";
 import type { ProductSnapshot } from "../shared/product-types.js";
+import { matchesProductPath, parseProductManifest } from "./product-parser.js";
 
 export const limits = {
   files: 500,
@@ -69,37 +70,99 @@ export interface ScanResult {
   warnings: Warning[];
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
-  readSession?: ScanReadSession;
+  readSession: ScanReadSession;
   product?: ProductSnapshot;
   productPaths?: Set<string>;
 }
 // One cache and budget per refresh, shared by general navigation, PRODUCT and
 // exact adopted-plan sources. Failed reads are cached too: no new-version retry.
+export interface ReadAllowance {
+  remainingBytes?: () => number;
+  onBytesRead?: (bytes: number) => void;
+  onResolvedPath?: (relative: string) => void;
+}
 export class ScanReadSession {
   readonly inputs = new Map<string, Omit<InputFile, "kind">>();
   private attempts = new Map<string, Promise<Omit<InputFile, "kind">>>();
+  private canonicalPaths = new Map<string, string>();
+  private productExclusions: string[] = [];
+  private pending: Promise<void> = Promise.resolve();
   bytes = 0;
-  constructor(readonly root: string) {}
-  async read(relative: string, includeRecords = false) {
-    if (blockedPath(relative, includeRecords))
+  constructor(
+    readonly root: string,
+    private readonly config?: ScanConfig,
+  ) {}
+  setProductExclusions(patterns: readonly string[]): void {
+    this.productExclusions = [...patterns];
+  }
+  exclusion(relative: string, includeRecords = false): string | null {
+    if (blockedPath(relative, includeRecords)) return "文件路径超出允许范围";
+    if (
+      this.config?.excludes.some(
+        (p) => matches(relative, p) || matches(`${relative}/`, p),
+      )
+    )
+      return "用户显式排除";
+    // Do not append PRODUCT patterns to generic minimatch configuration: the
+    // contract deliberately treats extglob/braces/classes differently.
+    if (
+      matchesProductPath(relative, this.productExclusions) ||
+      matchesProductPath(`${relative}/`, this.productExclusions)
+    )
+      return "PRODUCT exclude_paths 排除";
+    return null;
+  }
+  assertAllowed(relative: string, includeRecords = false): void {
+    if (!safePattern(relative) || /[*?{[\]]/.test(relative))
       throw new AppError("文件路径超出允许范围");
+    const canonical = this.canonicalPaths.get(documentPathKey(relative));
+    const reason =
+      this.exclusion(relative, includeRecords) ||
+      (canonical && this.exclusion(canonical, includeRecords));
+    if (reason) throw new AppError(reason);
+  }
+  async read(
+    relative: string,
+    includeRecords = false,
+    allowance?: ReadAllowance,
+  ) {
+    // Policy is checked before cached success or failure is returned.
+    this.assertAllowed(relative, includeRecords);
     const key = documentPathKey(relative);
     const cached = this.attempts.get(key);
     if (cached) return cached;
     if (this.attempts.size >= limits.files)
       throw new AppError("达到 500 文件读取上限，扫描不完整");
-    if (this.bytes >= limits.totalBytes)
-      throw new AppError("超过总读取量 20 MiB 上限，扫描不完整");
-    const reading = readBounded(this.root, relative, includeRecords).then(
-      (input) => {
-        this.bytes += input.bytes;
-        if (this.bytes > limits.totalBytes)
-          throw new AppError("超过总读取量 20 MiB 上限，扫描不完整");
-        this.inputs.set(key, input);
-        return input;
-      },
-    );
+    // Serialize physical reads so concurrent callers cannot each spend the same
+    // remaining budget. Coalesced requests still reuse one promise/byte image.
+    const reading = this.pending.then(async () => {
+      this.assertAllowed(relative, includeRecords);
+      if (this.bytes >= limits.totalBytes)
+        throw new AppError("达到总读取量 20 MiB 上限，未读取");
+      const input = await readBounded(this.root, relative, includeRecords, {
+        remainingBytes: () =>
+          Math.min(
+            limits.totalBytes - this.bytes,
+            allowance?.remainingBytes?.() ?? Infinity,
+          ),
+        onBytesRead: (count) => {
+          this.bytes += count;
+          allowance?.onBytesRead?.(count);
+        },
+        onResolvedPath: (canonical) => {
+          this.canonicalPaths.set(key, canonical);
+          this.assertAllowed(relative, includeRecords);
+          allowance?.onResolvedPath?.(canonical);
+        },
+      });
+      this.inputs.set(key, input);
+      return input;
+    });
     this.attempts.set(key, reading);
+    this.pending = reading.then(
+      () => undefined,
+      () => undefined,
+    );
     return reading;
   }
 }
@@ -107,6 +170,7 @@ export async function readBounded(
   root: string,
   relative: string,
   includeRecords = false,
+  allowance?: ReadAllowance,
 ): Promise<Omit<InputFile, "kind">> {
   if (
     !safePattern(relative) ||
@@ -119,6 +183,9 @@ export async function readBounded(
   await assertNoLinks(filename);
   const real = await realpath(filename);
   if (!within(root, real)) throw new AppError("真实文件路径越界");
+  allowance?.onResolvedPath?.(
+    path.relative(root, real).split(path.sep).join("/"),
+  );
   const handle = await open(
     filename,
     constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
@@ -128,23 +195,32 @@ export async function readBounded(
     if (!before.isFile()) throw new AppError("不是普通文件");
     if (before.size > limits.fileBytes)
       throw new AppError("单文件超过 2 MiB 上限，扫描不完整");
-    const buffer = Buffer.alloc(limits.fileBytes + 1);
+    if (before.size > (allowance?.remainingBytes?.() ?? Infinity))
+      throw new AppError("超过读取字节预算上限，未读取");
+    // Read only the preflight size. Post-read stat checks still reject growth,
+    // shrinkage or replacement. No extra EOF probe can overspend the budget.
+    const buffer = Buffer.alloc(before.size);
     let length = 0;
     while (length < buffer.length) {
+      const remaining = allowance?.remainingBytes?.() ?? Infinity;
+      if (remaining <= 0)
+        throw new AppError("达到读取字节预算上限，扫描不完整");
       const { bytesRead } = await handle.read(
         buffer,
         length,
-        buffer.length - length,
+        Math.min(64 * 1024, buffer.length - length, remaining),
         null,
       );
       if (bytesRead === 0) break;
       length += bytesRead;
+      // Charge successful system reads immediately. UTF-8, binary detection,
+      // later stat/path failures and downstream parsing cannot undo actual I/O.
+      allowance?.onBytesRead?.(bytesRead);
     }
-    if (length > limits.fileBytes)
-      throw new AppError("读取期间文件超过 2 MiB 上限");
     const after = await handle.stat();
     const current = await lstat(filename);
     if (
+      length !== before.size ||
       before.mtimeMs !== after.mtimeMs ||
       before.size !== after.size ||
       before.ino !== current.ino ||
@@ -203,7 +279,21 @@ export async function scanFiles(
   preflight = false,
 ): Promise<ScanResult> {
   const root = await validateRoot(project.root);
-  const readSession = new ScanReadSession(root);
+  const readSession = new ScanReadSession(root, project.config);
+  // Establish the enabled, valid PRODUCT exclusion policy before any generic
+  // navigation or manual reads. Disabled/invalid manifests grant no new scope.
+  if (project.config.product?.enabled) {
+    try {
+      const entry = await readSession.read(
+        project.config.product.manifestPath || ".workflow-system/PRODUCT.yaml",
+      );
+      const { manifest } = parseProductManifest(entry.raw, entry.path);
+      if (manifest) readSession.setProductExclusions(manifest.exclude_paths);
+    } catch {
+      // readProduct / previewProduct report the same cached failure and retain
+      // whatever original bytes are safely available; no old manifest is used.
+    }
+  }
   const files: ScanFile[] = [];
   const warnings: Warning[] = [];
   const selected = new Map<string, { path: string; kind: DocumentKind }>();
@@ -227,10 +317,7 @@ export async function scanFiles(
   let visited = 0;
   let truncated = false;
   const excluded = (p: string) =>
-    blockedPath(p, project.config.includeRecords) ||
-    project.config.excludes.some(
-      (pattern) => matches(p, pattern) || matches(`${p}/`, pattern),
-    );
+    Boolean(readSession.exclusion(p, project.config.includeRecords));
   async function walk(
     relative: string,
     depth: number,
@@ -417,6 +504,7 @@ export async function scanFiles(
       if (attempted.has(key)) continue;
       attempted.add(key);
       try {
+        readSession.assertAllowed(relative, project.config.includeRecords);
         const cached = navigation?.inputs.get(key);
         const input =
           cached ||
@@ -495,6 +583,7 @@ export async function scanFiles(
         ...report.entries.map((entry) => documentPathKey(entry.path)),
       ]),
       warnings,
+      (p) => readSession.exclusion(p, project.config.includeRecords),
     );
   }
   const result: ScanResult = {

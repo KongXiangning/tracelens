@@ -123,7 +123,7 @@ export async function previewProduct(
     sourcePaths: [],
     diagnostics: [],
   };
-  const reason = excluded(filename, config);
+  const reason = session.exclusion(filename) || excluded(filename, config);
   if (reason) {
     result.status = "excluded";
     result.diagnostics.push({
@@ -321,7 +321,7 @@ export async function readProduct(
   scan.product = product;
   scan.productPaths = new Set();
   if (!project.config.product?.enabled) return;
-  const session = scan.readSession || new ScanReadSession(project.root);
+  const session = scan.readSession;
   const diagnostic = (
     code: string,
     message: string,
@@ -364,7 +364,8 @@ export async function readProduct(
         );
     return { ...input, kind: "unclassified" as const };
   };
-  const reason = excluded(filename, project.config);
+  const reason =
+    session.exclusion(filename) || excluded(filename, project.config);
   if (reason) {
     product.status = "excluded";
     diagnostic("PRODUCT_EXCLUDED", reason, filename);

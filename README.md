@@ -126,3 +126,8 @@ npm run test:browser
 验证仍用 npm ci、npm run check、npm run format:check、npm run test:browser；浏览器脚本启动构建后的本地生产服务。真实 TermLink 样本检查须显式设置 TRACELENS_REAL_PROJECT，未提供时不伪造样本。Linux 验证不能替代 Windows 原生实测；本轮实际命令、浏览器证据及未验证环境见 [本轮交付报告](docs/product-visibility-delivery.md)。
 
 浏览器回归仍采用原生产服务方式；`npm run test:browser` 顺序运行旧功能与 PRODUCT 闭环，`npm run test:browser:product` 可单独运行新增场景。默认使用 Playwright Chromium（Windows 默认 Edge），也可设置 `TRACELENS_BROWSER_EXECUTABLE` 指向本机已安装且获准使用的浏览器。`TRACELENS_PREFLIGHT_ONLY=1 node tests/product-browser.mjs` 只准备并核对隔离合成夹具与快照；`TRACELENS_PREPARE_ONLY=1` 则只准备夹具。两者都不算浏览器验收。
+
+
+### 2026-10-08 独立审查后的范围修复
+
+在本地交付 c46b5a2 上继续修复四项已复现问题：PRODUCT 的排除约束统一覆盖通用导航／手动范围／候选盘点／adopted-plan 和缓存；失败 UTF-8、二进制及后置检查消耗的实际读取字节纳入预算；标准文档的普通 Markdown 引用恢复到旧关联依据；条目分段正文可使用同快照其他条目或文末的引用式定义，保持原文绝对行号。原有真实任务身份、历史依据条目、契约 glob、手动启用及选择失效守卫不变。最新结果见 [交付报告](docs/product-visibility-delivery.md)；浏览器、Windows 和真实外部样本仍按报告保留未验证项。

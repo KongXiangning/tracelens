@@ -111,6 +111,10 @@ export class DocumentNavigation {
     return documentPathKey(filename);
   }
   private excluded(filename: string): boolean {
+    if (this.readSession)
+      return Boolean(
+        this.readSession.exclusion(filename, this.config.includeRecords),
+      );
     return (
       blockedPath(filename, this.config.includeRecords) ||
       this.config.excludes.some(
@@ -440,6 +444,7 @@ export class DocumentNavigation {
     return index < 0 ? 1 : index + 1;
   }
   private async read(filename: string): Promise<Omit<InputFile, "kind">> {
+    this.readSession?.assertAllowed(filename, this.config.includeRecords);
     const cached = this.inputs.get(this.key(filename));
     if (cached) return cached;
     if (
@@ -454,14 +459,34 @@ export class DocumentNavigation {
       throw new Error("文档导航读取上限");
     }
     this.reads++;
-    const input = this.readSession
-      ? await this.readSession.read(filename, this.config.includeRecords)
-      : await readBounded(this.root, filename, this.config.includeRecords);
-    if (this.bytes + input.bytes > navigationLimits.bytes) {
-      this.limit("10 MiB 字节上限");
-      throw new Error("文档导航总读取量超过 10 MiB");
+    const allowance = {
+      remainingBytes: () => navigationLimits.bytes - this.bytes,
+      onBytesRead: (bytes: number) => {
+        this.bytes += bytes;
+      },
+    };
+    let input: Omit<InputFile, "kind">;
+    try {
+      input = this.readSession
+        ? await this.readSession.read(
+            filename,
+            this.config.includeRecords,
+            allowance,
+          )
+        : await readBounded(
+            this.root,
+            filename,
+            this.config.includeRecords,
+            allowance,
+          );
+    } catch (error) {
+      if (
+        this.bytes >= navigationLimits.bytes ||
+        /读取字节预算/.test(String(error))
+      )
+        this.limit("10 MiB 字节上限");
+      throw error;
     }
-    this.bytes += input.bytes;
     this.inputs.set(this.key(filename), input);
     return input;
   }

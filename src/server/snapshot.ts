@@ -21,14 +21,13 @@ import { examplePath } from "./document-metadata.js";
 import { attachCurrentPlan } from "./current-plan.js";
 import { buildProductIndex } from "./product-index.js";
 import { inspectProductEnvelope } from "./product-parser.js";
-import { toString } from "mdast-util-to-string";
+import { parseProductMarkdown } from "./product-markdown.js";
 import {
   anchor,
   parseInput,
   stableId,
   stateKey,
   taskNumberKey,
-  parseMarkdown,
   type Parsed,
   type PendingReference,
 } from "./parser.js";
@@ -50,32 +49,12 @@ export async function buildSnapshot(
         envelope.isProduct ||
         /\.txt$/i.test(input.path)
       ) {
-        const headings = parseMarkdown(
-          input.raw.slice(0, envelope.bodyStart).replace(/[^\r\n]/g, " ") +
-            input.raw.slice(envelope.bodyStart),
-        )
-          .children.filter((n) => n.type === "heading")
-          .map((n) => ({
-            title: toString(n),
-            depth: n.depth,
-            line: n.position!.start.line,
-            anchor: anchor(toString(n)),
-          }));
-        return {
-          document: {
-            ...input,
-            id: stableId(project.id, input.path),
-            title: headings[0]?.title || path.posix.basename(input.path),
-            headings,
-            recognized: Boolean(
-              scan.productPaths?.has(documentPathKey(input.path)),
-            ),
-          },
-          task: null,
-          statements: [],
-          references: [],
-          warnings: [],
-        };
+        return parseProductMarkdown(
+          project.id,
+          input,
+          envelope.bodyStart,
+          Boolean(scan.productPaths?.has(documentPathKey(input.path))),
+        );
       }
       return parseInput(project.id, input);
     } catch (error) {
@@ -206,6 +185,7 @@ export async function buildSnapshot(
         if (!safePattern(resolved) || /[*?{[\]]/.test(resolved))
           state = "unsafe";
         else if (
+          scan.readSession.exclusion(resolved, project.config.includeRecords) ||
           blockedPath(resolved, project.config.includeRecords) ||
           project.config.excludes.some(
             (p) => matches(resolved, p) || matches(`${resolved}/`, p),

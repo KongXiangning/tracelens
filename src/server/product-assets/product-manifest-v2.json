@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vnext.local/schemas/product-manifest-v2.json",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "vnext-product-manifest/v2"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "entry": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "managed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "minItems": 1
+    },
+    "source_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "minItems": 0
+    },
+    "capture_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "minItems": 0
+    },
+    "exclude_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "minItems": 0
+    },
+    "maintenance": {
+      "type": "string",
+      "enum": [
+        "enabled",
+        "paused"
+      ]
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "project_id",
+    "entry",
+    "managed_paths",
+    "source_paths",
+    "exclude_paths",
+    "maintenance"
+  ],
+  "additionalProperties": false
+}

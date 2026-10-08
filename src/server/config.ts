@@ -46,6 +46,15 @@ const pattern = z
     "规则须为项目内的相对路径，使用 /，不能包含 ..、盘符或反斜杠",
   );
 export const configSchema = z.object({
+  product: z
+    .object({
+      enabled: z.boolean(),
+      manifestPath: pattern.refine(
+        (p) => !/[*?{[\]]/.test(p) && /\.ya?ml$/i.test(p),
+        "PRODUCT 入口须为单个相对 YAML 文件路径",
+      ),
+    })
+    .optional(),
   autoDiscover: z.boolean().optional(),
   includeRecords: z.boolean().optional(),
   candidateRoots: z
@@ -158,6 +167,10 @@ export function configFingerprint(config: ScanConfig): string {
   return JSON.stringify([
     Boolean(config.autoDiscover),
     Boolean(config.includeRecords),
+    config.product ?? {
+      enabled: false,
+      manifestPath: ".workflow-system/PRODUCT.yaml",
+    },
     config.candidateRoots ?? ["docs", "TASKS"],
     kinds.map((k) => config.rules[k]),
     config.excludes,

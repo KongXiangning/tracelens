@@ -124,6 +124,29 @@ export function VNextGuide() {
           不等于授权，收尾、关闭、提交也不会彼此自动执行。
         </p>
       </section>
+      <section className="guide-notes">
+        <h3>标准产品文档与只读规划</h3>
+        <p>
+          在项目配置预览 .workflow-system/PRODUCT.yaml
+          后，明确启用并手动刷新。支持固定契约 v2，并只读兼容 v1；条目 type
+          与普通文档分类分开。上游契约核对基线：813d3146561c974c1437fc4d116144dc800bc1ad。
+        </p>
+        <p>
+          需求页保留九类条目、完整正文和四种
+          scope；规划页按所选计划的原工作项顺序展示。多计划需明确选择，没有计划仍可阅读全部已知业务范围。
+        </p>
+        <p>
+          项目 plan 与当前任务 adopted-plan
+          分开。关联任务状态来自文档；交付仅沿需求 assessment_id
+          的范围化报告展示。旧报告通过与待对账新材料同时保留，不从任务关闭推断需求完成。
+        </p>
+        <p>
+          来源原文来自同一次快照；未读取、未定位、排除和字节变化分别说明。不会调用
+          Runtime、运行 helper、抓取 URI、重放 journal
+          或写入被观察项目。需要维护材料时，在该项目的已有授权工作流中修改，再回到
+          TraceLens 刷新。
+        </p>
+      </section>
       <div className="guide-filters">
         <label className="guide-search">
           <Search size={17} />

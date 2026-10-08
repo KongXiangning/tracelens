@@ -1,0 +1,9 @@
+schema: vnext-product-manifest/v2
+project_id: example-planning-no-plan
+entry: docs/product/PROJECT.md
+managed_paths:
+  - docs/product/*.md
+source_paths: []
+capture_paths: []
+exclude_paths: []
+maintenance: enabled

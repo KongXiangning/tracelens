@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { api } from "./api";
+import { productStatusLabels } from "./product-labels";
 import { ProjectPicker } from "./project-picker";
 import { CandidateList, RegistrationList } from "./navigation-audit";
 import {
@@ -217,7 +218,13 @@ export function ProjectForm({
         { root: selectedRoot },
         "POST",
       );
-      setConfig(result.config);
+      // Discovery is only a preview; it never opts the user into PRODUCT reads.
+      setConfig({
+        ...result.config,
+        product: result.config.product
+          ? { ...result.config.product, enabled: false }
+          : undefined,
+      });
       setDiscovery(result);
       setConfirmed(true);
       setName(
@@ -231,6 +238,26 @@ export function ProjectForm({
       setBusy(false);
     }
   }
+  async function previewProduct() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<Discovery>(
+        "/discover",
+        { root, config },
+        "POST",
+      );
+      setDiscovery(result);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const manifestPath =
+    config.product?.manifestPath ?? ".workflow-system/PRODUCT.yaml";
+  const productPreview =
+    discovery?.product?.path === manifestPath ? discovery.product : undefined;
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!confirmed || busy) return;
@@ -312,8 +339,112 @@ export function ProjectForm({
                     <CandidateList report={discovery.navigation} />
                   </>
                 )}
+                <section
+                  className="product-config"
+                  aria-label="PRODUCT 发现预览"
+                >
+                  <div className="section-heading">
+                    <h3>标准产品文档 PRODUCT</h3>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void previewProduct()}
+                    >
+                      预览 PRODUCT 范围
+                    </button>
+                  </div>
+                  <code>{manifestPath}</code>
+                  {productPreview ? (
+                    <>
+                      <p>
+                        <strong>
+                          {productStatusLabels[productPreview.status]}
+                        </strong>
+                        {productPreview.projectId &&
+                          ` · ${productPreview.projectId}`}
+                      </p>
+                      <dl className="product-fields">
+                        <dt>将读取的当前定义</dt>
+                        <dd>
+                          <pre>
+                            {productPreview.managedPaths.join("\n") ||
+                              "未获得有效范围"}
+                          </pre>
+                        </dd>
+                        <dt>明确引用来源许可</dt>
+                        <dd>
+                          <pre>
+                            {productPreview.sourcePaths.join("\n") || "无"}
+                          </pre>
+                          <small>
+                            仅读取条目直接引用的具体文件，不递归扫描来源目录。
+                          </small>
+                        </dd>
+                      </dl>
+                      {productPreview.maintenance === "paused" && (
+                        <p className="muted">维护已暂停，但允许只读查看。</p>
+                      )}
+                      {productPreview.diagnostics.map((entry, i) => (
+                        <p className="warning-text" key={i}>
+                          {entry.code} · {entry.message}
+                        </p>
+                      ))}
+                    </>
+                  ) : (
+                    <p className="muted">
+                      先预览所选入口，核对将读取的范围。预览不会启用或发布产品快照。
+                    </p>
+                  )}
+                  <label className="checkbox-label">
+                    <input
+                      aria-label="启用标准产品文档读取"
+                      type="checkbox"
+                      checked={Boolean(config.product?.enabled)}
+                      disabled={
+                        busy || (!productPreview && !config.product?.enabled)
+                      }
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          product: {
+                            enabled: event.target.checked,
+                            manifestPath,
+                          },
+                        })
+                      }
+                    />
+                    我已核对范围，启用标准产品文档读取
+                  </label>
+                  <p className="muted">
+                    与通用自动发现、records 开关独立。
+                    {project
+                      ? "保存配置后需手动刷新才能生效。"
+                      : "仅勾选后，添加并扫描才会读取 PRODUCT 登记的当前定义和精确来源。"}
+                  </p>
+                </section>
                 <details className="advanced-scope" open={Boolean(project)}>
                   <summary>高级扫描设置</summary>
+                  <label>
+                    PRODUCT 入口相对路径
+                    <input
+                      aria-label="PRODUCT 入口相对路径"
+                      value={manifestPath}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          product: {
+                            enabled: false,
+                            manifestPath: event.target.value,
+                          },
+                        })
+                      }
+                    />
+                    <small>
+                      一次只使用一个入口。更换路径后请重新预览并明确启用。
+                    </small>
+                  </label>
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
@@ -415,7 +546,8 @@ export function ProjectForm({
                   </label>
                   <p className="muted">
                     固定跳过 .git、node_modules、构建产物、.vnext、journal
-                    和符号链接；仅读取 Markdown / YAML。 records
+                    和符号链接；通用发现读取 Markdown / YAML，PRODUCT 或
+                    adopted-plan 的精确来源可包括 JSON / TXT。 records
                     默认跳过，可通过上方选项允许；允许后仍需通过文档导航或手动规则纳入正文扫描。
                   </p>
                 </details>

@@ -1,6 +1,6 @@
 # TraceLens
 
-本地、单用户、只读的项目文档工作台。按确认的范围读取 Markdown / YAML，展示文档记录的任务、状态、清单和显式引用。界面默认简体中文；不连接 vNext Runtime，不执行被观察项目的脚本。
+本地、单用户、只读的项目文档工作台。按确认的范围读取 Markdown / YAML，以及明确引用的 JSON / TXT 来源，展示文档记录的任务、状态、清单和显式引用。界面默认简体中文；不连接 vNext Runtime，不执行被观察项目的脚本。
 
 ## 环境与运行
 
@@ -100,6 +100,8 @@ npm run test:browser
 
 可选真实文档核对：构建后设置 `TRACELENS_REAL_PROJECT` 为 TermLink 的本机绝对路径，执行 `npm run test:real`。该脚本只复制列明的 10 份 Markdown/YAML（含原有文档中心与目录）到本工具 `output/playwright/real-documents-*`，通过原有登记自动发现需求和设计，核对归档状态、步骤、清单、占位模板、来源与浏览器原文；比较扫描前后原文件和副本摘要，不执行原项目脚本。它是指定样本回归，不能宣称所有 vNext 版本兼容或用户需求完整。
 
+以下为 v0.6 基线的历史验收记录，不是本轮 Windows 或浏览器验收结果。v0.7 的实际检查与阻塞见 [本轮交付报告](docs/product-visibility-delivery.md)。
+
 2026-10-02 在 Windows / Node 24.12 / Edge 154 实际执行并通过：`npm run check`（类型检查、31 项解析／服务／项目来源／文档导航／使用说明测试、生产构建）、`npm run format:check`、`npm run test:browser`、`npm run test:real`。本次修复回归覆盖 Windows 路径别名去重和稳定身份、带／不带 TASK- 日期编号的原文保留与歧义、段落引用式链接、已知可选索引删除及主动排除／撤回、配置目录迁移越界拒绝和离线项目登记恢复。首次交付还通过了 `npm ci` 和开发服务的页面／API 代理检查，Ctrl+C 后两个开发服务均退出；本次未重新安装依赖或复测开发服务。生产构建无告警。
 
 最终浏览器验收结果与截图保存在 [output/playwright/acceptance-LBXJyr/result.json](output/playwright/acceptance-LBXJyr/result.json)。检查四页完整闭环及异常状态、1440/1024/390 视口、Codex 快捷添加、服务机器目录导航、失效／重复登记禁用、标准 Profile 自动导航、文档状态与待分类提示、整理提示词复制、段落引用式索引变更后刷新、索引删除后的失效提示及新正文阅读、登记来源跳转；使用说明页验证无项目访问、23 个场景、搜索／类别／无匹配、真实剪贴板、1440/390 布局及无隐式扫描。无非预期浏览器错误或自动外部资源请求；无效目录测试按预期收到 400 并在表单展示错误，测试用 Codex 登记内容保持不变。首次交付还用本机真实 Codex 登记核对了项目列表、搜索和范围发现（取消登记，不污染用户项目配置）。本次真实副本核对结果保存在 [output/playwright/real-documents-G7KCFu/result.json](output/playwright/real-documents-G7KCFu/result.json)：10 份文档、2 个历史任务，通过原有文档中心自动发现需求和设计，核对占位模板、归档状态、步骤、清单与来源行，并确认原件／副本内容摘要未变。237 条提示主要对应这份有意收窄的副本中的缺失登记、读取限制及引用诊断，均保留可用内容，不据此宣称真实项目完整扫描或用户需求齐备。
@@ -107,3 +109,20 @@ npm run test:browser
 已知限制：只验证以上系统和指定真实样本，未运行 Linux／macOS、Node 22 或其他浏览器，不宣称真实 vNext 全版本兼容。Codex 快捷读取适配当前已验证的本地登记格式；后续格式变化可能需要调整，届时目录选择器仍可使用。不支持远程 Codex 主机、云项目、UNC／WSL 网络路径或链接目录。自定义文档索引／类型可能保留待分类，可使用高级扫描设置明确范围；导航登记不证明全部用户需求、设计已被确认。单次扫描没有跨文件事务保证；需要一致视图时应避免扫描期间编辑，并在变动后再刷新。当前首版验收及本次导航改进无未完成项；范围外能力未实现。
 
 2026-10-03 通用发现修复通过 `npm run check`（39 项测试、类型检查和构建）、`npm run format:check` 及 `npm run test:browser`。浏览器结果见 [acceptance-M7oKgv/result.json](output/playwright/acceptance-M7oKgv/result.json)，覆盖候选搜索、项目 agent 整理提示词、records 开关、自定义盘点目录、保存后手动刷新及 1440/390 候选布局。使用原登记配置只读核对 LawAgent 与 TermLink-rust-source-resolution-codex，分别收录 61/135 份文档并列出 32/66 个候选；已读取原件摘要与读取后磁盘一致，项目登记文件字节未变。真实断链、格式错误及触及 3 层导航上限仍报告，不将收录数量当成项目文档完整度。本次未改被观察项目，也未重跑旧的 10 文件副本脚本。
+
+
+## 标准产品文档阅读（v0.7）
+
+添加项目时先预览 PRODUCT 的当前文档与来源范围，再明确勾选产品读取；已登记项目在设置里开启并手动刷新。旧配置默认关闭，不因升级扩大读取范围。默认入口 `.workflow-system/PRODUCT.yaml`，高级设置可选择一个其他入口，maintenance paused 仍可阅读。产品开关与普通文档自动发现、records 全般读取相互独立。
+
+需求页可查看九类条目、目标／模块／设计、四种需求 scope、完整正文及坏项原文；规划页先明确选择计划，保持工作项原顺序、stage、覆盖与显式依赖。无计划不隐藏已知需求，多个计划不猜“当前唯一计划”。任务页可反查范围化 TaskBinding、repair 与被修复范围，显示编号不会当真实 task_id；原有当前任务步骤／adopted-plan 跳转保留。
+
+报告只沿 requirement.assessment_id 显示，实施／验证报告、对象版本、覆盖、定义摘要核对、旧原件可核验性与 pending_sources 同时保留。明确声明、推断、已否定关系可分别查看；来源读到了、计划 adopted、工作 included、任务关闭均不证明需求或项目完成。正文可在同快照原文中按绝对行号核对，刷新后旧来源请求返回 409。
+
+支持固定 vnext-product-manifest/v1、v2 和 vnext-product-doc/v1、v2；v1 不静默迁移。只枚举 managed_paths；source_paths 只按直接 SourceRef 读取 Markdown/YAML/JSON/TXT，不递归扫历史/raw，不联网获取 URI，不执行被观察项目脚本、helper 或 journal。PRODUCT glob 只支持 `*`、`**`、`?`，大小写敏感；文件缓存仍按运行平台路径规则去重。当前定义、源资料、坏项、读取覆盖、业务盘点及交付报告分别说明。
+
+本次固定契约来自 KongXiangning/vibe-coding-workflow-system@813d3146561c974c1437fc4d116144dc800bc1ad。examples/product-comprehensive（综合12项9类）、product-e6（插入修复）、product-planning（无／多计划）全部为合成输入，不是真实项目交付证明。源文件和许可及固定 oracle 说明随代码保留。测试只在隔离副本修改夹具，生产只写 TraceLens 自己的登记配置。
+
+验证仍用 npm ci、npm run check、npm run format:check、npm run test:browser；浏览器脚本启动构建后的本地生产服务。真实 TermLink 样本检查须显式设置 TRACELENS_REAL_PROJECT，未提供时不伪造样本。Linux 验证不能替代 Windows 原生实测；本轮实际命令、浏览器证据及未验证环境见 [本轮交付报告](docs/product-visibility-delivery.md)。
+
+浏览器回归仍采用原生产服务方式；`npm run test:browser` 顺序运行旧功能与 PRODUCT 闭环，`npm run test:browser:product` 可单独运行新增场景。默认使用 Playwright Chromium（Windows 默认 Edge），也可设置 `TRACELENS_BROWSER_EXECUTABLE` 指向本机已安装且获准使用的浏览器。`TRACELENS_PREFLIGHT_ONLY=1 node tests/product-browser.mjs` 只准备并核对隔离合成夹具与快照；`TRACELENS_PREPARE_ONLY=1` 则只准备夹具。两者都不算浏览器验收。

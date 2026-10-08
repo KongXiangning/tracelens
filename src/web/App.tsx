@@ -21,6 +21,8 @@ import {
   X,
   CheckCircle2,
   BookOpenCheck,
+  Target,
+  Route,
 } from "lucide-react";
 import { api, session } from "./api";
 import { Empty, IconButton, Modal, ProjectForm } from "./components";
@@ -33,12 +35,38 @@ import type {
   SourceRef,
 } from "../shared/types";
 
-type Page = "overview" | "tasks" | "documents" | "relations" | "guide";
+type Page =
+  | "overview"
+  | "requirements"
+  | "planning"
+  | "tasks"
+  | "documents"
+  | "relations"
+  | "guide";
 const RelationsPage = lazy(() =>
   import("./relations").then((module) => ({ default: module.RelationsPage })),
 );
+const RequirementsPage = lazy(() =>
+  import("./product").then((module) => ({ default: module.RequirementsPage })),
+);
+const PlanningPage = lazy(() =>
+  import("./product").then((module) => ({ default: module.PlanningPage })),
+);
+const ProductOverview = lazy(() =>
+  import("./product").then((module) => ({ default: module.ProductOverview })),
+);
+function ProductLoading() {
+  return (
+    <Empty
+      title="正在读取产品视图"
+      action={<LoaderCircle className="spin" />}
+    />
+  );
+}
 const pages = [
   { id: "overview", name: "概览", icon: LayoutDashboard },
+  { id: "requirements", name: "需求", icon: Target },
+  { id: "planning", name: "规划", icon: Route },
   { id: "tasks", name: "任务", icon: ListTodo },
   { id: "documents", name: "文档", icon: BookOpen },
   { id: "relations", name: "关联", icon: Network },
@@ -49,6 +77,12 @@ export const time = (value?: string) =>
     ? new Date(value).toLocaleString("zh-CN", { hour12: false })
     : "尚未扫描";
 const cleanConfig = (config: ScanConfig): ScanConfig => ({
+  product: config.product
+    ? {
+        enabled: config.product.enabled,
+        manifestPath: config.product.manifestPath.trim(),
+      }
+    : undefined,
   autoDiscover: config.autoDiscover,
   includeRecords: config.includeRecords,
   candidateRoots: config.candidateRoots?.map((r) => r.trim()).filter(Boolean),
@@ -84,9 +118,14 @@ export function App() {
   const [dataDir, setDataDir] = useState("");
   const [selection, setSelection] = useState<{
     task?: string;
+    taskRealId?: string | null;
     doc?: string;
     line?: number;
     relation?: string;
+    relationRealId?: string | null;
+    product?: string;
+    plan?: string;
+    work?: string;
   }>({});
   const mounted = useRef(true);
   const project = projects.find((p) => p.id === active);
@@ -229,12 +268,32 @@ export function App() {
     setPage("documents");
   }
   function openTask(id: string) {
-    setSelection((s) => ({ ...s, task: id }));
+    setSelection((s) => ({
+      ...s,
+      task: id,
+      taskRealId:
+        snapshot?.tasks.find((task) => task.id === id)?.realTaskId ?? null,
+    }));
     setPage("tasks");
   }
   function openRelations(id: string) {
-    setSelection((s) => ({ ...s, relation: id }));
+    const task = snapshot?.tasks.find((entry) => entry.id === id);
+    setSelection((s) => ({
+      ...s,
+      relation: id,
+      relationRealId: task ? (task.realTaskId ?? null) : undefined,
+    }));
     setPage("relations");
+  }
+  function openProduct(key: string, workItemId?: string) {
+    const item = snapshot?.product?.items.find((entry) => entry.key === key);
+    if (item?.type === "plan") {
+      setSelection((s) => ({ ...s, plan: key, work: workItemId }));
+      setPage("planning");
+    } else {
+      setSelection((s) => ({ ...s, product: key }));
+      setPage("requirements");
+    }
   }
   function renderContent() {
     if (page === "guide") return <VNextGuide />;
@@ -290,16 +349,64 @@ export function App() {
         />
       );
     }
+    const context = {
+      snapshot,
+      open: openSource,
+      openTask,
+      openProduct,
+      relations: openRelations,
+    };
     switch (page) {
+      case "requirements":
+        return (
+          <Suspense fallback={<ProductLoading />}>
+            <RequirementsPage
+              {...context}
+              selected={selection.product}
+              select={(key) => setSelection((s) => ({ ...s, product: key }))}
+              configure={() => setForm("edit")}
+            />
+          </Suspense>
+        );
+      case "planning":
+        return (
+          <Suspense fallback={<ProductLoading />}>
+            <PlanningPage
+              {...context}
+              selected={selection.plan}
+              selectedWork={selection.work}
+              select={(key) =>
+                setSelection((s) => ({ ...s, plan: key, work: undefined }))
+              }
+              configure={() => setForm("edit")}
+            />
+          </Suspense>
+        );
       case "overview":
         return (
-          <Overview
-            snapshot={snapshot}
-            open={openSource}
-            openTask={openTask}
-            projectName={project?.name || "本地项目"}
-            root={project?.root || ""}
-          />
+          <>
+            <Suspense
+              fallback={
+                <p className="product-overview muted" role="status">
+                  正在读取产品概况…
+                </p>
+              }
+            >
+              <ProductOverview
+                context={context}
+                configure={() => setForm("edit")}
+                requirements={() => setPage("requirements")}
+                planning={() => setPage("planning")}
+              />
+            </Suspense>
+            <Overview
+              snapshot={snapshot}
+              open={openSource}
+              openTask={openTask}
+              projectName={project?.name || "本地项目"}
+              root={project?.root || ""}
+            />
+          </>
         );
       case "tasks":
         return (
@@ -307,9 +414,11 @@ export function App() {
             key={active}
             snapshot={snapshot}
             selected={selection.task}
-            select={(id) => setSelection((s) => ({ ...s, task: id }))}
+            selectedRealTaskId={selection.taskRealId}
+            select={openTask}
             open={openSource}
             relations={openRelations}
+            openProduct={openProduct}
           />
         );
       case "documents":
@@ -325,6 +434,7 @@ export function App() {
             open={openSource}
             openTask={openTask}
             relations={openRelations}
+            openProduct={openProduct}
           />
         );
       case "relations":
@@ -341,9 +451,11 @@ export function App() {
               key={`${active}:${snapshot.id}`}
               snapshot={snapshot}
               selected={selection.relation}
-              select={(id) => setSelection((s) => ({ ...s, relation: id }))}
+              selectedRealTaskId={selection.relationRealId}
+              select={openRelations}
               open={openSource}
               openTask={openTask}
+              openProduct={openProduct}
             />
           </Suspense>
         );

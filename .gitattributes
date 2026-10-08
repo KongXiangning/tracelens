@@ -1,0 +1,4 @@
+# Pinned schemas, oracle and synthetic sources must retain their byte digests on Windows.
+src/server/product-assets/*.json text eol=lf
+tests/product-oracle/offline-reader.mjs text eol=lf
+examples/product-*/** text eol=lf

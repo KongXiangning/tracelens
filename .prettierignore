@@ -1,0 +1,2 @@
+src/server/product-assets/*.json
+tests/product-oracle/offline-reader.mjs

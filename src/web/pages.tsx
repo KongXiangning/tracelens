@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -25,6 +25,11 @@ import {
   type OpenSource,
 } from "./components";
 import { DocumentReader } from "./reader";
+import { productTypeLabels } from "./product-labels";
+import type { OpenProduct } from "./product";
+const TaskProductLinks = lazy(() =>
+  import("./product").then((module) => ({ default: module.TaskProductLinks })),
+);
 import { NavigationAudit } from "./navigation-audit";
 
 const methodLabels = {
@@ -194,8 +199,8 @@ function SnapshotDiagnostics({
             <code>{snapshot.config.excludes.join("\n") || "无自定义排除"}</code>
           </div>
           <p className="muted">
-            固定跳过依赖、构建产物、.git、records、journal、符号链接。Profile
-            如存在则作为管理配置读取。
+            固定跳过依赖、构建产物、.git、journal、符号链接。records
+            仅按显式允许的范围或精确来源读取。Profile 如存在则作为管理配置读取。
           </p>
         </div>
         <table className="scope-table">
@@ -402,22 +407,30 @@ function CollapsibleEntries({
 export function TasksPage({
   snapshot,
   selected,
+  selectedRealTaskId,
   select,
   open,
   relations,
+  openProduct,
 }: {
   snapshot: Snapshot;
   selected?: string;
+  selectedRealTaskId?: string | null;
   select: (id: string) => void;
   open: OpenSource;
   relations: (id: string) => void;
+  openProduct: OpenProduct;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const task =
-    snapshot.tasks.find((t) => t.id === selected) ||
-    snapshot.tasks.find((t) => t.current) ||
-    snapshot.tasks[0];
+  const candidate =
+    selected !== undefined
+      ? snapshot.tasks.find((t) => t.id === selected)
+      : snapshot.tasks.find((t) => t.current) || snapshot.tasks[0];
+  const identityChanged = Boolean(
+    selectedRealTaskId && candidate?.realTaskId !== selectedRealTaskId,
+  );
+  const task = identityChanged ? undefined : candidate;
   const filtered = snapshot.tasks.filter(
     (t) =>
       `${t.title} ${t.number || ""} ${t.source.path}`
@@ -536,6 +549,18 @@ export function TasksPage({
                 <EntryList entries={task[group.key]} open={open} />
               </section>
             ))}
+            <Suspense fallback={<p className="muted">正在读取产品关联…</p>}>
+              <TaskProductLinks
+                task={task}
+                context={{
+                  snapshot,
+                  open,
+                  openTask: select,
+                  openProduct,
+                  relations,
+                }}
+              />
+            </Suspense>
             <section>
               <h3>引用与提及</h3>
               <RelationList
@@ -547,7 +572,16 @@ export function TasksPage({
             </section>
           </article>
         ) : (
-          <Empty title="尚无任务记录" detail="已读取的文档仍可在文档页核对。" />
+          <Empty
+            title={
+              identityChanged
+                ? "所选任务真实身份已变化"
+                : selected
+                  ? "所选任务已退出本次快照"
+                  : "尚无任务记录"
+            }
+            detail="已读取的文档仍可在文档页核对。请明确重新选择任务。"
+          />
         )}
       </div>
     </div>
@@ -561,6 +595,7 @@ export function DocumentsPage({
   open,
   openTask,
   relations,
+  openProduct,
 }: {
   snapshot: Snapshot;
   selected?: string;
@@ -569,11 +604,14 @@ export function DocumentsPage({
   open: OpenSource;
   openTask: (id: string) => void;
   relations: (id: string) => void;
+  openProduct: OpenProduct;
 }) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("all");
   const doc =
-    snapshot.documents.find((d) => d.id === selected) || snapshot.documents[0];
+    selected !== undefined
+      ? snapshot.documents.find((d) => d.id === selected)
+      : snapshot.documents[0];
   useEffect(() => {
     if (doc && selected === doc.id) {
       setKind("all");
@@ -648,6 +686,49 @@ export function DocumentsPage({
               relations={() => relations(task?.id || doc.id)}
             />
             <div className="document-relations">
+              {snapshot.product && (
+                <section>
+                  <h3>此原文的产品角色与条目</h3>
+                  <p className="muted">
+                    来源文件或历史材料不会因此成为当前产品定义。
+                  </p>
+                  <ul className="product-evidence-list">
+                    {snapshot.product.items
+                      .filter((item) => item.source.documentId === doc.id)
+                      .map((item) => (
+                        <li key={item.key}>
+                          <button
+                            className="text-link"
+                            onClick={() => openProduct(item.key)}
+                          >
+                            {productTypeLabels[item.type]} · {item.id} ·{" "}
+                            {item.title}
+                            <ArrowRight size={13} />
+                          </button>
+                          <SourceButton source={item.source} open={open} />
+                        </li>
+                      ))}
+                    {snapshot.product.sources
+                      .filter((check) => check.source?.documentId === doc.id)
+                      .map((check) => (
+                        <li key={check.id}>
+                          <span>
+                            {check.role} · {check.readState} ·{" "}
+                            {check.locationState} · {check.byteState}
+                          </span>
+                          <p>{check.detail}</p>
+                          <button
+                            className="text-link"
+                            onClick={() => openProduct(check.ownerKey)}
+                          >
+                            查看引用此来源的产品条目
+                            <ArrowRight size={13} />
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                </section>
+              )}
               <section>
                 <h3>引用此文档的任务与文档</h3>
                 {incoming.length ? (
@@ -700,7 +781,7 @@ export function DocumentsPage({
           </>
         ) : (
           <Empty
-            title="扫描范围内无文档"
+            title={selected ? "所选原文已退出本次快照" : "扫描范围内无文档"}
             detail="在配置中确认文档路径，再手动刷新。"
           />
         )}

@@ -200,6 +200,7 @@ async function noOverflow() {
 try {
   await start();
   browser = await chromium.launch({
+    executablePath: process.env.TRACELENS_BROWSER_EXECUTABLE || undefined,
     channel:
       process.env.TRACELENS_BROWSER_CHANNEL ||
       (process.platform === "win32" ? "msedge" : undefined),

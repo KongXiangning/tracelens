@@ -1,10 +1,10 @@
 # TraceLens｜架构设计
 
-版本：0.6 · 对应 [需求说明书](requirements.md)
+版本：0.7 · 对应 [需求说明书](requirements.md)
 
 ## 1. 架构决策
 
-采用 **本地 Node 服务 + 浏览器单页应用 + 内存快照**。通过显式刷新读取项目文档，不接入 vNext Runtime，不复制其 Schema 或状态计算逻辑。
+采用 **本地 Node 服务 + 浏览器单页应用 + 内存快照**。通过显式刷新读取项目文档，不接入 vNext Runtime，不复制其状态计算逻辑；产品通路携带固定 v1/v2 文档 Schema 作结构校验。
 
 被观察项目只读；项目登记和扫描配置保存到本工具的用户数据目录。快照可重新生成，首版不使用数据库。
 
@@ -16,7 +16,7 @@
 |---|---|---|
 | 服务端 | Node.js、TypeScript、Fastify | 本地文件读取、配置管理及 HTTP API。 |
 | 前端 | React、Vite、Tailwind CSS | 单页界面及基础样式。 |
-| 文档解析 | unified／remark、yaml、Zod | Markdown 语法树、YAML 读取及工具自身配置校验。 |
+| 文档解析 | unified／remark、yaml、Zod、Ajv 2020 | Markdown 语法树、YAML 读取及工具自身配置校验。 |
 | 关联展示 | React Flow | 只读、可点击的局部关系图；首版使用简单分层布局。 |
 | 存储与测试 | JSON 文件、内存；Vitest、Playwright | 保存配置、缓存快照，验证解析和核心交互。 |
 
@@ -25,7 +25,7 @@
 ## 3. 模块与数据流
 
 ```text
-浏览器：概览 / 任务 / 文档 / 关联（另有独立静态 vNext 使用说明）
+浏览器：概览 / 需求 / 规划 / 任务 / 文档 / 关联（另有独立静态 vNext 使用说明）
                   │ HTTP
 本地服务：项目管理 / 刷新调度 / 快照查询
                   │
@@ -170,3 +170,17 @@ Markdown 禁用原始 HTML 和 MDX 执行，过滤危险链接协议，不自动
 解析／状态规则使用聚焦单元测试；通过服务集成与浏览器操作验证文件读取、配置持久化、来源跳转及局部关系图，具体覆盖组合由实际风险决定。浏览器检查包括中文内容、长路径、加载／空／错误状态；保留简要结果，必要时附截图。未实际运行的环境与检查明确列出。
 
 可在 TraceLens 仓库内创建和修改专用测试样例来验证刷新，不得修改外部被观察项目来迁就解析器，也不执行其中的脚本。涉及样例不支持的格式时，优先保证原文可读并记录覆盖限制；不得靠缩减需求中的首版能力通过验收。最终交付以需求说明书第 6 节为准。
+
+## 9. PRODUCT 标准产品通路
+
+与通用 Profile/navigation 并行，`product-reader.ts` 只枚举显式启用入口的 managed_paths，按固定契约的大小写敏感 `*`／`**`／`?` 路径语义，不使用通用花括号扩展。无旧范围恢复，来源不反向扩张通用导航。`ScanReadSession` 在单次刷新共享成功和失败读取缓存以及 500 文件／20 MiB 全局预算，导航仍另有 120 次／10 MiB／三层上限；PRODUCT 受全局预算而不受该三层上限。文件无链接、真实路径、UTF-8、二进制和读取期间变更检查继续适用。
+
+`product-parser.ts` 使用固定上游 813d314 的 v1/v2 production Schema、Ajv 2020 和根级 Markdown AST。JSON 兼容 YAML 禁止重复键、自定义 tag、anchor、alias、merge（允许契约的 JSON 内建标签）；整体不安全时停止条目解释。安全 metadata 逐项校验，必要三级章节与唯一二级标题核对；完整 body、metadata、绝对行号、文件摘要及不可用项均保存。同文件不按业务类型拆成多个 Document，标准正文不进入通用状态／任务推断。
+
+`Snapshot.product` 是派生内存数据，包括当前入口、items、relations、bindings、assessments、sources、diagnostics、coverage。条目 key 基于工作副本根、project_id 和大小写敏感 ID；工作项另含 plan 身份；binding key 属于 owner。完整元数据保持权威，派生索引不回写。业务关系与旧 reference/mention 分开建模，声明 active/dismissed 与解析 resolved/missing 分开。
+
+来源只从已读可用条目的已知字段取得，不扫描 extensions 或递归跟随来源外链。Markdown/YAML/JSON/TXT 精确来源必须命中 managed_paths 或 source_paths，排除优先；records 只允许精确引用，Runtime/journal 等仍拒绝。分别记录读取、定位和字节核对，URI 不联网。same-bytes 的摘要基于实际原字节（包括 BOM/CRLF）；定义摘要沿用 vnext-requirement-definition/v1，不混用。详情请求继续通过 documentId + snapshotId，旧 ID 返回 409，界面点击不读盘。
+
+`product-index.ts` 只依据明确真实 task_id 和受约束来源匹配任务，保留多来源和状态矛盾；不同文件 UI task ID 不做中央任务合并。同 CURRENT_TASK 改焦点后重核，历史 null 来源可读但无假任务。计划原顺序和同计划依赖保持，单／多／无计划分别展示；只沿 requirement.assessment_id 选择报告，不合成完成率，不把 repair 关闭转换为 PASS。
+
+产品读取配置 `product: { enabled, manifestPath }` 纳入校验、持久化及 configVersion；缺省关闭，预览允许只读核对而不启用。官方 offline-reader.mjs 仅随隔离测试夹具作为固定版本 oracle，生产无 shell-out、网络契约下载或 Runtime 分发。资产及合成资料出处、哈希和许可见 product-assets 与测试 oracle 的来源说明。

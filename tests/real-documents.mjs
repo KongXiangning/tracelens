@@ -97,6 +97,7 @@ try {
     }
   const base = await runtime.app.listen({ host: "127.0.0.1", port: 0 });
   browser = await chromium.launch({
+    executablePath: process.env.TRACELENS_BROWSER_EXECUTABLE || undefined,
     channel:
       process.env.TRACELENS_BROWSER_CHANNEL ||
       (process.platform === "win32" ? "msedge" : undefined),

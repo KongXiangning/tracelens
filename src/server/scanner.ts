@@ -11,6 +11,7 @@ import {
   type ScanFile,
   type Warning,
   type NavigationReport,
+  type ScanConfig,
 } from "../shared/types.js";
 import {
   AppError,
@@ -20,6 +21,7 @@ import {
   validateRoot,
   within,
 } from "./config.js";
+import type { ProductSnapshot } from "../shared/product-types.js";
 
 export const limits = {
   files: 500,
@@ -67,6 +69,39 @@ export interface ScanResult {
   warnings: Warning[];
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
+  readSession?: ScanReadSession;
+  product?: ProductSnapshot;
+  productPaths?: Set<string>;
+}
+// One cache and budget per refresh, shared by general navigation, PRODUCT and
+// exact adopted-plan sources. Failed reads are cached too: no new-version retry.
+export class ScanReadSession {
+  readonly inputs = new Map<string, Omit<InputFile, "kind">>();
+  private attempts = new Map<string, Promise<Omit<InputFile, "kind">>>();
+  bytes = 0;
+  constructor(readonly root: string) {}
+  async read(relative: string, includeRecords = false) {
+    if (blockedPath(relative, includeRecords))
+      throw new AppError("文件路径超出允许范围");
+    const key = documentPathKey(relative);
+    const cached = this.attempts.get(key);
+    if (cached) return cached;
+    if (this.attempts.size >= limits.files)
+      throw new AppError("达到 500 文件读取上限，扫描不完整");
+    if (this.bytes >= limits.totalBytes)
+      throw new AppError("超过总读取量 20 MiB 上限，扫描不完整");
+    const reading = readBounded(this.root, relative, includeRecords).then(
+      (input) => {
+        this.bytes += input.bytes;
+        if (this.bytes > limits.totalBytes)
+          throw new AppError("超过总读取量 20 MiB 上限，扫描不完整");
+        this.inputs.set(key, input);
+        return input;
+      },
+    );
+    this.attempts.set(key, reading);
+    return reading;
+  }
 }
 export async function readBounded(
   root: string,
@@ -138,9 +173,10 @@ export async function readBounded(
 export async function discover(
   rootInput: string,
   dataDir: string,
+  suppliedConfig?: ScanConfig,
 ): Promise<Discovery> {
   const root = await validateRoot(rootInput, dataDir);
-  const config = {
+  const config: ScanConfig = suppliedConfig || {
     autoDiscover: true,
     rules: { management: [], requirements: [], design: [], planning: [] },
     excludes: [],
@@ -156,6 +192,9 @@ export async function discover(
     profileUsed: scan.navigation.profileUsed,
     navigation: scan.navigation,
     effectiveRules: scan.effectiveRules,
+    product: await (
+      await import("./product-reader.js")
+    ).previewProduct(root, config, scan.readSession),
   };
 }
 export async function scanFiles(
@@ -164,12 +203,13 @@ export async function scanFiles(
   preflight = false,
 ): Promise<ScanResult> {
   const root = await validateRoot(project.root);
+  const readSession = new ScanReadSession(root);
   const files: ScanFile[] = [];
   const warnings: Warning[] = [];
   const selected = new Map<string, { path: string; kind: DocumentKind }>();
   const { DocumentNavigation } = await import("./navigation.js");
   const navigation = project.config.autoDiscover
-    ? new DocumentNavigation(root, project.config)
+    ? new DocumentNavigation(root, project.config, readSession)
     : null;
   if (navigation) {
     await navigation.initialize();
@@ -380,8 +420,7 @@ export async function scanFiles(
         const cached = navigation?.inputs.get(key);
         const input =
           cached ||
-          (await readBounded(
-            root,
+          (await readSession.read(
             navigation?.entries.get(key)?.path || relative,
             project.config.includeRecords,
           ));
@@ -439,11 +478,6 @@ export async function scanFiles(
     warnings.push(...navigation.warnings);
     if (truncated) navigation.incomplete = true;
   }
-  if (!preflight && inputs.length === 0 && failed > 0)
-    throw new AppError(
-      "匹配范围内文档全部读取失败；请检查目录权限、链接和大小限制",
-      422,
-    );
   const report: NavigationReport = navigation?.report() || {
     enabled: false,
     profileUsed: false,
@@ -463,11 +497,20 @@ export async function scanFiles(
       warnings,
     );
   }
-  return {
+  const result: ScanResult = {
     inputs,
     files,
     warnings,
     effectiveRules,
     navigation: report,
+    readSession,
   };
+  if (!preflight)
+    await (await import("./product-reader.js")).readProduct(project, result);
+  if (!preflight && inputs.length === 0 && failed > 0)
+    throw new AppError(
+      "匹配范围内文档全部读取失败；请检查目录权限、链接和大小限制",
+      422,
+    );
+  return result;
 }

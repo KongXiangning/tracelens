@@ -5,7 +5,7 @@ import { access } from "node:fs/promises";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { z } from "zod";
-import { AppError, dataDirectory, validate } from "./config.js";
+import { AppError, configSchema, dataDirectory, validate } from "./config.js";
 import { ProjectRegistry } from "./registry.js";
 import { discover } from "./scanner.js";
 import { SnapshotStore } from "./snapshot.js";
@@ -89,11 +89,14 @@ export async function createApp(options: AppOptions = {}) {
     return browseDirectories(input.path, registry.dataDir);
   });
   app.post("/api/discover", async (request) => {
-    const { root } = validate(
-      z.object({ root: z.string().trim().min(1).max(2000) }),
+    const { root, config } = validate(
+      z.object({
+        root: z.string().trim().min(1).max(2000),
+        config: configSchema.optional(),
+      }),
       request.body,
     );
-    return discover(root, registry.dataDir);
+    return discover(root, registry.dataDir, config);
   });
   app.post("/api/projects", async (request, reply) => {
     const project = await registry.add(request.body);

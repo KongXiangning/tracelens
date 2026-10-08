@@ -12,15 +12,17 @@
     "format": "prettier --write src tests *.json *.ts index.html",
     "format:check": "prettier --check src tests *.json *.ts index.html",
     "test": "vitest run",
-    "test:browser": "node tests/browser-smoke.mjs",
+    "test:browser": "node tests/browser-smoke.mjs && node tests/product-browser.mjs",
     "test:real": "node tests/real-documents.mjs",
     "build": "npm run typecheck && vite build && tsc -p tsconfig.server.json",
     "start": "node dist/server/index.js",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run typecheck && npm test && npm run build",
+    "test:browser:product": "node tests/product-browser.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.5",
     "@xyflow/react": "^12.12.0",
+    "ajv": "^8.20.0",
     "fastify": "^5.12.5",
     "lucide-react": "^1.49.0",
     "mdast-util-to-string": "^4.0.0",

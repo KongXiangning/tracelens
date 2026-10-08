@@ -108,6 +108,17 @@ export interface Parsed {
   warnings: Warning[];
   adoptedPlan?: { path: string; step: string; source: SourceRef };
 }
+// Only explicit task identity declarations participate in product bindings. Display
+// numbers and the path-derived UI ID deliberately do not establish identity.
+function explicitTaskId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const id = value.trim();
+  return id &&
+    !/[\r\n{}]/.test(id) &&
+    !/^(none|null|n\/a|无|unknown|未记录)$/i.test(id)
+    ? id
+    : null;
+}
 const processor = unified().use(remarkParse).use(remarkGfm);
 export function parseMarkdown(raw: string): Root {
   return processor.parse(raw) as Root;
@@ -154,25 +165,93 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
         document.headings.filter((h) => h.line <= line).at(-1)?.title || null,
     };
   }
-  if (/\.ya?ml$/i.test(input.path)) {
+  const identityDeclarations: { id: string; source: SourceRef }[] = [];
+  function addIdentity(value: unknown, location: SourceRef): void {
+    const declared = explicitTaskId(value);
+    if (declared) identityDeclarations.push({ id: declared, source: location });
+  }
+  function identity(): Pick<Task, "realTaskId" | "identitySources"> {
+    const ids = [
+      ...new Set(identityDeclarations.map((declaration) => declaration.id)),
+    ];
+    if (ids.length > 1)
+      warnings.push({
+        code: "task-identity-conflict",
+        path: input.path,
+        line: identityDeclarations[0].source.line,
+        message: `真实任务 ID 声明冲突：${ids.join("、")}；身份保持未知`,
+      });
+    return {
+      realTaskId: ids.length === 1 ? ids[0] : null,
+      identitySources: identityDeclarations.map(
+        (declaration) => declaration.source,
+      ),
+    };
+  }
+  if (/\.(?:ya?ml|json)$/i.test(input.path)) {
     try {
+      const isJson = /\.json$/i.test(input.path);
       const parsed = parseDocument(input.raw);
-      if (parsed.errors.length)
+      if (parsed?.errors.length)
         throw new Error(parsed.errors.map((e) => e.message).join("; "));
-      parsed.toJS({ maxAliasCount: 20 });
+      const value = isJson
+        ? JSON.parse(input.raw)
+        : parsed!.toJS({ maxAliasCount: 20 });
       document.recognized = true;
-      for (const warning of parsed.warnings)
+      for (const warning of parsed?.warnings || [])
         warnings.push({
           code: "yaml-warning",
           path: input.path,
           message: warning.message,
         });
+      // Root task_id is supported metadata. Nested event payloads and task
+      // history arrays remain ordinary sources, never synthetic task entities.
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const fieldLine = (field: string): number => {
+          const node = parsed.get(field, true) as
+            { range?: number[] } | undefined;
+          return node?.range
+            ? input.raw.slice(0, node.range[0]).split("\n").length
+            : 1;
+        };
+        addIdentity(value.task_id, source(fieldLine("task_id")));
+        if (identityDeclarations.length) {
+          const task: Task = {
+            id: stableId(projectId, `task:${input.path}`),
+            ...identity(),
+            number:
+              typeof value.task_number === "string" ? value.task_number : null,
+            title:
+              typeof value.title === "string" ? value.title : document.title,
+            current: false,
+            source: identityDeclarations[0].source,
+            statuses: ["status", "state", "lifecycle_status"].flatMap(
+              (field) => {
+                if (typeof value[field] !== "string" || !value[field].trim())
+                  return [];
+                return [
+                  {
+                    text: value[field].trim(),
+                    checked: null,
+                    source: source(fieldLine(field)),
+                  },
+                ];
+              },
+            ),
+            goals: [],
+            steps: [],
+            checks: [],
+            issues: [],
+          };
+          return { document, task, statements, references, warnings };
+        }
+      }
     } catch (error) {
       warnings.push({
-        code: "yaml",
+        code: /\.json$/i.test(input.path) ? "json" : "yaml",
         path: input.path,
         line: 1,
-        message: `YAML 解析失败，原文保留：${String(error)}`,
+        message: `结构化文档解析失败，原文保留：${String(error)}`,
       });
     }
     return { document, task: null, statements, references, warnings };
@@ -185,6 +264,14 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
       if (metadata.errors.length) throw new Error(metadata.errors[0].message);
       const value = metadata.toJS({ maxAliasCount: 20 });
       taskViewMetadata = value?.kind === "vnext-task-view";
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const node = metadata.get("task_id", true) as
+          { range?: number[] } | undefined;
+        const taskIdLine = node?.range
+          ? frontmatter[1].slice(0, node.range[0]).split("\n").length + 1
+          : 1;
+        addIdentity(value.task_id, source(taskIdLine));
+      }
       for (const field of metadataReferenceFields) {
         const targets = metadataTargets(
           value && typeof value === "object" ? value : {},
@@ -245,12 +332,14 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     value: string;
     entry: Entry;
     headings: string[];
+    identityEligible: boolean;
   }[] = [];
   const entries: { entry: Entry; headings: string[] }[] = [];
   let stack: { depth: number; title: string }[] = [];
   function addEntry(
     node: RootContent | ListItem,
     checked: boolean | null = null,
+    identityEligible = node.type !== "blockquote",
   ): void {
     let text = toString(node).trim();
     if (node.type === "listItem")
@@ -274,6 +363,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
         value: field[2].trim(),
         entry,
         headings,
+        identityEligible,
       });
   }
   for (const node of tree.children) {
@@ -281,8 +371,12 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
       stack = stack.filter((h) => h.depth < node.depth);
       stack.push({ depth: node.depth, title: toString(node) });
     } else if (node.type === "list")
-      visit(node, "listItem", (item: ListItem) =>
-        addEntry(item, typeof item.checked === "boolean" ? item.checked : null),
+      visit(node, "listItem", (item: ListItem, _index, parent) =>
+        addEntry(
+          item,
+          typeof item.checked === "boolean" ? item.checked : null,
+          parent === node,
+        ),
       );
     else if (node.type === "paragraph" || node.type === "blockquote")
       addEntry(node);
@@ -301,6 +395,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
           value: rest.join(" | "),
           entry,
           headings,
+          identityEligible: true,
         });
       }
     } else if (
@@ -362,9 +457,27 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     field.headings.some((h) =>
       /^(任务信息|taskinfo|taskinformation|metadata)$/.test(h),
     );
-  const numberField = fields.find(
-    (f) => /^(任务id|任务编号|taskid|tasknumber)$/.test(f.label) && metadata(f),
+  const identityFields = fields.filter(
+    (f) =>
+      /^(任务id|taskid|真实任务id|realtaskid)$/.test(f.label) &&
+      metadata(f) &&
+      f.identityEligible,
   );
+  for (const field of identityFields) {
+    // Historical templates frequently call display numbers "Task ID". Only
+    // non-number explicit IDs can establish real identity in that legacy form.
+    if (!taskNumbers(field.value).some((number) => number === field.value))
+      addIdentity(field.value, field.entry.source);
+  }
+  const numberField =
+    fields.find(
+      (f) => /^(任务编号|tasknumber)$/.test(f.label) && metadata(f),
+    ) ||
+    identityFields.find(
+      (field) =>
+        /[{}]/.test(field.value) ||
+        taskNumbers(field.value).some((number) => number === field.value),
+    );
   const validNumber =
     numberField && !/[{}]/.test(numberField.value) ? numberField.value : null;
   const filenameNumber =
@@ -372,7 +485,10 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     null;
   const isCurrentFile = /(^|\/)CURRENT_TASK\.md$/i.test(input.path);
   const isTask = Boolean(
-    numberField || isCurrentFile || /(^|\/)TASKS\//i.test(input.path),
+    numberField ||
+    identityDeclarations.length ||
+    isCurrentFile ||
+    /(^|\/)TASKS\//i.test(input.path),
   );
   const titleField = fields.find(
     (f) => /^(任务标题|tasktitle|title)$/.test(f.label) && metadata(f),
@@ -386,6 +502,8 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     const number = validNumber || filenameNumber;
     task = {
       id: stableId(projectId, `task:${input.path}`),
+      realTaskId: null,
+      identitySources: [],
       number,
       title: titleField?.value || document.title,
       current: isCurrentFile,
@@ -499,8 +617,17 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     const focusFields = fields.filter((f) =>
       f.headings.includes("currentwork"),
     );
-    const focuses = focusFields.filter((f) => f.label === "task");
+    const focuses = focusFields.filter(
+      (f) => f.label === "task" && f.identityEligible,
+    );
     const focus = focuses.length === 1 ? focuses[0] : null;
+    if (focuses.length > 1)
+      warnings.push({
+        code: "task-focus-conflict",
+        path: input.path,
+        line: focuses[0].entry.source.line,
+        message: "Current work 含多个 Task 声明，不能唯一确定当前任务",
+      });
     const number = focus
       ? taskNumbers(focus.value).find((n) => focus.value.startsWith(n))
       : null;
@@ -512,6 +639,10 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     task = null;
     if (focus && number) {
       const title = focus.value.match(/\s[—–]\s(.+)$/)?.[1] || number;
+      const declared = focus.value
+        .slice(number.length)
+        .match(/^\s+\(([^()\n]+)\)(?:\s+[—–]\s+.*)?$/);
+      if (declared) addIdentity(declared[1], focus.entry.source);
       const lifecycle = fields.find(
         (f) =>
           f.headings.includes("tasks") && f.label === normalizeHeading(number),
@@ -528,6 +659,8 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
         };
       task = {
         id: stableId(projectId, `task:${input.path}`),
+        realTaskId: null,
+        identitySources: [],
         number,
         title,
         current: isCurrentFile,
@@ -555,6 +688,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     }
     document.recognized = true;
   }
+  if (task) Object.assign(task, identity());
   const definitions = new Map<string, Definition>();
   visit(tree, "definition", (node) => {
     definitions.set(node.identifier.toLowerCase(), node);

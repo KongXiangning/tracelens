@@ -1,3 +1,4 @@
+import type { ProductPreview, ProductSnapshot } from "./product-types.js";
 export const kinds = [
   "management",
   "requirements",
@@ -20,6 +21,7 @@ export interface ScanConfig {
   autoDiscover?: boolean;
   candidateRoots?: string[];
   includeRecords?: boolean;
+  product?: { enabled: boolean; manifestPath: string };
 }
 export interface Project {
   id: string;
@@ -61,6 +63,8 @@ export interface Statement extends Entry {
 }
 export interface Task {
   id: string;
+  realTaskId?: string | null;
+  identitySources?: SourceRef[];
   number: string | null;
   title: string;
   current: boolean;
@@ -139,6 +143,7 @@ export interface Snapshot {
   warnings: Warning[];
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
+  product?: ProductSnapshot;
 }
 export interface RefreshAttempt {
   state: "scanning" | "success" | "partial" | "failed";
@@ -157,6 +162,7 @@ export interface Discovery {
   profileUsed: boolean;
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
+  product?: ProductPreview;
 }
 export interface DocumentRegistration {
   path: string;

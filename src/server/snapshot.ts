@@ -19,12 +19,16 @@ import {
 import { blockedPath, matches, scanFiles } from "./scanner.js";
 import { examplePath } from "./document-metadata.js";
 import { attachCurrentPlan } from "./current-plan.js";
+import { buildProductIndex } from "./product-index.js";
+import { inspectProductEnvelope } from "./product-parser.js";
+import { toString } from "mdast-util-to-string";
 import {
   anchor,
   parseInput,
   stableId,
   stateKey,
   taskNumberKey,
+  parseMarkdown,
   type Parsed,
   type PendingReference,
 } from "./parser.js";
@@ -38,6 +42,41 @@ export async function buildSnapshot(
   const scan = await scanFiles(project, previous?.navigation);
   const parsed = scan.inputs.map((input): Parsed => {
     try {
+      const envelope = inspectProductEnvelope(input.raw);
+      // A standard product file is one source document with many business items.
+      // Never feed its prose or state labels into generic task extraction.
+      if (
+        scan.productPaths?.has(documentPathKey(input.path)) ||
+        envelope.isProduct ||
+        /\.txt$/i.test(input.path)
+      ) {
+        const headings = parseMarkdown(
+          input.raw.slice(0, envelope.bodyStart).replace(/[^\r\n]/g, " ") +
+            input.raw.slice(envelope.bodyStart),
+        )
+          .children.filter((n) => n.type === "heading")
+          .map((n) => ({
+            title: toString(n),
+            depth: n.depth,
+            line: n.position!.start.line,
+            anchor: anchor(toString(n)),
+          }));
+        return {
+          document: {
+            ...input,
+            id: stableId(project.id, input.path),
+            title: headings[0]?.title || path.posix.basename(input.path),
+            headings,
+            recognized: Boolean(
+              scan.productPaths?.has(documentPathKey(input.path)),
+            ),
+          },
+          task: null,
+          statements: [],
+          references: [],
+          warnings: [],
+        };
+      }
       return parseInput(project.id, input);
     } catch (error) {
       return {
@@ -294,6 +333,35 @@ export async function buildSnapshot(
         message: `${key} 的状态声明冲突：${group.map((s) => `${s.value}（${s.source.path}:${s.source.line}）`).join("；")}`,
       });
   }
+  if (scan.product) {
+    buildProductIndex(scan.product, tasks);
+    for (const diagnostic of scan.product.diagnostics) {
+      const document =
+        diagnostic.path && byPath.get(documentPathKey(diagnostic.path));
+      if (!diagnostic.source && document)
+        diagnostic.source = {
+          documentId: document.id,
+          path: document.path,
+          line: diagnostic.line || 1,
+          section: null,
+          digest: document.digest,
+        };
+    }
+    if (
+      ["ready", "empty", "partial"].includes(scan.product.status) &&
+      scan.product.diagnostics.some((d) => d.severity !== "info")
+    )
+      scan.product.status = "partial";
+    warnings.push(
+      ...scan.product.diagnostics.map((d) => ({
+        code: `product:${d.code}`,
+        message: d.message,
+        path: d.path,
+        line: d.line,
+        level: d.severity === "info" ? ("info" as const) : ("warning" as const),
+      })),
+    );
+  }
   return {
     id: randomUUID(),
     projectId: project.id,
@@ -310,6 +378,7 @@ export async function buildSnapshot(
     warnings,
     navigation: scan.navigation,
     effectiveRules: scan.effectiveRules,
+    product: scan.product,
   };
 }
 export const relationLabels = {

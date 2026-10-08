@@ -68,7 +68,9 @@ export async function attachCurrentPlan(
     );
     if (existing) return existing.document;
     // Explicit records are bounded reads even when general historical records are disabled.
-    const input = await readBounded(project.root, filename, true);
+    const input = scan.readSession
+      ? await scan.readSession.read(filename, true)
+      : await readBounded(project.root, filename, true);
     const bytes = parsed.reduce((sum, p) => sum + p.document.bytes, 0);
     if (
       parsed.length >= limits.files ||

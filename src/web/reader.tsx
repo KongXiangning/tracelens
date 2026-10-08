@@ -7,11 +7,12 @@ import { kindLabels, type Document, type Snapshot } from "../shared/types";
 import type { OpenSource } from "./components";
 import { documentSource } from "./pages";
 
-function annotate() {
+function annotate(options: { lineOffset?: number } = {}) {
   return (tree: Root) => {
     function walk(node: Root | Element) {
       if (node.type === "element" && node.position)
-        node.properties["data-line"] = node.position.start.line;
+        node.properties["data-line"] =
+          node.position.start.line + (options.lineOffset || 0);
       for (const child of node.children)
         if (child.type === "element") walk(child);
     }
@@ -31,11 +32,11 @@ export function DocumentReader({
   open: OpenSource;
   relations: () => void;
 }) {
-  const [raw, setRaw] = useState(/\.(ya?ml|json)$/i.test(document.path));
+  const [raw, setRaw] = useState(/\.(ya?ml|json|txt)$/i.test(document.path));
   const content = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState(line);
   useEffect(() => {
-    setRaw(/\.(ya?ml|json)$/i.test(document.path));
+    setRaw(/\.(ya?ml|json|txt)$/i.test(document.path));
     setTarget(line);
   }, [document.id]);
   useEffect(() => {
@@ -119,76 +120,126 @@ export function DocumentReader({
               </div>
             ))
           ) : (
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[annotate]}
-              skipHtml
-              urlTransform={(url) =>
-                /^(?:https?:|mailto:)/i.test(url) ||
-                !/^[a-z][a-z\d+.-]*:/i.test(url)
-                  ? url
-                  : ""
-              }
-              components={{
-                a: ({ node, href, children }) => {
-                  const reference = snapshot.relations.find(
-                    (r) =>
-                      r.source.documentId === document.id &&
-                      r.method === "markdown" &&
-                      r.raw === href &&
-                      r.source.line === node?.position?.start.line,
-                  );
-                  const targetSource =
-                    reference?.to &&
-                    documentSource(
-                      snapshot,
-                      reference.to,
-                      reference.targetLine || 1,
-                    );
-                  if (targetSource)
-                    return (
-                      <button
-                        className="inline-link"
-                        title={
-                          reference?.section || reference?.targetPath || ""
-                        }
-                        onClick={() => open(targetSource)}
-                      >
-                        {children}
-                      </button>
-                    );
-                  if (href && /^(https?:|mailto:)/i.test(href))
-                    return (
-                      <a href={href} target="_blank" rel="noreferrer noopener">
-                        {children}
-                      </a>
-                    );
-                  return (
-                    <span
-                      className="unresolved-link"
-                      title={
-                        reference?.state === "unsafe"
-                          ? "不安全链接"
-                          : "目标未纳入扫描或不可用"
-                      }
-                    >
-                      {children}
-                      <small> [未定位]</small>
-                    </span>
-                  );
-                },
-                img: ({ alt }) => (
-                  <span className="image-placeholder">
-                    [图片：{alt || "未加载"}]
-                  </span>
-                ),
-              }}
-            >
-              {document.raw}
-            </Markdown>
+            <SnapshotMarkdown
+              text={document.raw}
+              documentId={document.id}
+              path={document.path}
+              snapshot={snapshot}
+              open={open}
+            />
           )}
         </div>
       </div>
     </article>
+  );
+}
+
+/** Render only captured text. Local links never cause disk reads or a scan. */
+export function SnapshotMarkdown({
+  text,
+  documentId,
+  path,
+  snapshot,
+  open,
+  startLine = 1,
+}: {
+  text: string;
+  documentId: string;
+  path: string;
+  snapshot: Snapshot;
+  open: OpenSource;
+  startLine?: number;
+}) {
+  return (
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[[annotate, { lineOffset: startLine - 1 }]]}
+      skipHtml
+      urlTransform={(url) =>
+        /^(?:https?:|mailto:)/i.test(url) || !/^[a-z][a-z\d+.-]*:/i.test(url)
+          ? url
+          : ""
+      }
+      components={{
+        a: ({ node, href, children }) => {
+          const reference = snapshot.relations.find(
+            (relation) =>
+              relation.source.documentId === documentId &&
+              relation.method === "markdown" &&
+              relation.raw === href &&
+              relation.source.line ===
+                (node?.position?.start.line || 1) + startLine - 1,
+          );
+          let source = reference?.to
+            ? documentSource(snapshot, reference.to, reference.targetLine || 1)
+            : null;
+          if (!source && href && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) {
+            try {
+              const [rawPath, rawFragment] = href.split("#");
+              const relative = decodeURIComponent(rawPath).replace(/\\/g, "/");
+              const segments: string[] = [];
+              let safe = !relative.startsWith("/");
+              for (const segment of (relative
+                ? `${path.split("/").slice(0, -1).join("/")}/${relative}`
+                : path
+              ).split("/")) {
+                if (!segment || segment === ".") continue;
+                if (segment === "..") {
+                  if (!segments.length) safe = false;
+                  else segments.pop();
+                } else segments.push(segment);
+              }
+              const target = safe
+                ? snapshot.documents.find(
+                    (document) => document.path === segments.join("/"),
+                  )
+                : null;
+              const fragment = rawFragment
+                ? decodeURIComponent(rawFragment)
+                : "";
+              const headings =
+                target?.headings.filter(
+                  (heading) =>
+                    heading.anchor === fragment || heading.title === fragment,
+                ) || [];
+              if (target && (!fragment || headings.length === 1))
+                source = documentSource(
+                  snapshot,
+                  target.id,
+                  headings[0]?.line || 1,
+                );
+            } catch {
+              /* Malformed URI stays visibly unresolved. */
+            }
+          }
+          if (source)
+            return (
+              <button className="inline-link" onClick={() => open(source!)}>
+                {children}
+              </button>
+            );
+          if (href && /^(https?:|mailto:)/i.test(href))
+            return (
+              <a href={href} target="_blank" rel="noreferrer noopener">
+                {children}
+              </a>
+            );
+          return (
+            <span
+              className="unresolved-link"
+              title="目标未收录到当前快照，或无法安全定位"
+            >
+              {children}
+              <small> [未定位]</small>
+            </span>
+          );
+        },
+        img: ({ alt }) => (
+          <span className="image-placeholder">[图片：{alt || "未加载"}]</span>
+        ),
+      }}
+    >
+      {text}
+    </Markdown>
   );
 }

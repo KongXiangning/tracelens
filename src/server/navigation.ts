@@ -16,8 +16,9 @@ import {
   matches,
   readBounded,
   type InputFile,
+  type SnapshotReader,
 } from "./scanner.js";
-import { parseInput, parseMarkdown } from "./parser.js";
+import { parseInput, parseMarkdown, hasProductFrontmatter } from "./parser.js";
 import {
   examplePath,
   metadataReferenceFields,
@@ -104,6 +105,7 @@ export class DocumentNavigation {
   constructor(
     private root: string,
     private config: ScanConfig,
+    private reader?: SnapshotReader,
   ) {}
   private key(filename: string): string {
     return documentPathKey(filename);
@@ -452,11 +454,9 @@ export class DocumentNavigation {
       throw new Error("文档导航读取上限");
     }
     this.reads++;
-    const input = await readBounded(
-      this.root,
-      filename,
-      this.config.includeRecords,
-    );
+    const input = this.reader
+      ? await this.reader.read(filename, this.config.includeRecords)
+      : await readBounded(this.root, filename, this.config.includeRecords);
     if (this.bytes + input.bytes > navigationLimits.bytes) {
       this.limit("10 MiB 字节上限");
       throw new Error("文档导航总读取量超过 10 MiB");
@@ -548,6 +548,8 @@ export class DocumentNavigation {
     depth: number,
   ): void {
     if (!/\.(md|markdown)$/i.test(input.path)) return;
+    // PRODUCT metadata has its own registration and source policy; it never expands this queue.
+    if (hasProductFrontmatter(input.raw)) return;
     let raw = input.raw;
     let offset = 0;
     const front = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);

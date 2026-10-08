@@ -1,0 +1,8 @@
+# Preserve pinned upstream assets and source byte hashes on Windows checkouts.
+src/server/product-schemas/** -text
+tests/vendor/product/** -text
+examples/product-comprehensive/** -text
+examples/product-e6/** -text
+examples/product-planning/** -text
+examples/PRODUCT-LICENSE -text
+docs/product-document-contract.md -text

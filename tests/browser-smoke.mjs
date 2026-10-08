@@ -14,6 +14,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { chromium } from "playwright";
+import { verifyProductBrowser } from "./product-browser.mjs";
 
 const workspace = process.cwd();
 const output = path.join(workspace, "output", "playwright");
@@ -891,6 +892,18 @@ try {
   assert.equal((await projects()).length, 2);
   steps.push(
     "Standard vNext documentation_files > existing index > automatic requirements/design/planning with status and unknown classifications; prompt copied; paragraph reference-link index edits discovered on refresh; deleted known index shows diagnostics and rereads fresh source; registration evidence opens exact source; 1440/390 audit layouts",
+  );
+  steps.push(
+    await verifyProductBrowser({
+      page,
+      workspace,
+      run,
+      base,
+      nav,
+      screenshot,
+      refresh,
+      noOverflow,
+    }),
   );
   await nav("概览");
   assert.deepEqual(errors, []);

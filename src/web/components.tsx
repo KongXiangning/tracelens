@@ -137,7 +137,7 @@ export function EntryList({
   );
 }
 export function stateKnown(text: string): boolean {
-  return /^(done|complete|completed|已完成|完成|active|in[_-]progress|进行中|执行中|paused|暂停|已暂停|terminated|cancelled|终止|已终止|skipped|跳过|已跳过|draft|草稿|archived|已归档|blocked|阻塞|pending|待开始)$/i.test(
+  return /^(done|complete|completed|closed|已完成|完成|active|in[_-]progress|进行中|执行中|paused|暂停|已暂停|terminated|cancelled|终止|已终止|skipped|跳过|已跳过|draft|草稿|archived|已归档|blocked|阻塞|pending|待开始)$/i.test(
     text.trim(),
   );
 }
@@ -306,6 +306,55 @@ export function ProjectForm({
               </label>
               <div className="form-section">
                 <h3>文档发现预览</h3>
+                <div className="product-config">
+                  <h4>标准产品文档 PRODUCT</h4>
+                  {discovery?.product && (
+                    <p className="muted">
+                      入口：{discovery.product.manifestPath} ·{" "}
+                      {discovery.product.manifest
+                        ? `发现 ${discovery.product.manifest.project_id}`
+                        : {
+                            disabled: "未启用",
+                            missing: "未发现入口",
+                            excluded: "入口被排除",
+                            unavailable: "入口读取失败",
+                            unsupported: "不支持的版本",
+                            partial: "部分可用",
+                            available: "可读取",
+                          }[discovery.product.status]}
+                    </p>
+                  )}
+                  {discovery?.product?.manifest && (
+                    <p className="muted">
+                      当前定义：
+                      {discovery.product.manifest.managed_paths.join("、")}
+                      ；来源只按明确引用读取：
+                      {discovery.product.manifest.source_paths.join("、") ||
+                        "未登记"}
+                      。
+                    </p>
+                  )}
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(config.product?.enabled)}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          product: {
+                            ...config.product,
+                            enabled: event.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    启用 PRODUCT 标准产品读取
+                  </label>
+                  <small>
+                    确认启用后在手动刷新中生效，与自动发现和 records 开关独立。
+                  </small>
+                </div>
                 {discovery && (
                   <>
                     <RegistrationList report={discovery.navigation} />
@@ -314,6 +363,25 @@ export function ProjectForm({
                 )}
                 <details className="advanced-scope" open={Boolean(project)}>
                   <summary>高级扫描设置</summary>
+                  <label>
+                    PRODUCT 入口（单一精确相对路径）
+                    <input
+                      value={
+                        config.product?.manifestPath ||
+                        ".workflow-system/PRODUCT.yaml"
+                      }
+                      disabled={busy}
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          product: {
+                            enabled: Boolean(config.product?.enabled),
+                            manifestPath: event.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </label>
                   <label className="checkbox-label">
                     <input
                       type="checkbox"

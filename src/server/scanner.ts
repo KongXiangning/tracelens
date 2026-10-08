@@ -20,6 +20,7 @@ import {
   validateRoot,
   within,
 } from "./config.js";
+import type { ProductRead } from "./product.js";
 
 export const limits = {
   files: 500,
@@ -62,16 +63,65 @@ export interface InputFile {
   modifiedAt: string;
 }
 export interface ScanResult {
+  reader: SnapshotReader;
+  product: ProductRead;
   inputs: InputFile[];
   files: ScanFile[];
   warnings: Warning[];
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
 }
+// One refresh owns one byte cache and one budget, including navigation and exact sources.
+export class SnapshotReader {
+  readonly inputs = new Map<string, Omit<InputFile, "kind">>();
+  private pending = new Map<string, Promise<Omit<InputFile, "kind">>>();
+  bytes = 0;
+  private excluded: (relative: string) => boolean = () => false;
+  constructor(private root: string) {}
+  setExcluded(excluded: (relative: string) => boolean): void {
+    this.excluded = excluded;
+  }
+  async read(
+    relative: string,
+    includeRecords = false,
+  ): Promise<Omit<InputFile, "kind">> {
+    if (this.excluded(relative)) throw new AppError("文件被读取范围排除");
+    if (blockedPath(relative, includeRecords))
+      throw new AppError("文件路径超出允许范围");
+    const key = documentPathKey(relative);
+    const existing = this.pending.get(key);
+    if (existing) return existing;
+    const operation = (async () => {
+      if (this.pending.size >= limits.files)
+        throw new AppError("达到 500 文件上限，未读取");
+      // Check size before reading, then check actual bytes again in case the file changed.
+      if (safePattern(relative) && !/[*?{[\]]/.test(relative)) {
+        const stat = await lstat(path.resolve(this.root, relative));
+        if (this.bytes + stat.size > limits.totalBytes)
+          throw new AppError("达到总读取量 20 MiB 上限，未读取");
+      }
+      const input = await readBounded(
+        this.root,
+        relative,
+        includeRecords,
+        (bytes) => {
+          this.bytes += bytes;
+          if (this.bytes > limits.totalBytes)
+            throw new AppError("读取期间达到总读取量 20 MiB 上限");
+        },
+      );
+      this.inputs.set(key, input);
+      return input;
+    })();
+    this.pending.set(key, operation);
+    return operation;
+  }
+}
 export async function readBounded(
   root: string,
   relative: string,
   includeRecords = false,
+  onRead?: (bytes: number) => void,
 ): Promise<Omit<InputFile, "kind">> {
   if (
     !safePattern(relative) ||
@@ -104,6 +154,7 @@ export async function readBounded(
       );
       if (bytesRead === 0) break;
       length += bytesRead;
+      onRead?.(bytesRead);
     }
     if (length > limits.fileBytes)
       throw new AppError("读取期间文件超过 2 MiB 上限");
@@ -156,6 +207,7 @@ export async function discover(
     profileUsed: scan.navigation.profileUsed,
     navigation: scan.navigation,
     effectiveRules: scan.effectiveRules,
+    product: scan.product.view,
   };
 }
 export async function scanFiles(
@@ -164,12 +216,27 @@ export async function scanFiles(
   preflight = false,
 ): Promise<ScanResult> {
   const root = await validateRoot(project.root);
+  const reader = new SnapshotReader(root);
+  const { readProduct, productExcluded } = await import("./product.js");
+  const product = await readProduct(project, reader, preflight);
+  reader.setExcluded((filename) =>
+    productExcluded(project, product.view.manifest, filename),
+  );
+  const config = {
+    ...project.config,
+    excludes: [
+      ...project.config.excludes,
+      ...(product.view.manifest?.exclude_paths || []),
+    ],
+  };
   const files: ScanFile[] = [];
+  for (const input of product.inputs)
+    files.push({ path: input.path, kind: input.kind, status: "read" });
   const warnings: Warning[] = [];
   const selected = new Map<string, { path: string; kind: DocumentKind }>();
   const { DocumentNavigation } = await import("./navigation.js");
   const navigation = project.config.autoDiscover
-    ? new DocumentNavigation(root, project.config)
+    ? new DocumentNavigation(root, config, reader)
     : null;
   if (navigation) {
     await navigation.initialize();
@@ -188,7 +255,7 @@ export async function scanFiles(
   let truncated = false;
   const excluded = (p: string) =>
     blockedPath(p, project.config.includeRecords) ||
-    project.config.excludes.some(
+    config.excludes.some(
       (pattern) => matches(p, pattern) || matches(`${p}/`, pattern),
     );
   async function walk(
@@ -380,8 +447,7 @@ export async function scanFiles(
         const cached = navigation?.inputs.get(key);
         const input =
           cached ||
-          (await readBounded(
-            root,
+          (await reader.read(
             navigation?.entries.get(key)?.path || relative,
             project.config.includeRecords,
           ));
@@ -439,7 +505,12 @@ export async function scanFiles(
     warnings.push(...navigation.warnings);
     if (truncated) navigation.incomplete = true;
   }
-  if (!preflight && inputs.length === 0 && failed > 0)
+  if (
+    !preflight &&
+    inputs.length === 0 &&
+    product.inputs.length === 0 &&
+    failed > 0
+  )
     throw new AppError(
       "匹配范围内文档全部读取失败；请检查目录权限、链接和大小限制",
       422,
@@ -464,6 +535,8 @@ export async function scanFiles(
     );
   }
   return {
+    reader,
+    product,
     inputs,
     files,
     warnings,

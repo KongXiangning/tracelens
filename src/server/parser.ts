@@ -29,6 +29,7 @@ import {
   metadataReferenceFields,
   metadataTargets,
 } from "./document-metadata.js";
+import { maskFrontmatter } from "../shared/markdown-source.js";
 
 export function stableId(projectId: string, value: string): string {
   return `${projectId}:${createHash("sha256").update(documentPathKey(value)).digest("hex").slice(0, 20)}`;
@@ -112,6 +113,76 @@ const processor = unified().use(remarkParse).use(remarkGfm);
 export function parseMarkdown(raw: string): Root {
   return processor.parse(raw) as Root;
 }
+export function hasProductFrontmatter(raw: string): boolean {
+  const front =
+    /^(?:\uFEFF)?---[ \t]*(?:\r\n|\n|\r)([\s\S]*?)^---[ \t]*(?:\r\n|\n|\r|$)/m.exec(
+      raw,
+    );
+  if (!front || front.index !== 0) return false;
+  const metadata = parseDocument(front[1]);
+  const schema = metadata.get("schema");
+  return typeof schema === "string" && schema.startsWith("vnext-product-doc/");
+}
+export function parsePassiveDocument(
+  projectId: string,
+  input: InputFile,
+): Parsed {
+  const id = stableId(projectId, input.path);
+  const document: Document = {
+    ...input,
+    id,
+    title: path.posix.basename(input.path),
+    headings: [],
+    recognized: true,
+  };
+  const references: PendingReference[] = [];
+  if (/\.(md|markdown)$/i.test(input.path)) {
+    const tree = parseMarkdown(maskFrontmatter(input.raw));
+    visit(tree, "heading", (node) => {
+      const title = toString(node);
+      document.headings.push({
+        title,
+        depth: node.depth,
+        line: node.position!.start.line,
+        anchor: anchor(title),
+      });
+      if (
+        node.depth === 1 &&
+        document.title === path.posix.basename(input.path)
+      )
+        document.title = title;
+    });
+    const definitions = new Map<string, string>();
+    visit(tree, "definition", (node) => {
+      definitions.set(node.identifier.toLowerCase(), node.url);
+    });
+    function add(url: string, label: string, line: number) {
+      references.push({
+        raw: url,
+        target: url,
+        section: null,
+        revision: null,
+        label,
+        method: "markdown",
+        source: {
+          documentId: id,
+          path: input.path,
+          line,
+          section: null,
+          digest: input.digest,
+        },
+      });
+    }
+    visit(tree, "link", (node) =>
+      add(node.url, toString(node), node.position!.start.line),
+    );
+    visit(tree, "linkReference", (node) => {
+      const url = definitions.get(node.identifier.toLowerCase());
+      if (url) add(url, toString(node), node.position!.start.line);
+    });
+  }
+  return { document, task: null, statements: [], references, warnings: [] };
+}
 const categoryPatterns: [StatementKind, RegExp][] = [
   ["currentStep", /^(当前步骤|currentstep|currentphase)$/],
   ["todo", /^(待办.*|待处理.*|下一步.*|todos?|nextsteps?|pendingitems)$/],
@@ -132,6 +203,8 @@ const taskGroups: [
   ],
 ];
 export function parseInput(projectId: string, input: InputFile): Parsed {
+  if (hasProductFrontmatter(input.raw))
+    return parsePassiveDocument(projectId, input);
   const id = stableId(projectId, input.path);
   const document: Document = {
     ...input,
@@ -179,12 +252,25 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
   }
   const frontmatter = input.raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   let taskViewMetadata = false;
+  const identitySources: NonNullable<Task["identitySources"]> = [];
   if (frontmatter) {
     try {
       const metadata = parseDocument(frontmatter[1]);
       if (metadata.errors.length) throw new Error(metadata.errors[0].message);
       const value = metadata.toJS({ maxAliasCount: 20 });
       taskViewMetadata = value?.kind === "vnext-task-view";
+      if (
+        typeof value?.task_id === "string" &&
+        value.task_id.trim() &&
+        !/[{}]/.test(value.task_id)
+      )
+        identitySources.push({
+          value: value.task_id,
+          source: source(
+            input.raw.split("\n").findIndex((s) => /^task_id:/.test(s)) + 1 ||
+              1,
+          ),
+        });
       for (const field of metadataReferenceFields) {
         const targets = metadataTargets(
           value && typeof value === "object" ? value : {},
@@ -242,6 +328,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     document.headings.find((h) => h.depth === 1)?.title || document.title;
   const fields: {
     label: string;
+    rawLabel?: string;
     value: string;
     entry: Entry;
     headings: string[];
@@ -271,6 +358,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     if (field)
       fields.push({
         label: normalizeHeading(field[1]),
+        rawLabel: field[1].trim(),
         value: field[2].trim(),
         entry,
         headings,
@@ -298,6 +386,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
         entries.push({ entry, headings });
         fields.push({
           label: normalizeHeading(key),
+          rawLabel: key.trim(),
           value: rest.join(" | "),
           entry,
           headings,
@@ -362,9 +451,27 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     field.headings.some((h) =>
       /^(任务信息|taskinfo|taskinformation|metadata)$/.test(h),
     );
-  const numberField = fields.find(
-    (f) => /^(任务id|任务编号|taskid|tasknumber)$/.test(f.label) && metadata(f),
-  );
+  const numberField =
+    fields.find(
+      (f) => /^(任务编号|tasknumber)$/.test(f.label) && metadata(f),
+    ) ||
+    fields.find(
+      (f) =>
+        /^(任务id|任务编号|taskid|tasknumber)$/.test(f.label) && metadata(f),
+    );
+  for (const field of fields.filter(
+    (f) =>
+      metadata(f) &&
+      /^(task_id|task\s+id|任务\s*id|真实任务\s*id)$/i.test(f.rawLabel || "") &&
+      !taskNumbers(f.value).includes(f.value),
+  )) {
+    if (
+      field.value &&
+      !/^(null|none|未记录)$/i.test(field.value) &&
+      !/[{}]/.test(field.value)
+    )
+      identitySources.push({ value: field.value, source: field.entry.source });
+  }
   const validNumber =
     numberField && !/[{}]/.test(numberField.value) ? numberField.value : null;
   const filenameNumber =
@@ -372,7 +479,10 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     null;
   const isCurrentFile = /(^|\/)CURRENT_TASK\.md$/i.test(input.path);
   const isTask = Boolean(
-    numberField || isCurrentFile || /(^|\/)TASKS\//i.test(input.path),
+    numberField ||
+    identitySources.length ||
+    isCurrentFile ||
+    /(^|\/)TASKS\//i.test(input.path),
   );
   const titleField = fields.find(
     (f) => /^(任务标题|tasktitle|title)$/.test(f.label) && metadata(f),
@@ -383,7 +493,11 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     isTask &&
     !(numberField && !validNumber && /[{}]/.test(numberField.value))
   ) {
-    const number = validNumber || filenameNumber;
+    const number = identitySources.some(
+      (s) => s.source.line === numberField?.entry.source.line,
+    )
+      ? filenameNumber
+      : validNumber || filenameNumber;
     task = {
       id: stableId(projectId, `task:${input.path}`),
       number,
@@ -511,6 +625,12 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
         statements.splice(i, 1);
     task = null;
     if (focus && number) {
+      const identity = focus.value
+        .slice(number.length)
+        .match(/^\s+\(([^()]+)\)(?:\s*[—–]|$)/)?.[1]
+        ?.trim();
+      if (identity && !/^(none|null|未记录)$/i.test(identity))
+        identitySources.push({ value: identity, source: focus.entry.source });
       const title = focus.value.match(/\s[—–]\s(.+)$/)?.[1] || number;
       const lifecycle = fields.find(
         (f) =>
@@ -576,5 +696,18 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     const definition = definitions.get(node.identifier.toLowerCase());
     if (definition) addLink(node, definition.url, toString(node));
   });
+  if (task) {
+    task.identitySources = identitySources;
+    const identities = [...new Set(identitySources.map((s) => s.value))];
+    task.taskId = identities.length === 1 ? identities[0] : null;
+    task.identityConflict = identities.length > 1;
+    if (task.identityConflict)
+      warnings.push({
+        code: "task-identity-conflict",
+        path: input.path,
+        line: task.source.line,
+        message: `真实任务身份声明冲突：${identities.join(" / ")}`,
+      });
+  }
   return { document, task, statements, references, warnings, adoptedPlan };
 }

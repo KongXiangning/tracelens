@@ -6,17 +6,90 @@ import type { Root, Element } from "hast";
 import { kindLabels, type Document, type Snapshot } from "../shared/types";
 import type { OpenSource } from "./components";
 import { documentSource } from "./pages";
+import { maskFrontmatter } from "../shared/markdown-source";
 
-function annotate() {
+function annotate(options?: { offset: number }) {
   return (tree: Root) => {
     function walk(node: Root | Element) {
       if (node.type === "element" && node.position)
-        node.properties["data-line"] = node.position.start.line;
+        node.properties["data-line"] =
+          node.position.start.line + (options?.offset || 0);
       for (const child of node.children)
         if (child.type === "element") walk(child);
     }
     walk(tree);
   };
+}
+export function SnapshotMarkdown({
+  raw,
+  snapshot,
+  documentId,
+  startLine = 1,
+  open,
+}: {
+  raw: string;
+  snapshot: Snapshot;
+  documentId: string;
+  startLine?: number;
+  open: OpenSource;
+}) {
+  return (
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[[annotate, { offset: startLine - 1 }]]}
+      skipHtml
+      urlTransform={(url) =>
+        /^(?:https?:|mailto:)/i.test(url) || !/^[a-z][a-z\d+.-]*:/i.test(url)
+          ? url
+          : ""
+      }
+      components={{
+        a: ({ node, href, children }) => {
+          const reference = snapshot.relations.find(
+            (r) =>
+              r.source.documentId === documentId &&
+              r.method === "markdown" &&
+              r.raw === href &&
+              r.source.line ===
+                (node?.position?.start.line || 1) + startLine - 1,
+          );
+          const target =
+            reference?.to &&
+            documentSource(snapshot, reference.to, reference.targetLine || 1);
+          if (target)
+            return (
+              <button className="inline-link" onClick={() => open(target)}>
+                {children}
+              </button>
+            );
+          if (href && /^(https?:|mailto:)/i.test(href))
+            return (
+              <a href={href} target="_blank" rel="noreferrer noopener">
+                {children}
+              </a>
+            );
+          return (
+            <span
+              className="unresolved-link"
+              title={
+                reference?.state === "unsafe"
+                  ? "不安全链接"
+                  : "目标未纳入快照或不可用"
+              }
+            >
+              {children}
+              <small> [未定位]</small>
+            </span>
+          );
+        },
+        img: ({ alt }) => (
+          <span className="image-placeholder">[图片：{alt || "未加载"}]</span>
+        ),
+      }}
+    >
+      {startLine === 1 ? maskFrontmatter(raw) : raw}
+    </Markdown>
+  );
 }
 export function DocumentReader({
   document,
@@ -31,11 +104,11 @@ export function DocumentReader({
   open: OpenSource;
   relations: () => void;
 }) {
-  const [raw, setRaw] = useState(/\.(ya?ml|json)$/i.test(document.path));
+  const [raw, setRaw] = useState(/\.(ya?ml|json|txt)$/i.test(document.path));
   const content = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState(line);
   useEffect(() => {
-    setRaw(/\.(ya?ml|json)$/i.test(document.path));
+    setRaw(/\.(ya?ml|json|txt)$/i.test(document.path));
     setTarget(line);
   }, [document.id]);
   useEffect(() => {
@@ -64,6 +137,22 @@ export function DocumentReader({
           <span className="eyebrow">{kindLabels[document.kind]}文档</span>
           <h2>{document.title}</h2>
           <code>{document.path}</code>
+          {document.roles && (
+            <div className="product-tags">
+              {document.roles.map((role) => (
+                <span key={role}>
+                  {
+                    {
+                      generic: "普通导航材料",
+                      "product-manifest": "PRODUCT 入口",
+                      "product-managed": "当前托管定义",
+                      "product-source": "明确引用的来源原文",
+                    }[role]
+                  }
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <button className="secondary" onClick={relations}>
           <Network size={16} />
@@ -119,73 +208,12 @@ export function DocumentReader({
               </div>
             ))
           ) : (
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[annotate]}
-              skipHtml
-              urlTransform={(url) =>
-                /^(?:https?:|mailto:)/i.test(url) ||
-                !/^[a-z][a-z\d+.-]*:/i.test(url)
-                  ? url
-                  : ""
-              }
-              components={{
-                a: ({ node, href, children }) => {
-                  const reference = snapshot.relations.find(
-                    (r) =>
-                      r.source.documentId === document.id &&
-                      r.method === "markdown" &&
-                      r.raw === href &&
-                      r.source.line === node?.position?.start.line,
-                  );
-                  const targetSource =
-                    reference?.to &&
-                    documentSource(
-                      snapshot,
-                      reference.to,
-                      reference.targetLine || 1,
-                    );
-                  if (targetSource)
-                    return (
-                      <button
-                        className="inline-link"
-                        title={
-                          reference?.section || reference?.targetPath || ""
-                        }
-                        onClick={() => open(targetSource)}
-                      >
-                        {children}
-                      </button>
-                    );
-                  if (href && /^(https?:|mailto:)/i.test(href))
-                    return (
-                      <a href={href} target="_blank" rel="noreferrer noopener">
-                        {children}
-                      </a>
-                    );
-                  return (
-                    <span
-                      className="unresolved-link"
-                      title={
-                        reference?.state === "unsafe"
-                          ? "不安全链接"
-                          : "目标未纳入扫描或不可用"
-                      }
-                    >
-                      {children}
-                      <small> [未定位]</small>
-                    </span>
-                  );
-                },
-                img: ({ alt }) => (
-                  <span className="image-placeholder">
-                    [图片：{alt || "未加载"}]
-                  </span>
-                ),
-              }}
-            >
-              {document.raw}
-            </Markdown>
+            <SnapshotMarkdown
+              raw={document.raw}
+              snapshot={snapshot}
+              documentId={document.id}
+              open={open}
+            />
           )}
         </div>
       </div>

@@ -48,6 +48,17 @@ const pattern = z
 export const configSchema = z.object({
   autoDiscover: z.boolean().optional(),
   includeRecords: z.boolean().optional(),
+  product: z
+    .object({
+      enabled: z.boolean(),
+      manifestPath: pattern
+        .refine(
+          (p) => !/[*?{[\]]/.test(p) && /\.ya?ml$/i.test(p),
+          "PRODUCT 入口须为精确 YAML 相对路径",
+        )
+        .optional(),
+    })
+    .optional(),
   candidateRoots: z
     .array(
       pattern.refine(
@@ -158,6 +169,10 @@ export function configFingerprint(config: ScanConfig): string {
   return JSON.stringify([
     Boolean(config.autoDiscover),
     Boolean(config.includeRecords),
+    [
+      Boolean(config.product?.enabled),
+      config.product?.manifestPath || ".workflow-system/PRODUCT.yaml",
+    ],
     config.candidateRoots ?? ["docs", "TASKS"],
     kinds.map((k) => config.rules[k]),
     config.excludes,

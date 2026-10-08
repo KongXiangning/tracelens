@@ -1,0 +1,14 @@
+schema: vnext-product-manifest/v2
+project_id: example-tracelens-import
+entry: docs/product/PROJECT.md
+managed_paths:
+  - docs/product/PROJECT.md
+source_paths:
+  - docs/evidence/**
+  - docs/product/history/**
+  - docs/product/discussions/raw/**
+capture_paths:
+  - docs/product/history/**
+  - docs/product/discussions/raw/**
+exclude_paths: []
+maintenance: enabled

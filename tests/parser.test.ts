@@ -14,6 +14,16 @@ function parse(raw: string, filename = "docs/workflow/CURRENT_TASK.md") {
   return parseInput("project-a", input);
 }
 describe("document extraction with provenance", () => {
+  it("does not reinterpret product examples in fenced body code as file metadata", () => {
+    const result = parse(
+      "<!-- vnext-task-view/v1 -->\n# CURRENT_TASK\n## Current work\n- Task: TASK-811 (real-task) — 实施\n- Step: P4\n## 格式例子\n```yaml\nschema: vnext-product-doc/v2\nitems: []\n```\n",
+    );
+    expect(result.task).toMatchObject({
+      number: "TASK-811",
+      taskId: "real-task",
+    });
+    expect(result.statements.some((s) => s.kind === "currentStep")).toBe(true);
+  });
   it("reads generated task focus and step instead of historical table rows", () => {
     const result = parse(`---
 kind: vnext-task-view

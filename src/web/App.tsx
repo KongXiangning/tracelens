@@ -21,11 +21,14 @@ import {
   X,
   CheckCircle2,
   BookOpenCheck,
+  Target,
+  Map,
 } from "lucide-react";
 import { api, session } from "./api";
 import { Empty, IconButton, Modal, ProjectForm } from "./components";
 import { Overview, TasksPage, DocumentsPage } from "./pages";
 import { VNextGuide } from "./vnext-guide";
+import { RequirementsPage, PlanningPage } from "./product";
 import type {
   Project,
   ScanConfig,
@@ -33,12 +36,21 @@ import type {
   SourceRef,
 } from "../shared/types";
 
-type Page = "overview" | "tasks" | "documents" | "relations" | "guide";
+type Page =
+  | "overview"
+  | "requirements"
+  | "planning"
+  | "tasks"
+  | "documents"
+  | "relations"
+  | "guide";
 const RelationsPage = lazy(() =>
   import("./relations").then((module) => ({ default: module.RelationsPage })),
 );
 const pages = [
   { id: "overview", name: "概览", icon: LayoutDashboard },
+  { id: "requirements", name: "需求", icon: Target },
+  { id: "planning", name: "规划", icon: Map },
   { id: "tasks", name: "任务", icon: ListTodo },
   { id: "documents", name: "文档", icon: BookOpen },
   { id: "relations", name: "关联", icon: Network },
@@ -51,6 +63,12 @@ export const time = (value?: string) =>
 const cleanConfig = (config: ScanConfig): ScanConfig => ({
   autoDiscover: config.autoDiscover,
   includeRecords: config.includeRecords,
+  product: config.product
+    ? {
+        enabled: config.product.enabled,
+        manifestPath: config.product.manifestPath?.trim() || undefined,
+      }
+    : undefined,
   candidateRoots: config.candidateRoots?.map((r) => r.trim()).filter(Boolean),
   rules: Object.fromEntries(
     Object.entries(config.rules).map(([kind, rules]) => [
@@ -87,6 +105,8 @@ export function App() {
     doc?: string;
     line?: number;
     relation?: string;
+    item?: string;
+    plan?: string;
   }>({});
   const mounted = useRef(true);
   const project = projects.find((p) => p.id === active);
@@ -236,6 +256,16 @@ export function App() {
     setSelection((s) => ({ ...s, relation: id }));
     setPage("relations");
   }
+  function openItem(key: string) {
+    const item = snapshot?.product?.items.find((i) => i.key === key);
+    if (item?.type === "plan") {
+      setSelection((s) => ({ ...s, plan: key }));
+      setPage("planning");
+    } else {
+      setSelection((s) => ({ ...s, item: key }));
+      setPage("requirements");
+    }
+  }
   function renderContent() {
     if (page === "guide") return <VNextGuide />;
     if (loading)
@@ -299,6 +329,8 @@ export function App() {
             openTask={openTask}
             projectName={project?.name || "本地项目"}
             root={project?.root || ""}
+            openItem={openItem}
+            configure={() => setForm("edit")}
           />
         );
       case "tasks":
@@ -310,6 +342,35 @@ export function App() {
             select={(id) => setSelection((s) => ({ ...s, task: id }))}
             open={openSource}
             relations={openRelations}
+            openItem={openItem}
+          />
+        );
+      case "requirements":
+        return (
+          <RequirementsPage
+            key={active}
+            snapshot={snapshot}
+            selected={selection.item}
+            select={(item) => setSelection((s) => ({ ...s, item }))}
+            open={openSource}
+            openTask={openTask}
+            openItem={openItem}
+            relations={openRelations}
+            configure={() => setForm("edit")}
+          />
+        );
+      case "planning":
+        return (
+          <PlanningPage
+            key={active}
+            snapshot={snapshot}
+            selected={selection.plan}
+            select={(plan) => setSelection((s) => ({ ...s, plan }))}
+            open={openSource}
+            openTask={openTask}
+            openItem={openItem}
+            relations={openRelations}
+            configure={() => setForm("edit")}
           />
         );
       case "documents":
@@ -344,6 +405,7 @@ export function App() {
               select={(id) => setSelection((s) => ({ ...s, relation: id }))}
               open={openSource}
               openTask={openTask}
+              openItem={openItem}
             />
           </Suspense>
         );

@@ -12,6 +12,11 @@ import "@xyflow/react/dist/style.css";
 import { Empty, type OpenSource } from "./components";
 import { documentSource, RelationList, relationLabels } from "./pages";
 import type { Snapshot } from "../shared/types";
+import {
+  ProductGraph,
+  ProductEvidence,
+  productGraphEdges,
+} from "./product-relations";
 
 export function RelationGraph({
   snapshot,
@@ -181,23 +186,33 @@ export function RelationsPage({
   select,
   open,
   openTask,
+  openItem,
 }: {
   snapshot: Snapshot;
   selected?: string;
   select: (id: string) => void;
   open: OpenSource;
   openTask: (id: string) => void;
+  openItem: (key: string) => void;
 }) {
   const [highlight, setHighlight] = useState<string[]>([]);
   const ids = [
     ...snapshot.tasks.map((t) => t.id),
     ...snapshot.documents.map((d) => d.id),
+    ...(snapshot.product?.items || []).map((i) => i.key),
+    ...(snapshot.product?.workItems || []).map((w) => w.key),
   ];
   const focus = selected && ids.includes(selected) ? selected : ids[0];
   const adjacent = snapshot.relations.filter(
     (r) => r.from === focus || r.to === focus,
   );
   const focusTask = snapshot.tasks.find((t) => t.id === focus);
+  const businessFocus =
+    snapshot.product?.items.find((i) => i.key === focus) ||
+    snapshot.product?.workItems.find((w) => w.key === focus);
+  const hasBusiness = productGraphEdges(snapshot).some(
+    (e) => e.from === focus || e.to === focus,
+  );
   const originDocument = focusTask?.source.documentId;
   // Document references in task files are attached to the task, with the document as their source.
   const documentTask = snapshot.tasks.find(
@@ -234,6 +249,21 @@ export function RelationsPage({
               </option>
             ))}
           </optgroup>
+          <optgroup label="产品条目">
+            {snapshot.product?.items.map((i) => (
+              <option key={i.key} value={i.key}>
+                {i.id} · {i.title}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="计划工作项">
+            {snapshot.product?.workItems.map((w) => (
+              <option key={w.key} value={w.key}>
+                {snapshot.product?.items.find((i) => i.key === w.planKey)?.id}/
+                {w.declaration.id} · {w.declaration.title}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </div>
       {focus ? (
@@ -242,6 +272,9 @@ export function RelationsPage({
             <span className="muted">中心</span>
             <strong>
               {focusTask?.title ||
+                snapshot.product?.items.find((i) => i.key === focus)?.title ||
+                snapshot.product?.workItems.find((w) => w.key === focus)
+                  ?.declaration.title ||
                 snapshot.documents.find((d) => d.id === focus)?.title}
             </strong>
             {originDocument && (
@@ -256,29 +289,55 @@ export function RelationsPage({
               </button>
             )}
           </div>
-          <RelationGraph
-            snapshot={snapshot}
-            focus={focus}
-            open={open}
-            openTask={openTask}
-            highlight={(ids) => {
-              setHighlight(ids);
-              document
-                .getElementById("relation-evidence")
-                ?.scrollIntoView({ block: "start", behavior: "smooth" });
-            }}
-          />
-          <section id="relation-evidence">
-            <h3>
-              引用依据 <small>{related.length}</small>
-            </h3>
-            <RelationList
+          {!businessFocus && (
+            <RelationGraph
               snapshot={snapshot}
-              relations={related}
+              focus={focus}
               open={open}
               openTask={openTask}
-              highlight={highlight}
+              highlight={(ids) => {
+                setHighlight(ids);
+                document
+                  .getElementById("relation-evidence")
+                  ?.scrollIntoView({ block: "start", behavior: "smooth" });
+              }}
             />
+          )}
+          {(businessFocus || hasBusiness) && (
+            <ProductGraph
+              snapshot={snapshot}
+              focus={focus}
+              open={open}
+              openTask={openTask}
+              openItem={openItem}
+              highlight={setHighlight}
+            />
+          )}
+          <section id="relation-evidence">
+            {(businessFocus || hasBusiness) && (
+              <ProductEvidence
+                snapshot={snapshot}
+                focus={focus}
+                highlight={highlight}
+                open={open}
+                openTask={openTask}
+                openItem={openItem}
+              />
+            )}
+            {!businessFocus && (
+              <>
+                <h3>
+                  引用依据 <small>{related.length}</small>
+                </h3>
+                <RelationList
+                  snapshot={snapshot}
+                  relations={related}
+                  open={open}
+                  openTask={openTask}
+                  highlight={highlight}
+                />
+              </>
+            )}
           </section>
         </>
       ) : (

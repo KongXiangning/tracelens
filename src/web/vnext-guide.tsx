@@ -95,6 +95,17 @@ export function VNextGuide() {
         </small>
       </section>
       <section className="guide-install">
+        <h3>标准产品文档阅读</h3>
+        <p>
+          项目已有 PRODUCT
+          时，在添加预览或扫描配置中明确启用，保存后手动刷新；需求与规划入口保留完整范围、任务关联和报告来源。只沿明确来源只读查看，不执行维护命令、任务或审批。
+        </p>
+        <p>
+          本工具的产品读取契约固定于上游 <code>813d314</code>，支持
+          manifest／doc v2 与只读
+          v1；这与下方旧版技能场景的核对版本分别维护。任务步骤的 adopted-plan
+          与产品总体 plan 也分别展示。
+        </p>
         <h3>首次接入</h3>
         <p>
           未安装的目标项目使用 <code>npx vibe-governance@latest install</code>

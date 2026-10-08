@@ -29,6 +29,8 @@ TraceLens 侧栏的“vNext 使用说明”无需添加项目即可打开，按�
 
 ## 维护依据
 
+2026-10-08 在页面首次接入区补充 PRODUCT 只读入口、手动启用和版本边界，产品消费契约单独固定于 `813d314`。原有 0.23.8 canonical skill 场景、提示词和核对版本保持各自依据；本轮不泛化同步全套技能说明，不安装工作流，不执行维护命令。
+
 页面场景、提示词与边界唯一维护在 `src/shared/vnext-guide.ts`，页面为 `src/web/vnext-guide.tsx`。调整时只读核对以下上游资料，不执行其脚本、不调用其 API：
 
 - `README.md`：Distribution 与 canonical Agent Skill 安装入口。

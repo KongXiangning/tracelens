@@ -1,3 +1,5 @@
+import type { ProductView } from "./product-types.js";
+
 export const kinds = [
   "management",
   "requirements",
@@ -20,6 +22,7 @@ export interface ScanConfig {
   autoDiscover?: boolean;
   candidateRoots?: string[];
   includeRecords?: boolean;
+  product?: { enabled: boolean; manifestPath?: string };
 }
 export interface Project {
   id: string;
@@ -61,6 +64,9 @@ export interface Statement extends Entry {
 }
 export interface Task {
   id: string;
+  taskId?: string | null;
+  identitySources?: { value: string; source: SourceRef }[];
+  identityConflict?: boolean;
   number: string | null;
   title: string;
   current: boolean;
@@ -82,6 +88,9 @@ export interface Document {
   bytes: number;
   modifiedAt: string;
   recognized: boolean;
+  roles?: (
+    "generic" | "product-manifest" | "product-managed" | "product-source"
+  )[];
 }
 export type RelationState =
   | "resolved"
@@ -139,6 +148,7 @@ export interface Snapshot {
   warnings: Warning[];
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
+  product?: ProductView;
 }
 export interface RefreshAttempt {
   state: "scanning" | "success" | "partial" | "failed";
@@ -157,6 +167,7 @@ export interface Discovery {
   profileUsed: boolean;
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
+  product?: ProductView;
 }
 export interface DocumentRegistration {
   path: string;

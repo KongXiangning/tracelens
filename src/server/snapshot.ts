@@ -22,6 +22,7 @@ import { attachCurrentPlan } from "./current-plan.js";
 import {
   anchor,
   parseInput,
+  parsePassiveDocument,
   stableId,
   stateKey,
   taskNumberKey,
@@ -29,6 +30,7 @@ import {
   type PendingReference,
 } from "./parser.js";
 import type { ProjectRegistry } from "./registry.js";
+import { indexProduct } from "./product-index.js";
 
 export async function buildSnapshot(
   project: Project,
@@ -36,9 +38,28 @@ export async function buildSnapshot(
   previous?: Snapshot,
 ): Promise<Snapshot> {
   const scan = await scanFiles(project, previous?.navigation);
-  const parsed = scan.inputs.map((input): Parsed => {
+  const inputs = new Map(scan.inputs.map((i) => [documentPathKey(i.path), i]));
+  for (const input of scan.product.inputs)
+    if (!inputs.has(documentPathKey(input.path)))
+      inputs.set(documentPathKey(input.path), input);
+  const parsed = [...inputs.values()].map((input): Parsed => {
     try {
-      return parseInput(project.id, input);
+      const roles = scan.product.roles.get(documentPathKey(input.path));
+      const parsed =
+        roles?.some((role) =>
+          ["product-managed", "product-manifest"].includes(role),
+        ) || /\.(txt|json)$/i.test(input.path)
+          ? parsePassiveDocument(project.id, input)
+          : parseInput(project.id, input);
+      parsed.document.roles = [
+        ...(scan.inputs.some(
+          (i) => documentPathKey(i.path) === documentPathKey(input.path),
+        )
+          ? ["generic" as const]
+          : []),
+        ...(roles || []),
+      ];
+      return parsed;
     } catch (error) {
       return {
         document: {
@@ -76,6 +97,7 @@ export async function buildSnapshot(
       ? manualCurrent[0].source.path
       : undefined;
   await attachCurrentPlan(project, scan, parsed, currentPath);
+  const product = indexProduct(scan.product.view, parsed);
   const documents = parsed.map((p) => p.document);
   const tasks = parsed.flatMap((p) => (p.task ? [p.task] : []));
   const isCurrentSource = (filename: string) =>
@@ -94,6 +116,12 @@ export async function buildSnapshot(
   const warnings: Warning[] = [
     ...scan.warnings,
     ...parsed.flatMap((p) => p.warnings),
+    ...product.diagnostics.map((d) => ({
+      code: `product-${d.code}`,
+      path: d.path,
+      line: d.line,
+      message: d.message,
+    })),
   ];
   const byPath = new Map(documents.map((d) => [documentPathKey(d.path), d]));
   const relations: Relation[] = [];
@@ -310,6 +338,7 @@ export async function buildSnapshot(
     warnings,
     navigation: scan.navigation,
     effectiveRules: scan.effectiveRules,
+    product,
   };
 }
 export const relationLabels = {

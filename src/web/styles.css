@@ -1871,7 +1871,8 @@ dialog form {
   }
   .sidebar nav button {
     justify-content: center;
-    width: 20%;
+    flex: 1 1 auto;
+    width: auto;
     padding: 9px 4px;
     margin-bottom: 8px;
     font-size: 12px;
@@ -2019,5 +2020,199 @@ dialog form {
   }
   .markdown h1 {
     font-size: 20px;
+  }
+}
+
+.product-status {
+  padding: 18px 24px;
+  background: #f0f4ef;
+  border-bottom: 1px solid #dce5dd;
+  overflow-wrap: anywhere;
+}
+.product-organization {
+  padding: 14px 24px;
+  border-bottom: 1px solid #dce5dd;
+  overflow-wrap: anywhere;
+}
+.product-organization > div {
+  margin: 12px 0;
+}
+.product-status > div,
+.product-status p {
+  margin-bottom: 8px;
+}
+.product-status details,
+.product-detail details {
+  margin-top: 12px;
+}
+.product-detail {
+  padding: 26px 32px;
+  overflow-wrap: anywhere;
+}
+.product-detail section,
+.product-detail .product-body {
+  margin: 24px 0;
+}
+.product-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+.product-tags > span {
+  font-size: 12px;
+  background: #eff3ef;
+  border-radius: 4px;
+  padding: 3px 7px;
+}
+.product-detail pre,
+.product-status pre,
+.planning-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.product-config {
+  padding: 12px 0;
+}
+.product-config .checkbox-label {
+  margin-bottom: 6px;
+}
+.product-page .list-header label {
+  margin-top: 10px;
+}
+.product-page select,
+.planning-page select {
+  max-width: 100%;
+  width: 100%;
+}
+.product-sources {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+.product-sources li {
+  padding: 10px 0;
+  border-bottom: 1px solid #e5eae4;
+  overflow-wrap: anywhere;
+}
+.product-sources p {
+  margin: 6px 0;
+}
+.product-sources code {
+  display: block;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.product-bindings {
+  display: grid;
+  gap: 12px;
+}
+.binding-card,
+.work-card {
+  border: 1px solid #dce5dd;
+  border-radius: 7px;
+  padding: 16px;
+  min-width: 0;
+}
+.binding-card p,
+.work-card p {
+  margin: 10px 0;
+}
+.bound-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.repair-scope {
+  padding: 12px;
+  border-left: 3px solid #c69b52;
+  background: #fbf7ef;
+  margin: 12px 0;
+}
+.assessment-panel {
+  border: 1px solid #dce5dd;
+  border-radius: 7px;
+  padding: 18px;
+}
+.planning-page {
+  padding: 26px 32px;
+  overflow-wrap: anywhere;
+}
+.planning-page .product-status {
+  padding: 16px;
+  border: 1px solid #dce5dd;
+  border-radius: 7px;
+  margin-bottom: 18px;
+}
+.planning-page .page-title {
+  gap: 16px;
+}
+.planning-page .page-title select {
+  width: min(560px, 100%);
+}
+.work-items {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+}
+.work-stage {
+  border-bottom: 1px solid #dce5dd;
+  padding-bottom: 10px;
+}
+.known-scope {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+.known-scope > div {
+  border: 1px solid #dce5dd;
+  border-radius: 7px;
+  padding: 14px;
+}
+.known-scope span {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.product-overview {
+  margin: 24px 0;
+}
+.product-overview .product-status {
+  padding: 14px;
+  border-radius: 7px;
+}
+.product-overview .overview-columns {
+  margin: 16px 0;
+}
+.product-overview p {
+  margin: 8px 0;
+}
+@media (max-width: 640px) {
+  .sidebar nav {
+    flex-wrap: wrap;
+  }
+  .sidebar nav button {
+    flex-basis: 22%;
+    margin-bottom: 3px;
+  }
+  .product-detail,
+  .planning-page,
+  .product-status {
+    padding: 18px 16px;
+  }
+  .product-detail .detail-heading {
+    flex-wrap: wrap;
+  }
+  .product-detail h2 {
+    font-size: 18px;
+  }
+  .assessment-panel,
+  .work-card,
+  .binding-card {
+    padding: 12px;
   }
 }

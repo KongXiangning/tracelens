@@ -26,6 +26,7 @@ import {
 } from "./components";
 import { DocumentReader } from "./reader";
 import { NavigationAudit } from "./navigation-audit";
+import { ProductOverview, TaskProducts } from "./product";
 
 const methodLabels = {
   structured: "结构化引用",
@@ -241,12 +242,16 @@ export function Overview({
   openTask,
   projectName,
   root,
+  openItem,
+  configure,
 }: {
   snapshot: Snapshot;
   open: OpenSource;
   openTask: (id: string) => void;
   projectName: string;
   root: string;
+  openItem: (key: string) => void;
+  configure: () => void;
 }) {
   const current = snapshot.tasks.filter((t) => t.current);
   const currentStatements = snapshot.statements.filter(
@@ -290,6 +295,12 @@ export function Overview({
             : "未记录"}
         </span>
       </div>
+      <ProductOverview
+        snapshot={snapshot}
+        open={open}
+        openItem={openItem}
+        configure={configure}
+      />
       <section className="current-section">
         <div className="section-heading">
           <h3>当前任务</h3>
@@ -312,6 +323,9 @@ export function Overview({
                 {task.statuses.map((s, i) => (
                   <Status key={i} text={s.text} />
                 ))}
+                {!task.statuses.length && (
+                  <span className="muted">任务状态未记录</span>
+                )}
               </div>
               <EntryList entries={task.goals} open={open} />
               <SourceButton source={task.source} open={open} />
@@ -405,12 +419,14 @@ export function TasksPage({
   select,
   open,
   relations,
+  openItem,
 }: {
   snapshot: Snapshot;
   selected?: string;
   select: (id: string) => void;
   open: OpenSource;
   relations: (id: string) => void;
+  openItem: (key: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -498,6 +514,24 @@ export function TasksPage({
               </button>
             </div>
             <SourceButton source={task.source} open={open} />
+            <p className="muted">
+              真实 task_id：
+              {task.taskId || (task.identityConflict ? "声明冲突" : "未确认")} ·
+              UI 身份与显示编号分别保留。
+            </p>
+            {task.identitySources?.map((s, i) => (
+              <p key={i}>
+                <code>{s.value}</code>
+                <SourceButton source={s.source} open={open} />
+              </p>
+            ))}
+            <TaskProducts
+              snapshot={snapshot}
+              taskId={task.id}
+              open={open}
+              openTask={select}
+              openItem={openItem}
+            />
             <section>
               <h3>文档声明的状态</h3>
               {task.statuses.length ? (

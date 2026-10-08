@@ -1,10 +1,10 @@
 # TraceLens｜架构设计
 
-版本：0.6 · 对应 [需求说明书](requirements.md)
+版本：0.7 · 对应 [需求说明书](requirements.md)
 
 ## 1. 架构决策
 
-采用 **本地 Node 服务 + 浏览器单页应用 + 内存快照**。通过显式刷新读取项目文档，不接入 vNext Runtime，不复制其 Schema 或状态计算逻辑。
+采用 **本地 Node 服务 + 浏览器单页应用 + 内存快照**。通过显式刷新读取项目文档，不接入 vNext Runtime，不复制其任务状态计算逻辑。标准产品阅读使用固定版本的独立文档 Schema，不引入 Runtime 执行链。
 
 被观察项目只读；项目登记和扫描配置保存到本工具的用户数据目录。快照可重新生成，首版不使用数据库。
 
@@ -17,6 +17,7 @@
 | 服务端 | Node.js、TypeScript、Fastify | 本地文件读取、配置管理及 HTTP API。 |
 | 前端 | React、Vite、Tailwind CSS | 单页界面及基础样式。 |
 | 文档解析 | unified／remark、yaml、Zod | Markdown 语法树、YAML 读取及工具自身配置校验。 |
+| 标准产品校验 | Ajv 2020、固定 v1／v2 文档 Schema | 根级 AST、JSON 兼容 YAML、逐项结构验证与需求定义摘要。 |
 | 关联展示 | React Flow | 只读、可点击的局部关系图；首版使用简单分层布局。 |
 | 存储与测试 | JSON 文件、内存；Vitest、Playwright | 保存配置、缓存快照，验证解析和核心交互。 |
 
@@ -25,7 +26,7 @@
 ## 3. 模块与数据流
 
 ```text
-浏览器：概览 / 任务 / 文档 / 关联（另有独立静态 vNext 使用说明）
+浏览器：概览 / 需求 / 规划 / 任务 / 文档 / 关联（另有独立静态 vNext 使用说明）
                   │ HTTP
 本地服务：项目管理 / 刷新调度 / 快照查询
                   │
@@ -43,6 +44,21 @@
 | SnapshotBuilder | 归集任务、清单和文档，解析显式关联，汇总冲突及警告。 |
 | SnapshotStore | 按项目保存最近快照及刷新结果；刷新成功后整体替换，避免页面读到半成品。 |
 | Web UI | 查询并展示快照；不直接访问文件系统，也不理解 vNext 内部存储。 |
+| ProductReader / Parser / Index | 单一 manifest 的当前定义、完整条目元数据、来源定位、业务关系、计划工作项、TaskBinding 与范围化报告；与普通任务提取分开。 |
+
+浏览器另增加“需求”和“规划”。`src/shared/product-types.ts` 定义内存视图；`src/server/product-parser.ts` 使用固定生产 Schema 与根级二级／三级标题；`product.ts` 枚举 managed_paths、读取精确来源并记录覆盖，`product-index.ts` 计算只读正反索引和诊断。`src/web/product.tsx`、`product-relations.tsx` 接入既有任务、原文与局部图。资产来源和许可见 [固定资产说明](product-assets.md)。
+
+`SnapshotReader` 由每次扫描创建，导航、通用正文、PRODUCT、来源与 adopted-plan 共用同一字节缓存、失败缓存和全局预算。PRODUCT 先核对入口和排除；排除不能通过通用规则或已采用计划绕过。managed 当前定义与 product-source 原文角色分别保留；只有 managed 解析结果进入 product.items。来源不加入导航队列，不递归扩张 source_paths；页面仅消费快照。
+
+PRODUCT 配置为可选 `product: {enabled, manifestPath?}`，旧配置缺省为关闭；进入配置指纹和 configVersion。添加预览显示入口与范围，勾选确认后首次扫描；配置修改保存后必须手动刷新。高级入口只接受精确 YAML 路径，不合并 manifest。PRODUCT 入口损坏不使用通用导航的旧登记恢复策略。
+
+条目 key 用工作副本根、PRODUCT project_id 与大小写敏感 item_id 计算，与登记 ID／文件路径键分开；工作项另包括 plan_id。真实 `Task.taskId`、身份来源、冲突与原有 UI id／number 分离。TaskBinding 完整声明保留 origin、state、coverage、plan_items、repairs 等，导航只在真实身份和来源不矛盾时建立；多个任务文档的状态并列保留。
+
+SourceRef 三种原始类型保留，核对结果分别记录 readState、locationState、digestState。精确本地来源可读取 Markdown／YAML／JSON／TXT，包含允许范围内单个 records 文件；Runtime 分发和 journal 不进入产品扫描。URI 不自动抓取。读取完成不代表结构、盘点或交付完成。body 在 Markdown AST 根二级标题边界内完整保存，正文分段渲染用原文件绝对行偏移，元数据指针也保存绝对行。
+
+assessment 仅按 requirement.assessment_id 选择；对目标、当前定义摘要、历史可恢复内容、历史定义摘要、报告对象和 pending_sources 独立核对。需求定义摘要原算法排除任务绑定、报告选择与来源，文件字节摘要不混用 Git SHA。已否定关系保留数据与理由，可在详情查看；主图默认隐藏，完整业务依据列表仍显示。业务边按声明独立呈现，不按起终点吞并覆盖、origin 或 state。
+
+官方 `tests/vendor/product/offline-reader.mjs` 只在隔离合成夹具对照中运行，生产服务不导入、执行或 shell-out。固定来源样例保留隐藏目录、字节和许可；不从网络动态下载契约。解析语法损坏时保留整文件，安全定位的单坏项降级；重复 ID 禁止歧义业务连接。manifest 撤回退出当前集合，整体失败保留整份旧快照。
 
 当前任务与当前步骤只取 Profile 的 `workflow_home/CURRENT_TASK.md`（无有效 Profile 时使用默认入口）。历史归档仍可阅读，但不会作为概览的当前来源。生成的 `vnext-task-view` 从 `Current work` 提取 Task 和 Step，不从 Tasks 表推断执行焦点；未明确焦点或入口缺失时保留空状态。这里展示的是文档快照，不查询 Runtime 的实时状态。
 

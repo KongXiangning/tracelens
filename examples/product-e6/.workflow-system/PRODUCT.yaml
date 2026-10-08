@@ -1,0 +1,8 @@
+schema: vnext-product-manifest/v2
+project_id: example-e6
+entry: docs/product/PROJECT.md
+managed_paths: [docs/product/*.md]
+source_paths: [docs/evidence/**, docs/product/raw/**]
+capture_paths: []
+exclude_paths: []
+maintenance: enabled

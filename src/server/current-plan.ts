@@ -1,13 +1,14 @@
 import path from "node:path";
 import type { Entry, Project, SourceRef } from "../shared/types.js";
 import { documentPathKey, safePattern } from "./config.js";
-import { limits, matches, readBounded, type ScanResult } from "./scanner.js";
+import type { ScanResult } from "./scanner.js";
 import {
   parseInput,
   stableId,
   type Parsed,
   type PendingReference,
 } from "./parser.js";
+import { productExcluded } from "./product.js";
 
 // Follow only the explicit adopted-plan record. Never enumerate or replay the journal.
 export async function attachCurrentPlan(
@@ -57,24 +58,14 @@ export async function attachCurrentPlan(
       path.posix.normalize(filename) !== filename
     )
       throw new Error("计划引用路径不安全");
-    if (
-      project.config.excludes.some(
-        (p) => matches(filename, p) || matches(`${filename}/`, p),
-      )
-    )
+    if (productExcluded(project, scan.product.view.manifest, filename))
       throw new Error("计划引用被显式排除");
     const existing = parsed.find(
       (p) => documentPathKey(p.document.path) === documentPathKey(filename),
     );
     if (existing) return existing.document;
     // Explicit records are bounded reads even when general historical records are disabled.
-    const input = await readBounded(project.root, filename, true);
-    const bytes = parsed.reduce((sum, p) => sum + p.document.bytes, 0);
-    if (
-      parsed.length >= limits.files ||
-      bytes + input.bytes > limits.totalBytes
-    )
-      throw new Error("计划引用超过扫描文件或字节上限");
+    const input = await scan.reader.read(filename, true);
     return { ...input, kind: "management" as const };
   }
   function register(item: Parsed, from: SourceRef, label: string) {

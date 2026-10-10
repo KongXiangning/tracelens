@@ -138,6 +138,38 @@ async function refresh() {
   await visible(page.getByRole("button", { name: "刷新", exact: true }));
   return result;
 }
+async function renameFixture(source, destination) {
+  for (const target of [source, destination]) {
+    const relative = path.relative(run, path.resolve(target));
+    assert.ok(
+      relative && !relative.startsWith("..") && !path.isAbsolute(relative),
+      "Fixture moves must stay inside this acceptance run",
+    );
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      if (
+        process.platform !== "win32" ||
+        !["EPERM", "EBUSY"].includes(error.code) ||
+        attempt >= 5
+      )
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+}
+async function saveAndRefresh() {
+  const response = page.waitForResponse(
+    (r) => r.url().endsWith("/refresh") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "保存并刷新", exact: true }).click();
+  const result = await (await response).json();
+  await visible(page.getByRole("button", { name: "刷新", exact: true }));
+  return result;
+}
 async function add(root, name, empty = false, codex = false) {
   await page
     .getByRole("button", { name: "添加项目", exact: true })
@@ -166,6 +198,10 @@ async function add(root, name, empty = false, codex = false) {
   await page.getByRole("textbox", { name: "项目名称", exact: true }).fill(name);
   if (empty) {
     await page.getByText("高级扫描设置", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "使用自定义读取配置" }).check();
+    await page
+      .getByRole("checkbox", { name: "启用标准产品文档读取" })
+      .uncheck();
     await page
       .getByRole("checkbox", { name: "刷新时从 vNext 文档入口自动发现" })
       .uncheck();
@@ -238,6 +274,21 @@ try {
   });
   await page.goto(base);
   await visible(page.getByRole("heading", { name: "正在连接本地服务" }));
+  const startupSidebar = await page.locator(".sidebar").evaluate((element) => ({
+    background: getComputedStyle(element).backgroundColor,
+    width: element.getBoundingClientRect().width,
+  }));
+  assert.deepEqual(startupSidebar, {
+    background: "rgb(247, 251, 255)",
+    width: 190,
+  });
+  assert.equal(
+    await page
+      .locator(".modern-shell .brand-icon .lucide-layout-dashboard")
+      .count(),
+    1,
+  );
+  await visible(page.getByRole("navigation", { name: "主导航" }));
   await screenshot("loading");
   const loadedProjects = page.waitForResponse(
     (r) => r.url().endsWith("/api/projects") && r.request().method() === "GET",
@@ -248,6 +299,20 @@ try {
   await visible(page.getByRole("heading", { name: "添加你的第一个项目" }));
   await screenshot("empty");
   await nav("vNext 使用说明");
+  assert.deepEqual(
+    await page.locator(".sidebar").evaluate((element) => ({
+      background: getComputedStyle(element).backgroundColor,
+      width: element.getBoundingClientRect().width,
+    })),
+    startupSidebar,
+    "Navigation shell stays modern on legacy page content",
+  );
+  assert.equal(
+    await page
+      .locator(".modern-shell .brand-icon .lucide-layout-dashboard")
+      .count(),
+    1,
+  );
   await visible(
     page.getByRole("heading", { name: "vNext 使用说明", exact: true }),
   );
@@ -326,6 +391,11 @@ try {
   await page.getByRole("button", { name: "取消", exact: true }).click();
   const a = await add(alpha, "Alpha · 中文与长路径", false, true);
   const before = await view(a.id);
+  await page
+    .locator(".diagnostics > details")
+    .first()
+    .locator("summary")
+    .click();
   await visible(
     page
       .getByText("配置文件缺失")
@@ -418,21 +488,21 @@ try {
     "Overview > task > resolved section > raw source > reverse graph edge evidence and clickable task node; browsing never scanned; injection blocked",
   );
 
-  await page.getByRole("button", { name: "配置扫描范围", exact: true }).click();
+  await page.getByRole("button", { name: "项目设置", exact: true }).click();
+  await page.getByText("高级扫描设置", { exact: true }).click();
+  await page.getByRole("checkbox", { name: "使用自定义读取配置" }).check();
   await page
     .getByRole("textbox", { name: "排除规则", exact: true })
     .fill("docs/design/unknown.md");
-  await page.getByRole("button", { name: "保存配置", exact: true }).click();
-  await visible(page.getByText("配置已变更，需刷新", { exact: true }));
-  assert.equal((await view(a.id)).snapshot.id, before.snapshot.id);
+  const saved = await saveAndRefresh();
+  assert.notEqual(saved.snapshot.id, before.snapshot.id);
   assert.equal(
     await page
       .locator(".document-item")
       .filter({ hasText: "unknown.md" })
       .count(),
-    1,
+    0,
   );
-  await refresh();
   assert.equal(
     await page
       .locator(".document-item")
@@ -441,7 +511,7 @@ try {
     0,
   );
   steps.push(
-    "Configuration saves without scanning; old scope is displayed until explicit refresh and exclusion removes document",
+    "Configuration saves and refreshes immediately; exclusion removes the document from the new snapshot",
   );
 
   const taskFile = path.join(alpha, "docs/workflow/CURRENT_TASK.md");
@@ -505,20 +575,34 @@ try {
     path.join(alpha, "docs/design/binary.md"),
     Buffer.from([0xff, 0, 1]),
   );
-  await page.getByRole("button", { name: "配置扫描范围", exact: true }).click();
+  await page.getByRole("button", { name: "项目设置", exact: true }).click();
+  await page.getByText("高级扫描设置", { exact: true }).click();
+  await page.getByRole("checkbox", { name: "使用自定义读取配置" }).check();
   await page
     .getByRole("textbox", { name: "设计文档", exact: true })
     .fill("docs/design/*.md");
-  await page.getByRole("button", { name: "保存配置", exact: true }).click();
+  await saveAndRefresh();
   await writeFile(
     path.join(alpha, ".workflow-system/PROJECT_PROFILE.yaml"),
     "paths: [broken",
   );
   const partial = await refresh();
   assert.equal(partial.attempt.state, "partial");
+  assert.ok(
+    partial.snapshot.warnings.some((warning) => warning.code === "profile"),
+  );
   await nav("概览");
+  await page
+    .locator(".diagnostics > details")
+    .first()
+    .locator("summary")
+    .click();
   await visible(page.getByText("读取失败：", { exact: false }));
-  await visible(page.getByText("YAML 解析失败", { exact: false }));
+  await visible(
+    page
+      .locator(".diagnostics")
+      .getByText("Profile 无法提取", { exact: false }),
+  );
   await screenshot("partial");
   steps.push(
     "Real sample mutations: edit task, add/delete documents, pending refresh keeps old content, read and YAML failure publish usable partial snapshot",
@@ -541,7 +625,7 @@ try {
     }),
   );
   const old = await view(a.id);
-  await rename(alpha, `${alpha}-moved`);
+  await renameFixture(alpha, `${alpha}-moved`);
   const failed = await refresh();
   assert.equal(failed.attempt.state, "failed");
   assert.equal(failed.snapshot.id, old.snapshot.id);
@@ -550,7 +634,7 @@ try {
   await screenshot("failed-old-snapshot");
   await nav("任务");
   await visible(page.getByRole("heading", { name: longTitle, exact: true }));
-  await rename(`${alpha}-moved`, alpha);
+  await renameFixture(`${alpha}-moved`, alpha);
   await stop();
   await start();
   await page.reload();
@@ -627,9 +711,7 @@ try {
       await noOverflow();
       await screenshot(`${size.width}-${name}`);
     }
-    await page
-      .getByRole("button", { name: "配置扫描范围", exact: true })
-      .click();
+    await page.getByRole("button", { name: "项目设置", exact: true }).click();
     await noOverflow();
     await screenshot(`${size.width}-configuration`);
     await page.getByRole("button", { name: "取消", exact: true }).click();
@@ -658,11 +740,28 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   const g = await add(gamma, "Gamma · vNext 自动导航");
+  await visible(page.getByRole("heading", { name: "vNext 文档", exact: true }));
   await visible(
-    page.getByRole("heading", { name: "文档登记与缺口", exact: true }),
+    page.getByText("自动跟随 vNext 的文档登记。", { exact: false }),
   );
-  await visible(page.getByText("用户需求完整性：尚未确认。", { exact: false }));
-  const firstGamma = (await view(g.id)).snapshot;
+  let firstGamma = (await view(g.id)).snapshot;
+  assert.ok(
+    firstGamma.documents.some((d) => d.path === "docs/disconnected-design.md"),
+  );
+  assert.notEqual(
+    firstGamma.navigation.entries.find(
+      (entry) => entry.path === "docs/disconnected-design.md",
+    ).classification,
+    "declared",
+  );
+  steps.push(
+    "vNext mode reads all standard-directory documents without requiring file registration or classification",
+  );
+  await page.getByRole("button", { name: "项目设置", exact: true }).click();
+  await page.getByText("高级扫描设置", { exact: true }).click();
+  await page.getByRole("checkbox", { name: "使用自定义读取配置" }).check();
+  await saveAndRefresh();
+  firstGamma = (await view(g.id)).snapshot;
   assert.equal(
     firstGamma.documents.find((d) => d.path === "docs/product/requirements.md")
       .kind,
@@ -685,6 +784,7 @@ try {
   assert.ok(
     !firstGamma.documents.some((d) => d.path === "docs/disconnected-design.md"),
   );
+  await page.locator(".navigation-audit > details > summary").click();
   const candidatePanel = page.locator(".navigation-audit .candidate-documents");
   await candidatePanel.locator(":scope > summary").click();
   await page
@@ -704,7 +804,8 @@ try {
   await page.getByRole("textbox", { name: "搜索未登记文档" }).fill("");
   assert.equal((await view(g.id)).snapshot.id, firstGamma.id);
   await page
-    .getByRole("button", { name: "文档整理提示词", exact: true })
+    .getByRole("button", { name: "交给 vNext 整理", exact: true })
+    .first()
     .click();
   const prompt = await page
     .getByRole("textbox", { name: "文档整理提示词", exact: true })
@@ -753,7 +854,7 @@ try {
   await visible(page.locator(".document-item").filter({ hasText: "misc.md" }));
   await nav("概览");
   await page
-    .locator(".navigation-audit summary")
+    .locator(".navigation-audit > details > summary")
     .first()
     .evaluate((el) => {
       el.parentElement.open = true;
@@ -774,7 +875,7 @@ try {
   ]) {
     await page.setViewportSize(size);
     await page
-      .locator(".navigation-audit summary")
+      .locator(".navigation-audit > details > summary")
       .first()
       .evaluate((el) => {
         el.parentElement.open = true;
@@ -790,7 +891,8 @@ try {
     await screenshot(`${size.width}-candidate-documents`);
     if (size.width === 390) {
       await page
-        .getByRole("button", { name: "文档整理提示词", exact: true })
+        .getByRole("button", { name: "交给 vNext 整理", exact: true })
+        .first()
         .click();
       await noOverflow();
       await screenshot("390-organization-prompt");
@@ -803,7 +905,9 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   const beforeCandidateConfig = (await view(g.id)).snapshot.id;
-  await page.getByRole("button", { name: "配置扫描范围", exact: true }).click();
+  await page.getByRole("button", { name: "项目设置", exact: true }).click();
+  await page.getByText("高级扫描设置", { exact: true }).click();
+  await page.getByRole("checkbox", { name: "使用自定义读取配置" }).check();
   await page
     .getByRole("checkbox", {
       name: "允许读取 records 目录中的 Markdown / YAML 文档",
@@ -815,15 +919,14 @@ try {
   await page
     .getByRole("textbox", { name: "设计文档", exact: true })
     .fill("docs/disconnected-design.md");
-  await page.getByRole("button", { name: "保存配置", exact: true }).click();
-  await visible(page.getByText("配置已变更，需刷新", { exact: true }));
+  await saveAndRefresh();
   const storedCandidateConfig = (await projects()).find(
     (p) => p.id === g.id,
   ).config;
   assert.equal(storedCandidateConfig.includeRecords, true);
   assert.deepEqual(storedCandidateConfig.candidateRoots, ["docs"]);
-  assert.equal((await view(g.id)).snapshot.id, beforeCandidateConfig);
-  const includedCandidates = (await refresh()).snapshot;
+  assert.notEqual((await view(g.id)).snapshot.id, beforeCandidateConfig);
+  const includedCandidates = (await view(g.id)).snapshot;
   assert.ok(
     includedCandidates.documents.some(
       (d) =>
@@ -842,7 +945,7 @@ try {
     ),
   );
   steps.push(
-    "Candidate inventory and search distinguish unregistered files without reading bodies; project-agent prompt includes candidates; records opt-in and candidate roots persist without implicit refresh; explicit inclusion reads the document; desktop/mobile candidate layouts",
+    "Candidate inventory and search distinguish unregistered files without reading bodies; project-agent prompt includes candidates; custom records and candidate roots persist and save refreshes immediately; explicit inclusion reads the document; desktop/mobile candidate layouts",
   );
   await unlink(gammaIndexFile);
   await writeFile(
@@ -862,8 +965,14 @@ try {
       .find((d) => d.path === "docs/requirements/added.md")
       .raw.includes("重新读取的新正文"),
   );
+  const remainingIssues = page.locator(
+    ".navigation-audit .document-summary details > summary",
+  );
+  if (await remainingIssues.count()) await remainingIssues.click();
   await visible(
-    page.getByText("本次导航核对不完整，请查看导航与读取提示", { exact: true }),
+    page.getByText("本次导航核对不完整，已读内容仍可浏览，详情见读取诊断", {
+      exact: true,
+    }),
   );
   await page.locator(".navigation-audit").scrollIntoViewIfNeeded();
   await screenshot("deleted-index-diagnostics");

@@ -12,9 +12,13 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { api } from "./api";
-import { productStatusLabels } from "./product-labels";
+import { normalizeReadConfig } from "../shared/scan-config";
 import { ProjectPicker } from "./project-picker";
-import { CandidateList, RegistrationList } from "./navigation-audit";
+import {
+  CandidateList,
+  DocumentSummary,
+  RegistrationList,
+} from "./navigation-audit";
 import {
   kinds,
   kindLabels,
@@ -198,13 +202,15 @@ export function ProjectForm({
   const [name, setName] = useState(project?.name || "");
   const [root, setRoot] = useState(project?.root || "");
   const [config, setConfig] = useState<ScanConfig>(
-    project?.config || {
-      rules: { management: [], requirements: [], design: [], planning: [] },
-      excludes: [],
-    },
+    normalizeReadConfig(
+      project?.config || {
+        rules: { management: [], requirements: [], design: [], planning: [] },
+        excludes: [],
+      },
+    ),
   );
   const [confirmed, setConfirmed] = useState(Boolean(project));
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(Boolean(project));
   const [error, setError] = useState("");
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   async function discover(selectedRoot: string, selectedName?: string) {
@@ -218,13 +224,7 @@ export function ProjectForm({
         { root: selectedRoot },
         "POST",
       );
-      // Discovery is only a preview; it never opts the user into PRODUCT reads.
-      setConfig({
-        ...result.config,
-        product: result.config.product
-          ? { ...result.config.product, enabled: false }
-          : undefined,
-      });
+      setConfig(result.config);
       setDiscovery(result);
       setConfirmed(true);
       setName(
@@ -238,7 +238,7 @@ export function ProjectForm({
       setBusy(false);
     }
   }
-  async function previewProduct() {
+  async function previewDocuments() {
     setBusy(true);
     setError("");
     try {
@@ -254,10 +254,34 @@ export function ProjectForm({
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!project) return;
+    let current = true;
+    void api<Discovery>(
+      "/discover",
+      {
+        root: project.root,
+        config: normalizeReadConfig(project.config),
+      },
+      "POST",
+    )
+      .then((result) => {
+        if (current) setDiscovery(result);
+      })
+      .catch((error) => {
+        if (current)
+          setError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (current) setBusy(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [project]);
   const manifestPath =
     config.product?.manifestPath ?? ".workflow-system/PRODUCT.yaml";
-  const productPreview =
-    discovery?.product?.path === manifestPath ? discovery.product : undefined;
+  const custom = config.readingMode === "custom";
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!confirmed || busy) return;
@@ -274,7 +298,7 @@ export function ProjectForm({
   }
   return (
     <Modal
-      title={project ? "项目与扫描范围" : "添加本地项目"}
+      title={project ? "项目设置" : "添加本地项目"}
       close={() => {
         if (!busy) close();
       }}
@@ -332,203 +356,173 @@ export function ProjectForm({
                 />
               </label>
               <div className="form-section">
-                <h3>文档发现预览</h3>
-                {discovery && (
-                  <>
-                    <RegistrationList report={discovery.navigation} />
-                    <CandidateList report={discovery.navigation} />
-                  </>
+                {discovery ? (
+                  <DocumentSummary
+                    report={discovery.navigation}
+                    product={discovery.productRead || discovery.product}
+                    projectName={name}
+                    root={root}
+                  />
+                ) : (
+                  <p className="muted">
+                    {busy
+                      ? "正在读取 vNext 文档登记…"
+                      : "读取预览暂不可用，可保存后重新扫描。"}
+                  </p>
                 )}
-                <section
-                  className="product-config"
-                  aria-label="PRODUCT 发现预览"
-                >
-                  <div className="section-heading">
-                    <h3>标准产品文档 PRODUCT</h3>
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => void previewProduct()}
-                    >
-                      预览 PRODUCT 范围
-                    </button>
-                  </div>
-                  <code>{manifestPath}</code>
-                  {productPreview ? (
-                    <>
-                      <p>
-                        <strong>
-                          {productStatusLabels[productPreview.status]}
-                        </strong>
-                        {productPreview.projectId &&
-                          ` · ${productPreview.projectId}`}
-                      </p>
-                      <dl className="product-fields">
-                        <dt>将读取的当前定义</dt>
-                        <dd>
-                          <pre>
-                            {productPreview.managedPaths.join("\n") ||
-                              "未获得有效范围"}
-                          </pre>
-                        </dd>
-                        <dt>明确引用来源许可</dt>
-                        <dd>
-                          <pre>
-                            {productPreview.sourcePaths.join("\n") || "无"}
-                          </pre>
-                          <small>
-                            仅读取条目直接引用的具体文件，不递归扫描来源目录。
-                          </small>
-                        </dd>
-                      </dl>
-                      {productPreview.maintenance === "paused" && (
-                        <p className="muted">维护已暂停，但允许只读查看。</p>
-                      )}
-                      {productPreview.diagnostics.map((entry, i) => (
-                        <p className="warning-text" key={i}>
-                          {entry.code} · {entry.message}
-                        </p>
-                      ))}
-                    </>
-                  ) : (
-                    <p className="muted">
-                      先预览所选入口，核对将读取的范围。预览不会启用或发布产品快照。
-                    </p>
-                  )}
-                  <label className="checkbox-label">
-                    <input
-                      aria-label="启用标准产品文档读取"
-                      type="checkbox"
-                      checked={Boolean(config.product?.enabled)}
-                      disabled={
-                        busy || (!productPreview && !config.product?.enabled)
-                      }
-                      onChange={(event) =>
-                        setConfig({
-                          ...config,
-                          product: {
-                            enabled: event.target.checked,
-                            manifestPath,
-                          },
-                        })
-                      }
-                    />
-                    我已核对范围，启用标准产品文档读取
-                  </label>
-                  <p className="muted">
-                    与通用自动发现、records 开关独立。
-                    {project
-                      ? "保存配置后需手动刷新才能生效。"
-                      : "仅勾选后，添加并扫描才会读取 PRODUCT 登记的当前定义和精确来源。"}
-                  </p>
-                </section>
-                <details className="advanced-scope" open={Boolean(project)}>
+                <details className="advanced-scope">
                   <summary>高级扫描设置</summary>
-                  <label>
-                    PRODUCT 入口相对路径
-                    <input
-                      aria-label="PRODUCT 入口相对路径"
-                      value={manifestPath}
-                      disabled={busy}
-                      onChange={(event) =>
-                        setConfig({
-                          ...config,
-                          product: {
-                            enabled: false,
-                            manifestPath: event.target.value,
-                          },
-                        })
-                      }
-                    />
-                    <small>
-                      一次只使用一个入口。更换路径后请重新预览并明确启用。
-                    </small>
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.autoDiscover)}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setConfig({ ...config, autoDiscover: e.target.checked })
-                      }
-                    />
-                    刷新时从 vNext 文档入口自动发现
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.includeRecords)}
-                      disabled={busy}
-                      onChange={(event) =>
-                        setConfig({
-                          ...config,
-                          includeRecords: event.target.checked,
-                        })
-                      }
-                    />
-                    允许读取 records 目录中的 Markdown / YAML 文档
-                  </label>
-                  {config.autoDiscover && (
-                    <label>
-                      候选文档盘点目录（每行一个项目相对目录）
-                      <textarea
-                        rows={2}
-                        value={(
-                          config.candidateRoots ?? ["docs", "TASKS"]
-                        ).join("\n")}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setConfig({
-                            ...config,
-                            candidateRoots: event.target.value.split("\n"),
-                          })
-                        }
-                      />
-                      <small>
-                        仅列出未登记文件；清空后停用候选盘点。盘点不会将文件自动登记为需求或设计。
-                      </small>
-                    </label>
-                  )}
                   <p className="muted">
-                    {config.autoDiscover
-                      ? "以下规则补充或覆盖自动分类；排除规则优先。"
-                      : "仅扫描以下手动范围。"}
+                    通常无需调整。vNext
+                    负责维护文档结构和登记；自定义读取用于兼容旧项目或排查读取问题。
                   </p>
-                  {discovery?.warnings.map((w, i) => (
-                    <p key={i} className="warning-text">
-                      {w.message}
-                    </p>
-                  ))}
-                  <div className="rule-fields">
-                    {kinds.map((kind) => (
-                      <label key={kind}>
-                        {kindLabels[kind]}文档
-                        <textarea
-                          rows={kind === "management" ? 5 : 2}
-                          value={config.rules[kind].join("\n")}
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={custom}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setConfig(
+                          normalizeReadConfig({
+                            ...config,
+                            readingMode: event.target.checked
+                              ? "custom"
+                              : "vnext",
+                          }),
+                        )
+                      }
+                    />
+                    使用自定义读取配置
+                  </label>
+                  {custom && (
+                    <>
+                      <label className="checkbox-label">
+                        <input
+                          aria-label="启用标准产品文档读取"
+                          type="checkbox"
+                          checked={Boolean(config.product?.enabled)}
                           disabled={busy}
-                          placeholder={
-                            kind === "requirements"
-                              ? "docs/requirements.md"
-                              : kind === "design"
-                                ? "docs/design/**/*.md"
-                                : ""
-                          }
-                          onChange={(e) =>
+                          onChange={(event) =>
                             setConfig({
                               ...config,
-                              rules: {
-                                ...config.rules,
-                                [kind]: e.target.value.split("\n"),
+                              product: {
+                                enabled: event.target.checked,
+                                manifestPath,
                               },
                             })
                           }
                         />
+                        读取标准产品文档
                       </label>
-                    ))}
-                  </div>
+                      <label>
+                        PRODUCT 入口相对路径
+                        <input
+                          aria-label="PRODUCT 入口相对路径"
+                          value={manifestPath}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setConfig({
+                              ...config,
+                              product: {
+                                enabled: Boolean(config.product?.enabled),
+                                manifestPath: event.target.value,
+                              },
+                            })
+                          }
+                        />
+                        <small>
+                          一次只使用一个入口；默认跟随 vNext 的标准位置。
+                        </small>
+                      </label>
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.autoDiscover)}
+                          disabled={busy}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              autoDiscover: e.target.checked,
+                            })
+                          }
+                        />
+                        刷新时从 vNext 文档入口自动发现
+                      </label>
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.includeRecords)}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setConfig({
+                              ...config,
+                              includeRecords: event.target.checked,
+                            })
+                          }
+                        />
+                        允许读取 records 目录中的 Markdown / YAML 文档
+                      </label>
+                      {config.autoDiscover && (
+                        <label>
+                          候选文档盘点目录（每行一个项目相对目录）
+                          <textarea
+                            rows={2}
+                            value={(
+                              config.candidateRoots ?? ["docs", "TASKS"]
+                            ).join("\n")}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setConfig({
+                                ...config,
+                                candidateRoots: event.target.value.split("\n"),
+                              })
+                            }
+                          />
+                          <small>
+                            仅列出未登记文件；清空后停用候选盘点。盘点不会将文件自动登记为需求或设计。
+                          </small>
+                        </label>
+                      )}
+                      <p className="muted">
+                        {config.autoDiscover
+                          ? "以下规则补充或覆盖自动分类；排除规则优先。"
+                          : "仅扫描以下手动范围。"}
+                      </p>
+                      {discovery?.warnings.map((w, i) => (
+                        <p key={i} className="warning-text">
+                          {w.message}
+                        </p>
+                      ))}
+                      <div className="rule-fields">
+                        {kinds.map((kind) => (
+                          <label key={kind}>
+                            {kindLabels[kind]}文档
+                            <textarea
+                              rows={kind === "management" ? 5 : 2}
+                              value={config.rules[kind].join("\n")}
+                              disabled={busy}
+                              placeholder={
+                                kind === "requirements"
+                                  ? "docs/requirements.md"
+                                  : kind === "design"
+                                    ? "docs/design/**/*.md"
+                                    : ""
+                              }
+                              onChange={(e) =>
+                                setConfig({
+                                  ...config,
+                                  rules: {
+                                    ...config.rules,
+                                    [kind]: e.target.value.split("\n"),
+                                  },
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   <label>
                     排除规则
                     <textarea
@@ -550,6 +544,24 @@ export function ProjectForm({
                     adopted-plan 的精确来源可包括 JSON / TXT。 records
                     默认跳过，可通过上方选项允许；允许后仍需通过文档导航或手动规则纳入正文扫描。
                   </p>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void previewDocuments()}
+                  >
+                    更新读取预览
+                  </button>
+                  {discovery && (
+                    <details>
+                      <summary>
+                        文档登记与读取详情 ·{" "}
+                        {discovery.navigation.entries.length} 项
+                      </summary>
+                      <RegistrationList report={discovery.navigation} />
+                      <CandidateList report={discovery.navigation} />
+                    </details>
+                  )}
                 </details>
               </div>
             </>
@@ -578,7 +590,7 @@ export function ProjectForm({
             ) : (
               <Plus size={16} />
             )}
-            {project ? "保存配置" : "添加并扫描"}
+            {project ? "保存并刷新" : "添加并扫描"}
           </button>
         </div>
       </form>

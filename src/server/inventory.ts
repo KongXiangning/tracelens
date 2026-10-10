@@ -30,6 +30,10 @@ export async function inventoryDocuments(
     else report.incomplete = true;
   }
   function exclusion(relative: string): string | null {
+    if (sharedExclusion) {
+      const reason = sharedExclusion(relative);
+      return reason === "文件路径超出允许范围" ? "默认跳过的目录" : reason;
+    }
     if (blockedPath(relative, config.includeRecords)) return "默认跳过的目录";
     if (
       config.excludes.some(
@@ -37,7 +41,7 @@ export async function inventoryDocuments(
       )
     )
       return "扫描配置已排除";
-    return sharedExclusion?.(relative) || null;
+    return null;
   }
   async function walk(relative: string, depth: number): Promise<void> {
     const key = documentPathKey(relative);

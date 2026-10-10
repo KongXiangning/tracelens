@@ -1,4 +1,6 @@
 import path from "node:path";
+import { productStructureIssue } from "../shared/product-health.js";
+import { createGlobCoverageCheck } from "./product-glob-coverage.js";
 import { lstat, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { toString } from "mdast-util-to-string";
@@ -84,7 +86,10 @@ function excluded(
   manifest?: ProductManifest,
   source = false,
 ): string | null {
-  if (productBlocked(filename, source))
+  const documentRecords =
+    config.readingMode === "vnext" &&
+    filename.toLowerCase().startsWith("docs/");
+  if (productBlocked(filename, source || documentRecords))
     return "安全边界排除（不扫描 Runtime、journal、依赖或构建目录）";
   if (
     config.excludes.some(
@@ -337,10 +342,21 @@ export async function readProduct(
       itemId: item?.id,
       source: item?.source,
     });
-  const omit = (relative: string, reason: string) => {
+  const omit = (
+    relative: string,
+    reason: string,
+    code = "PRODUCT_READ_OMITTED",
+    severity: ProductDiagnostic["severity"] = "warning",
+  ) => {
     product.coverage.complete = false;
+    if (
+      product.coverage.omitted.some(
+        (entry) => entry.path === relative && entry.reason === reason,
+      )
+    )
+      return;
     product.coverage.omitted.push({ path: relative, reason });
-    diagnostic("PRODUCT_READ_OMITTED", reason, relative);
+    diagnostic(code, reason, relative, undefined, severity);
   };
   const addInput = (input: Omit<InputFile, "kind">, managed = false) => {
     const key = documentPathKey(input.path);
@@ -412,12 +428,22 @@ export async function readProduct(
   let visits = 0;
   let stopped = false;
   const visited = new Set<string>();
-  const excludedCurrent = (p: string) =>
-    excluded(p, project.config, manifest) ||
-    (/(^|\/)(history|raw)(\/|$)/i.test(p) ||
-    (manifest.capture_paths || []).some((pattern) => productMatches(p, pattern))
-      ? "历史/原文只作明确来源，不进入当前定义"
-      : null);
+  const explicitPatterns = [
+    ...manifest.exclude_paths,
+    ...project.config.excludes.filter(
+      (pattern) => productPath(pattern, true) && !/[()|!]/.test(pattern),
+    ),
+  ];
+  const explicitlyExcluded = (p: string) =>
+    matchesProductPath(p, manifest.exclude_paths) ||
+    manifest.exclude_paths.some(
+      (pattern) =>
+        pattern.endsWith("/**") && productMatches(p, pattern.slice(0, -3)),
+    ) ||
+    project.config.excludes.some(
+      (pattern) => matches(p, pattern) || matches(`${p}/`, pattern),
+    );
+  let scopeExcluded: ReturnType<typeof createGlobCoverageCheck> | undefined;
   async function walk(
     relative: string,
     pattern: string,
@@ -427,9 +453,38 @@ export async function readProduct(
     const key = `${pattern}\0${relative}`;
     if (visited.has(key) || stopped) return;
     visited.add(key);
-    const exclude = relative && excludedCurrent(relative);
-    if (exclude) {
-      product.coverage.excluded.push({ path: relative, reason: exclude });
+    if (relative && explicitlyExcluded(relative)) {
+      if (!product.coverage.excluded.some((entry) => entry.path === relative))
+        product.coverage.excluded.push({
+          path: relative,
+          reason: "显式读取规则排除",
+        });
+      return;
+    }
+    if (relative && excluded(relative, project.config, manifest)) {
+      // A default safety exclusion is an unread selected range. Only a proof
+      // that the selected descendants are explicitly excluded removes this gap.
+      if (
+        explicitPatterns.length &&
+        !matchesProductPath(relative, manifest.managed_paths)
+      ) {
+        scopeExcluded ??= createGlobCoverageCheck(
+          manifest.managed_paths,
+          explicitPatterns,
+        );
+        if (scopeExcluded(relative)) {
+          product.coverage.excluded.push({
+            path: relative,
+            reason: "所选子范围已全部显式排除",
+          });
+          return;
+        }
+      }
+      omit(
+        relative,
+        "登记范围命中默认安全排除，未读取；可由 vNext 核对文档位置或明确排除该范围",
+        "IMPLICIT_PATH_EXCLUDED",
+      );
       return;
     }
     if (++visits > limits.entries || depth > limits.depth) {
@@ -442,7 +497,7 @@ export async function readProduct(
       await assertNoLinks(absolute);
       const stat = await lstat(absolute);
       if (globPrefix && !stat.isDirectory()) {
-        omit(pattern, "glob 的固定目录前缀不是目录");
+        omit(relative || pattern, "glob 的固定目录前缀不是目录");
         return;
       }
       if (stat.isDirectory()) {
@@ -489,11 +544,20 @@ export async function readProduct(
       "entry 未被 managed_paths 登记",
       manifest.entry,
     );
-  else if (!selected.has(manifest.entry) && !excludedCurrent(manifest.entry))
+  else if (!selected.has(manifest.entry) && !explicitlyExcluded(manifest.entry))
     await walk(manifest.entry, manifest.entry);
   const namespace = `product:${hash(`${project.root}\0${manifest.project_id}`)}`;
   for (const relative of selected) {
     try {
+      if (matchesProductPath(relative, manifest.capture_paths || [])) {
+        omit(
+          relative,
+          "原文／历史捕获位置与当前定义重叠，未作为当前条目读取",
+          "CURRENT_RAW_OVERLAP",
+          "error",
+        );
+        continue;
+      }
       if (!/\.(md|markdown)$/i.test(relative)) {
         omit(relative, "标准条目只支持 Markdown；保留登记，未作为当前定义解析");
         continue;
@@ -565,9 +629,6 @@ export async function readProduct(
         ) {
           check.readState = "outside";
           check.detail = "来源未在 managed_paths 或 source_paths 有效范围内";
-        } else if (!/\.(md|markdown|ya?ml|json|txt)$/i.test(relative)) {
-          check.readState = "unsupported";
-          check.detail = "只支持明确引用的 Markdown、YAML、JSON、TXT 来源";
         } else
           try {
             const input = addInput(await session.read(relative, true));
@@ -622,7 +683,7 @@ export async function readProduct(
     }
   }
   product.status =
-    product.diagnostics.some((d) => d.severity !== "info") ||
+    product.diagnostics.some(productStructureIssue) ||
     product.items.some((i) => !i.usable) ||
     !product.coverage.complete
       ? "partial"

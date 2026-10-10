@@ -145,7 +145,7 @@ function SnapshotDiagnostics({
 }) {
   return (
     <div className="diagnostics">
-      <details open={snapshot.warnings.length > 0}>
+      <details>
         <summary>
           <AlertTriangle size={16} />
           扫描提示 <span>{snapshot.warnings.length}</span>
@@ -368,7 +368,8 @@ export function Overview({
         <div className="banner">
           <FileText size={18} />
           <span>
-            扫描范围内没有可读文档，请查看范围与缺失项，调整配置后刷新。
+            扫描范围内没有可读文档，请将下方缺口交给项目中的 vNext
+            整理，完成后刷新。
           </span>
         </div>
       )}
@@ -668,7 +669,9 @@ export function DocumentsPage({
               <strong>{d.title}</strong>
               <small>{d.path}</small>
               {!d.recognized && (
-                <span className="tiny-label">未识别结构 · 原文可读</span>
+                <span className="tiny-label">
+                  正文已解析 · 无任务或业务字段
+                </span>
               )}
             </button>
           ))}

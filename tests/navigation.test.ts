@@ -32,7 +32,7 @@ async function register(): Promise<Project> {
   return runtime.registry.add({
     name: "文档导航样本",
     root,
-    config: discovery.config,
+    config: { ...discovery.config, readingMode: "custom" },
   });
 }
 const index = `# 文档中心
@@ -616,7 +616,7 @@ it("can opt into document records while preserving hard exclusions and configura
 
 it("preserves malformed metadata and continues explicit Markdown navigation from the readable body", async () => {
   const content =
-    "---\nowner: @maintainer\nrelated_docs: [docs/untrusted-meta.md]\n---\n# Document\n\n[正文引用](body.md)\n";
+    "---\nowner: [broken\nrelated_docs: [docs/untrusted-meta.md]\n---\n# Document\n\n[正文引用](body.md)\n";
   await file("docs/broken.md", content);
   await file("docs/body.md", "# Body\n");
   await file("docs/untrusted-meta.md", "# Untrusted metadata\n");
@@ -650,6 +650,7 @@ it("checks unresolved reference existence without reading out-of-scope content",
     name: "Manual references",
     root,
     config: {
+      readingMode: "custom",
       autoDiscover: false,
       rules: {
         management: [],

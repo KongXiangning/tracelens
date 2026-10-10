@@ -84,13 +84,125 @@ afterEach(async () => {
 });
 
 describe("controlled PRODUCT read and snapshot integration", () => {
-  it("requires explicit opt-in and previews one entry without widening old configuration", async () => {
+  it("reads explicitly registered code and extensionless UTF-8 sources as raw text without synthesizing tasks", async () => {
+    const sources = ["src/example.js", ".env.example", "evidence/README"];
+    await manifest({ source_paths: [...sources, "evidence/binary.bin"] });
+    const raw =
+      "# TASK-999 Fake task\n## 任务信息\n- task_id: text-is-not-a-task\n- 当前状态: closed\n";
+    for (const relative of sources) await file(relative, raw);
+    await file("evidence/binary.bin", Buffer.from([0, 1, 2]));
+    await file("src/unreferenced.js", raw);
+    await file(
+      "docs/product.md",
+      doc(
+        [
+          projectItem,
+          {
+            id: "REQ",
+            type: "requirement",
+            scope: "current",
+            sources: [
+              ...sources.map((path) => ({
+                kind: "file",
+                path,
+                lines: { start: 2, end: 3 },
+                sha256: createHash("sha256").update(raw).digest("hex"),
+              })),
+              { kind: "file", path: "evidence/binary.bin" },
+            ],
+          },
+        ],
+        projectBody + reqBody,
+      ),
+    );
+    const result = await snapshot();
+    for (const relative of sources) {
+      const check = result.product!.sources.find(
+        (entry) =>
+          entry.reference.kind === "file" && entry.reference.path === relative,
+      )!;
+      expect(check.readState).toBe("read");
+      expect(check.byteState).toBe("same-bytes");
+      expect(check.locationState).toBe("located");
+      expect(check.source?.line).toBe(2);
+      expect(
+        result.documents.find((document) => document.path === relative)?.raw,
+      ).toBe(raw);
+    }
+    expect(
+      result.product!.sources.find(
+        (entry) =>
+          entry.reference.kind === "file" &&
+          entry.reference.path === "evidence/binary.bin",
+      )?.readState,
+    ).toBe("unavailable");
+    expect(
+      result.documents.some(
+        (document) => document.path === "src/unreferenced.js",
+      ),
+    ).toBe(false);
+    expect(result.tasks).toEqual([]);
+    expect(result.statements).toEqual([]);
+  });
+  it("keeps fully parsed definitions ready when reports have pending reconciliation and missing evidence", async () => {
+    await file(
+      "docs/product.md",
+      doc(
+        [
+          projectItem,
+          {
+            id: "REQ",
+            type: "requirement",
+            scope: "current",
+            assessment_id: "ASSESS",
+          },
+          {
+            id: "ASSESS",
+            type: "assessment",
+            target: "REQ",
+            target_basis: {
+              kind: "file",
+              path: "docs/product.md",
+              item_id: "REQ",
+            },
+            target_definition_sha256: null,
+            checked_at: "2026-10-09",
+            subject: { kind: "unknown", value: null },
+            implementation: "unknown",
+            verification: "unknown",
+            pending_sources: [{ kind: "file", path: "evidence/missing.md" }],
+          },
+        ],
+        projectBody +
+          reqBody +
+          "## [ASSESS] 待核对报告\n### 覆盖范围\n尚待局部核对。\n### 交付与验证依据\n待核对。\n### 剩余与待核对\n新材料未纳入。\n",
+      ),
+    );
+    const result = await snapshot();
+    expect(result.product?.status).toBe("ready");
+    expect(result.product?.coverage.complete).toBe(true);
+    expect(
+      result.product?.diagnostics
+        .filter((entry) =>
+          ["PENDING_SOURCES", "DEFINITION_UNKNOWN"].includes(entry.code),
+        )
+        .every((entry) => entry.severity === "info"),
+    ).toBe(true);
+    expect(
+      result.product?.diagnostics.some(
+        (entry) => entry.code === "SOURCE_UNAVAILABLE",
+      ),
+    ).toBe(true);
+    expect(result.product?.assessments[0].definitionState).toBe("unknown");
+  });
+  it("previews the standard vNext entry with automatic reading enabled", async () => {
     project.config.product = undefined;
     expect((await snapshot()).product?.status).toBe("disabled");
     const preview = await discover(root, path.join(directory, "data"));
     expect(preview.product?.status).toBe("ready");
     expect(preview.product?.managedPaths).toEqual(["docs/product.md"]);
-    expect(preview.config.product?.enabled).not.toBe(true);
+    expect(preview.config.product?.enabled).toBe(true);
+    expect(preview.config.readingMode).toBe("vnext");
     expect(configFingerprint(project.config)).not.toBe(
       configFingerprint({
         ...project.config,
@@ -225,16 +337,26 @@ describe("controlled PRODUCT read and snapshot integration", () => {
     );
     expect(scan.product?.items.some((i) => i.id === "HIDDEN")).toBe(false);
     expect(
-      scan.product?.coverage.excluded.some((e) => e.path.includes("history")),
+      scan.product?.coverage.omitted.some((e) => e.path.includes("history")),
+    ).toBe(true);
+    expect(scan.product?.coverage.complete).toBe(false);
+    expect(
+      scan.product?.diagnostics.some(
+        (entry) => entry.code === "CURRENT_RAW_OVERLAP",
+      ),
     ).toBe(true);
   });
-  it("preserves explicit exclusion, out-of-range, unsafe, unlocated, unsupported and link failures", async () => {
+  it("preserves explicit exclusion, out-of-range, unsafe, unlocated, binary and link failures", async () => {
     await file("evidence/read.txt", "line");
     await file("evidence/excluded.txt", "secret");
-    await file("evidence/unsupported.pdf", "not parsed");
+    await file("evidence/unsupported.pdf", Buffer.from([0, 1, 2]));
     await symlink(
-      path.join(root, "evidence/read.txt"),
+      path.join(
+        root,
+        process.platform === "win32" ? "evidence" : "evidence/read.txt",
+      ),
       path.join(root, "evidence/link.txt"),
+      process.platform === "win32" ? "junction" : "file",
     );
     project.config.excludes = ["evidence/excluded.txt"];
     const sources = [
@@ -259,7 +381,7 @@ describe("controlled PRODUCT read and snapshot integration", () => {
       "excluded",
       "outside",
       "unavailable",
-      "unsupported",
+      "unavailable",
       "read",
     ]);
     expect(scan.product?.sources.at(-1)?.locationState).toBe("unlocated");

@@ -18,9 +18,9 @@ The parser permits the upstream JSON-compatible built-in YAML tags (`str`, `int`
 
 Intentional differences from the pinned offline reader:
 
-- Any frontmatter syntax error or prohibited YAML feature rejects the entire
-  frontmatter; TraceLens does not salvage values from a damaged YAML document
-- Schema and section failures in safely parsed individual items are isolated;
+- Root/envelope YAML errors reject the document; errors confined to an item,
+  including duplicate keys and prohibited YAML features, degrade only that item
+- YAML, schema and section failures in individual items are isolated;
   invalid items retain raw metadata and exact source locations for inspection
 - Ajv implements the actual JSON Schemas rather than the upstream small evaluator
 - Item identities are namespaced to a working copy and case-sensitive; line and
@@ -30,3 +30,26 @@ Intentional differences from the pinned offline reader:
 licenses. `examples/product-comprehensive`, `examples/product-e6`, and
 `examples/product-planning` contain synthetic upstream inputs, never real project
 records. Their provenance files describe the exact copied directories.
+
+## 2026-10-10 handoff alignment
+
+Reference: `docs/guides/tracelens-product-documents.md` from the upstream local
+working tree at HEAD `334580494634cbd88c60b62bcdf50345e1b0abe5`.
+Guide SHA-256: `15a900a29d41b854920f66427dc03b6f88360c7faafbe1b3a32744384f37b1e7`.
+The guide and production v1/v2 schemas remain authoritative; no TraceLens-specific
+document format was added.
+
+The source working tree includes uncommitted path-coverage fixes. Therefore this
+is a **working-tree snapshot**, not a claim that all files belong to that HEAD.
+`../product-glob-coverage.ts` adapts the current
+`runtime/vnext/src/product-maintenance/glob-coverage.ts` (original SHA-256
+`7e39fd4760dee40264bf90d2389e04dbb8c708ef5e2086663b0deb94e8c4f442`).
+It proves selected descendants are explicitly excluded before pruning implicit
+blocked directories; otherwise IMPLICIT_PATH_EXCLUDED records an omitted range.
+Current definitions overlapping capture_paths produce CURRENT_RAW_OVERLAP.
+
+The current independent offline reader is pinned separately in
+`tests/product-oracle/handoff-20261010/`, alongside the unchanged older oracle.
+Both execute only against disposable test copies. TraceLens retains its own
+disclosed byte budgets and snapshot/source-resolution layer; neither oracle
+provides live task state or proves complete business inventory.

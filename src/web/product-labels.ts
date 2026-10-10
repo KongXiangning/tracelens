@@ -62,3 +62,21 @@ export const productStatusLabels: Record<ProductSnapshot["status"], string> = {
   ready: "PRODUCT 已读取",
   empty: "PRODUCT 有效空结果",
 };
+
+const unreadProductDetail =
+  "本次标准产品资料无法完整读取。请将问题交给项目中的 vNext 核对，整理后刷新。";
+const readableProductDetail =
+  "当前条目、来源核对和业务盘点分别展示；阅读不会触发扫描或写入项目。";
+export const productStatusDetails: Record<ProductSnapshot["status"], string> = {
+  disabled:
+    "当前自定义配置关闭了标准产品读取。可在项目设置中恢复 vNext 自动读取，保存并刷新。",
+  missing:
+    "当前项目缺少标准产品入口，目标、需求和总体计划暂无法展示。请在项目中与 vNext 讨论并整理，完成后刷新。",
+  empty:
+    "已读取登记范围，但尚无标准产品条目。请在项目中与 vNext 确认需要整理的内容。",
+  ready: readableProductDetail,
+  partial: readableProductDetail,
+  excluded: "标准产品入口被排除，请在项目设置中核对排除规则后保存并刷新。",
+  unsupported: unreadProductDetail,
+  unavailable: unreadProductDetail,
+};

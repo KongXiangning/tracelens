@@ -497,6 +497,7 @@ export function buildProductIndex(
             "TASK_ID_UNCONFIRMED",
             item,
             `${binding.id}：真实任务身份未确认，仅按明确来源定位`,
+            "info",
           );
         const fingerprint = canonical([
           binding.task.task_id ?? binding.task.source,
@@ -580,7 +581,12 @@ export function buildProductIndex(
           "当前需求定义与报告依据不同；不判断语义变化或当前代码适用性",
         );
       if (!m.target_definition_sha256 || !requirement?.definitionSha256)
-        report("DEFINITION_UNKNOWN", item, "需求定义版本对齐未知");
+        report(
+          "DEFINITION_UNKNOWN",
+          item,
+          "报告尚未记录需求定义版本，后续按涉及范围核对",
+          "info",
+        );
       if (
         (m.implementation !== "unknown" || m.verification !== "unknown") &&
         !m.sources?.length
@@ -595,6 +601,7 @@ export function buildProductIndex(
           "PENDING_SOURCES",
           item,
           "存在尚未纳入结论的新材料，旧通过报告不能表示当前完整通过",
+          "info",
         );
     }
     if (item.type === "change")

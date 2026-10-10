@@ -7,7 +7,6 @@ import {
   useState,
 } from "react";
 import {
-  Activity,
   LayoutDashboard,
   ListTodo,
   BookOpen,
@@ -77,6 +76,7 @@ export const time = (value?: string) =>
     ? new Date(value).toLocaleString("zh-CN", { hour12: false })
     : "尚未扫描";
 const cleanConfig = (config: ScanConfig): ScanConfig => ({
+  readingMode: config.readingMode,
   product: config.product
     ? {
         enabled: config.product.enabled,
@@ -100,7 +100,7 @@ function scanState(view?: SnapshotView): { label: string; tone: string } {
   if (view?.attempt?.state === "failed")
     return { label: "本次刷新失败", tone: "failed" };
   if (view?.snapshot?.outcome === "partial")
-    return { label: "部分成功", tone: "partial" };
+    return { label: "读取完成，有待核对项", tone: "partial" };
   if (view?.snapshot) return { label: "扫描完成", tone: "success" };
   return { label: "尚未扫描", tone: "" };
 }
@@ -235,6 +235,7 @@ export function App() {
       setProjects((p) =>
         p.map((item) => (item.id === result.id ? result : item)),
       );
+      void refresh(result.id);
     } else {
       const result = await api<Project>(
         "/projects",
@@ -393,19 +394,29 @@ export function App() {
               }
             >
               <ProductOverview
+                key={active}
                 context={context}
                 configure={() => setForm("edit")}
                 requirements={() => setPage("requirements")}
                 planning={() => setPage("planning")}
               />
             </Suspense>
-            <Overview
-              snapshot={snapshot}
-              open={openSource}
-              openTask={openTask}
-              projectName={project?.name || "本地项目"}
-              root={project?.root || ""}
-            />
+            <details
+              className="overview-record-details"
+              open={
+                !snapshot.product?.manifest ||
+                !["ready", "partial", "empty"].includes(snapshot.product.status)
+              }
+            >
+              <summary>当前任务、文档记录与扫描详情</summary>
+              <Overview
+                snapshot={snapshot}
+                open={openSource}
+                openTask={openTask}
+                projectName={project?.name || "本地项目"}
+                root={project?.root || ""}
+              />
+            </details>
           </>
         );
       case "tasks":
@@ -461,12 +472,18 @@ export function App() {
         );
     }
   }
+  let subtitle = project?.root || "本地项目文档";
+  if (page === "guide") subtitle = "业务场景 · Skill 指令 · 使用边界";
+  else if (page === "overview")
+    subtitle = "从项目文档中解析目标、需求、Task 与状态";
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell modern-shell${page === "overview" ? " overview-theme" : ""}`}
+    >
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-icon">
-            <Activity size={22} />
+            <LayoutDashboard size={25} />
           </span>
           <span>
             TraceLens<small>本地文档工作台</small>
@@ -526,20 +543,39 @@ export function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="project-heading">
+            {page === "overview" && (
+              <div className="overview-page-title">项目需求总览</div>
+            )}
             <h1>
               {page === "guide"
                 ? "vNext 场景指南"
                 : project?.name || "TraceLens"}
             </h1>
             <p title={page === "guide" ? undefined : project?.root}>
-              {page === "guide"
-                ? "业务场景 · Skill 指令 · 使用边界"
-                : project?.root || "本地项目文档"}
+              {subtitle}
             </p>
           </div>
           {project && page !== "guide" && (
             <div className="toolbar">
-              <IconButton label="配置扫描范围" onClick={() => setForm("edit")}>
+              {page === "overview" && (
+                <select
+                  className="overview-project-select"
+                  aria-label="概览项目"
+                  value={active}
+                  onChange={(event) => {
+                    setActive(event.target.value);
+                    setSelection({});
+                    setError("");
+                  }}
+                >
+                  {projects.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      项目：{item.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <IconButton label="项目设置" onClick={() => setForm("edit")}>
                 <Settings2 size={18} />
               </IconButton>
               <IconButton

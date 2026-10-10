@@ -66,6 +66,7 @@ beforeEach(async () => {
     root,
     configVersion: 1,
     config: {
+      readingMode: "custom",
       autoDiscover: false,
       product: { enabled: true, manifestPath: ".workflow-system/PRODUCT.yaml" },
       rules: {
@@ -221,7 +222,7 @@ it("applies PRODUCT exclusions to adopted-plan document_ref while retaining the 
   ).toBe(true);
 });
 it("keeps PRODUCT glob syntax literal instead of broadening it through generic extglob", async () => {
-  const literal = "docs/evidence/@(public|secret).md";
+  const literal = "docs/evidence/@(secret).md";
   const secret = "docs/evidence/secret.md";
   await file(literal, "# literal");
   await file(secret, "# allowed literal contract");

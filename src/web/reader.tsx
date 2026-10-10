@@ -59,11 +59,11 @@ export function DocumentReader({
   open: OpenSource;
   relations: () => void;
 }) {
-  const [raw, setRaw] = useState(/\.(ya?ml|json|txt)$/i.test(document.path));
+  const [raw, setRaw] = useState(!/\.(md|markdown)$/i.test(document.path));
   const content = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState(line);
   useEffect(() => {
-    setRaw(/\.(ya?ml|json|txt)$/i.test(document.path));
+    setRaw(!/\.(md|markdown)$/i.test(document.path));
     setTarget(line);
   }, [document.id]);
   useEffect(() => {
@@ -118,7 +118,7 @@ export function DocumentReader({
       </div>
       {!document.recognized && (
         <div className="banner reader-note">
-          未识别文档结构，保留扫描时原文。
+          正文已解析；未提取到任务或业务字段，可直接阅读完整文档。
         </div>
       )}
       <div className="reader-layout">

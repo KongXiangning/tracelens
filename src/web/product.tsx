@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, FileText, Network, Search, Settings2 } from "lucide-react";
-import type { Snapshot, Task } from "../shared/types";
+import type { NavigationReport, Snapshot, Task } from "../shared/types";
 import type {
   ProductAssessmentView,
   ProductBindingView,
@@ -13,19 +13,42 @@ import type {
 } from "../shared/product-types";
 import { Empty, SourceButton, Status, type OpenSource } from "./components";
 import { SnapshotMarkdown } from "./reader";
+import { OrganizationPromptButton } from "./navigation-audit";
+import {
+  productDiagnosticArea,
+  productStructureIssue,
+} from "../shared/product-health";
+import { scopeGroups } from "../shared/product-scope";
+import { OverviewDashboard } from "./overview-dashboard";
 
 import {
   productLabels,
   productStatusLabels,
+  productStatusDetails,
   productTypeLabels,
 } from "./product-labels";
 
 const label = (value?: string | null) =>
   value ? productLabels[value] || value : "未记录";
+const intentLabel = (value?: string | null) =>
+  value === "retired" ? "已退出" : label(value);
 const list = <T,>(value: T[] | undefined | null): T[] =>
   Array.isArray(value) ? value : [];
+function reportLabel(
+  value: string | undefined,
+  field: "implementation" | "verification",
+) {
+  if (value && value !== "unknown") return label(value);
+  return field === "implementation" ? "实施情况待核对" : "验证结果待核对";
+}
+const reportSubject = (item: ProductItem) => {
+  const subject = item.metadata.subject;
+  if (!subject || subject.kind === "unknown")
+    return "尚未记录报告对应的版本或构建";
+  return `${({ commit: "提交", release: "发布版本", "working-copy": "工作副本" } as Record<string, string>)[subject.kind] || subject.kind}：${subject.value || "未记录"}`;
+};
 export type OpenProduct = (key: string, workItemId?: string) => void;
-type ProductContext = {
+export type ProductContext = {
   snapshot: Snapshot;
   open: OpenSource;
   openProduct: OpenProduct;
@@ -33,12 +56,18 @@ type ProductContext = {
   relations: (key: string) => void;
 };
 
-function Tag({ value }: { value?: string | null }) {
+function Tag({
+  value,
+  intent = false,
+}: {
+  value?: string | null;
+  intent?: boolean;
+}) {
   return (
     <span
       className={`status ${value === "dismissed" || value === "inferred" ? "amber" : "neutral"}`}
     >
-      {label(value)}
+      {intent ? intentLabel(value) : label(value)}
     </span>
   );
 }
@@ -69,10 +98,12 @@ function ItemLink({
 
 export function ProductStatusPanel({
   product,
+  navigation,
   open,
   configure,
 }: {
   product?: ProductSnapshot;
+  navigation?: NavigationReport;
   open: OpenSource;
   configure?: () => void;
 }) {
@@ -98,19 +129,31 @@ export function ProductStatusPanel({
         {configure && (
           <button className="text-link" onClick={configure}>
             <Settings2 size={14} />
-            {status === "disabled" ? "启用 PRODUCT 阅读" : "配置 PRODUCT 范围"}
+            查看项目设置
           </button>
         )}
       </div>
       <p className="muted">
-        {status === "disabled"
-          ? "现有配置未启用标准产品阅读。请明确选择入口与范围，保存后手动刷新。"
-          : status === "empty"
-            ? "已读取本次登记范围，但没有当前标准条目。有效空结果不代表项目已完成。"
-            : status === "ready" || status === "partial"
-              ? "当前条目、来源核对和业务盘点分别展示；阅读不会触发扫描或写入项目。"
-              : "本次入口无法提供完整当前定义。请查看诊断与原文，修正范围后手动刷新。"}
+        {productStatusDetails[status]}
+        {coverageRead &&
+          ` 已读取 ${product?.coverage.paths.length} 份托管文档，${product?.items.filter((item) => item.usable).length} 个可用条目。`}
       </p>
+      {product && status !== "ready" && (
+        <OrganizationPromptButton
+          report={
+            navigation || {
+              enabled: true,
+              profileUsed: false,
+              entries: [],
+              incomplete: false,
+              gaps: [],
+            }
+          }
+          product={product}
+          projectName={product.manifest?.project_id || "当前项目"}
+          root={product.workingCopy}
+        />
+      )}
       {product && (
         <>
           <div className="product-inline">
@@ -125,7 +168,10 @@ export function ProductStatusPanel({
             </p>
           )}
           <details className="product-coverage">
-            <summary>读取范围与诊断 · {product.diagnostics.length} 项</summary>
+            <summary>
+              读取范围与结构诊断 ·{" "}
+              {product.diagnostics.filter(productStructureIssue).length} 项
+            </summary>
             {product.manifest && (
               <dl className="product-fields">
                 <dt>标准项目身份</dt>
@@ -182,8 +228,67 @@ export function ProductStatusPanel({
                 </li>
               ))}
             </ul>
-            <ProductDiagnostics diagnostics={product.diagnostics} open={open} />
+            <ProductDiagnostics
+              diagnostics={product.diagnostics.filter(
+                (entry) => productDiagnosticArea(entry) === "structure",
+              )}
+              open={open}
+            />
           </details>
+          {product.diagnostics.some(
+            (entry) => productDiagnosticArea(entry) === "evidence",
+          ) && (
+            <details className="product-coverage">
+              <summary>
+                来源依据待处理 ·{" "}
+                {
+                  new Set(
+                    product.diagnostics
+                      .filter(
+                        (entry) => productDiagnosticArea(entry) === "evidence",
+                      )
+                      .map((entry) => entry.path || entry.code),
+                  ).size
+                }{" "}
+                个文件或事项
+              </summary>
+              <p className="muted">
+                产品正文已读取；以下来源缺失或核对问题影响相关依据，需由 vNext
+                按实际涉及范围处理。
+              </p>
+              <ProductDiagnostics
+                diagnostics={product.diagnostics.filter(
+                  (entry) => productDiagnosticArea(entry) === "evidence",
+                )}
+                open={open}
+              />
+            </details>
+          )}
+          {product.diagnostics.some(
+            (entry) => productDiagnosticArea(entry) === "pending",
+          ) && (
+            <details className="product-coverage">
+              <summary>
+                业务待核对 ·{" "}
+                {
+                  product.diagnostics.filter(
+                    (entry) => productDiagnosticArea(entry) === "pending",
+                  ).length
+                }{" "}
+                项
+              </summary>
+              <p className="muted">
+                这些是 vNext
+                保留的待核对状态，不表示文档解析失败，也不构成开发阻塞。
+              </p>
+              <ProductDiagnostics
+                diagnostics={product.diagnostics.filter(
+                  (entry) => productDiagnosticArea(entry) === "pending",
+                )}
+                open={open}
+              />
+            </details>
+          )}
         </>
       )}
     </section>
@@ -658,17 +763,20 @@ function AssessmentFacts({
   return (
     <div className="product-assessment">
       <div className="product-inline">
-        <Tag value={metadata.implementation} />
-        <Tag value={metadata.verification} />
+        <span>
+          实施：
+          <span>{reportLabel(metadata.implementation, "implementation")}</span>
+        </span>
+        <span>
+          验证：
+          <span>{reportLabel(metadata.verification, "verification")}</span>
+        </span>
       </div>
       <dl className="product-fields">
         <dt>报告需求</dt>
         <dd>{metadata.target || "未记录"}</dd>
         <dt>报告对象</dt>
-        <dd>
-          {metadata.subject?.kind || "unknown"} ·{" "}
-          {metadata.subject?.value || "版本未知"}
-        </dd>
+        <dd>{reportSubject(item)}</dd>
         <dt>对账时间</dt>
         <dd>{metadata.checked_at || "未记录"}</dd>
         <dt>当前需求定义对齐</dt>
@@ -677,7 +785,7 @@ function AssessmentFacts({
             ? {
                 same: "定义摘要相同",
                 changed: "定义摘要已变化",
-                unknown: "定义对齐未知",
+                unknown: "报告尚未记录需求定义版本，待核对",
               }[view.definitionState]
             : "未作为该需求的有效选择核对"}
         </dd>
@@ -899,8 +1007,11 @@ function Inventory({
   const inventory = item.metadata.inventory;
   if (!inventory) return null;
   return (
-    <section>
-      <h3>业务盘点</h3>
+    <details className="product-inventory">
+      <summary>
+        业务资料盘点 · 已核对 {inventory.checked_sources.length} 份 / 待核对{" "}
+        {inventory.unreviewed_sources.length} 份
+      </summary>
       <Tag value={inventory.state} />
       <p>{inventory.note}</p>
       <h4>已核对的所列来源</h4>
@@ -920,7 +1031,7 @@ function Inventory({
       <p className="muted">
         只表示所列来源的盘点状态，不证明全项目需求齐全或已交付。
       </p>
-    </section>
+    </details>
   );
 }
 export function ProductDetail({
@@ -950,7 +1061,7 @@ export function ProductDetail({
           <div className="product-inline">
             {item.metadata.scope && <Tag value={item.metadata.scope} />}
             {item.metadata.intent_state && (
-              <Tag value={item.metadata.intent_state} />
+              <Tag value={item.metadata.intent_state} intent />
             )}
             {!item.usable && (
               <span className="status amber">结构不可用 · 原文保留</span>
@@ -977,9 +1088,9 @@ export function ProductDetail({
           元数据来源 · 行 {item.metadataLine}
         </button>
       </div>
-      {item.diagnostics.length > 0 && (
+      {item.diagnostics.some(productStructureIssue) && (
         <ProductDiagnostics
-          diagnostics={item.diagnostics}
+          diagnostics={item.diagnostics.filter(productStructureIssue)}
           open={context.open}
         />
       )}
@@ -1013,7 +1124,11 @@ export function ProductDetail({
               <h3>讨论原文与整理状态</h3>
               <dl className="product-fields">
                 <dt>资料状态</dt>
-                <dd>{item.metadata.record_state}</dd>
+                <dd>
+                  {item.metadata.record_state === "active"
+                    ? "活跃资料"
+                    : "已归档"}
+                </dd>
                 <dt>提交时间</dt>
                 <dd>{item.metadata.submitted_at}</dd>
                 <dt>原始渠道 / 时间</dt>
@@ -1095,8 +1210,8 @@ export function ProductDetail({
           )}
         </>
       )}
-      <section>
-        <h3>来源与核对 · {sources.length}</h3>
+      <details className="product-coverage">
+        <summary>来源与核对 · {sources.length}</summary>
         {sources.length ? (
           <ul className="product-evidence-list">
             {sources.map((source) => (
@@ -1110,7 +1225,7 @@ export function ProductDetail({
         ) : (
           <p className="muted">未记录已核对来源。</p>
         )}
-      </section>
+      </details>
       <details className="product-metadata">
         <summary>完整原始元数据</summary>
         <pre>
@@ -1139,7 +1254,7 @@ export function RequirementsPage({
 }) {
   const product = context.snapshot.product;
   const [query, setQuery] = useState("");
-  const [type, setType] = useState("all");
+  const [type, setType] = useState("requirement");
   const [scope, setScope] = useState("all");
   const item = product?.items.find((entry) => entry.key === selected);
   useEffect(() => {
@@ -1166,6 +1281,7 @@ export function RequirementsPage({
       </div>
       <ProductStatusPanel
         product={product}
+        navigation={context.snapshot.navigation}
         open={context.open}
         configure={configure}
       />
@@ -1173,7 +1289,10 @@ export function RequirementsPage({
         <div className="browser-page product-browser">
           <div className="browser-list">
             <div className="list-header">
-              <h3>标准条目 · {product.items.length}</h3>
+              <h3>
+                {type === "requirement" ? "需求" : "产品条目"} ·{" "}
+                {filtered.length}
+              </h3>
               <div className="search">
                 <Search size={15} />
                 <input
@@ -1205,7 +1324,7 @@ export function RequirementsPage({
                   value={scope}
                   onChange={(event) => setScope(event.target.value)}
                 >
-                  <option value="all">全部范围（含无 scope 条目）</option>
+                  <option value="all">全部业务范围</option>
                   {["current", "planned", "candidate", "retired"].map(
                     (value) => (
                       <option key={value} value={value}>
@@ -1220,7 +1339,7 @@ export function RequirementsPage({
                 · {scope === "all" ? "全部范围" : label(scope)}
               </p>
               <small className="muted">
-                current 包含已交付要求；retired 不表示完成。
+                当前范围包含已交付后仍需保持的要求；退出范围不表示完成。
               </small>
             </div>
             <div className="list-items">
@@ -1239,7 +1358,7 @@ export function RequirementsPage({
                       <Tag value={entry.metadata.scope} />
                     )}
                     {entry.metadata.intent_state && (
-                      <Tag value={entry.metadata.intent_state} />
+                      <Tag value={entry.metadata.intent_state} intent />
                     )}
                     {!entry.usable && (
                       <span className="status amber">结构不可用</span>
@@ -1258,13 +1377,15 @@ export function RequirementsPage({
           <div className="browser-detail">
             {item ? (
               <ProductDetail item={item} context={context} />
+            ) : !selected ? (
+              <BusinessScope product={product} context={context} />
             ) : (
               <Empty
                 title={selected ? "所选条目已退出本次范围" : "选择一个产品条目"}
                 detail={
                   selected
                     ? "刷新后的当前定义中无法找到该稳定身份。请从列表明确重新选择，不会跳到同名或首个条目。"
-                    : "九类标准条目保留完整正文、业务关系与来源。"
+                    : "选择需求查看完整正文、拆分关系、方案、任务和报告。"
                 }
               />
             )}
@@ -1353,12 +1474,23 @@ function WorkReports({
               {report ? (
                 <>
                   <div className="product-inline">
-                    <Tag value={report.metadata.implementation} />
-                    <Tag value={report.metadata.verification} />
+                    <span>
+                      实施：
+                      {reportLabel(
+                        report.metadata.implementation,
+                        "implementation",
+                      )}
+                    </span>
+                    <span>
+                      验证：
+                      {reportLabel(
+                        report.metadata.verification,
+                        "verification",
+                      )}
+                    </span>
                   </div>
                   <p>
-                    报告对象：{report.metadata.subject?.kind || "unknown"} /{" "}
-                    {report.metadata.subject?.value || "版本未知"} ·{" "}
+                    报告对象：{reportSubject(report)} ·{" "}
                     {report.metadata.checked_at || "对账时间未记录"}
                   </p>
                   <button
@@ -1575,7 +1707,9 @@ function KnownScope({ context }: { context: ProductContext }) {
             </button>
             <span>
               {productTypeLabels[item.type]} ·{" "}
-              {label(item.metadata.scope || item.metadata.intent_state)}
+              {item.metadata.scope
+                ? label(item.metadata.scope)
+                : intentLabel(item.metadata.intent_state)}
             </span>
             <small>
               {
@@ -1627,6 +1761,7 @@ export function PlanningPage({
       </div>
       <ProductStatusPanel
         product={product}
+        navigation={context.snapshot.navigation}
         open={context.open}
         configure={configure}
       />
@@ -1645,7 +1780,7 @@ export function PlanningPage({
                   {plans.map((item) => (
                     <option key={item.key} value={item.key}>
                       {item.id} · {item.title} ·{" "}
-                      {label(item.metadata.intent_state)}
+                      {intentLabel(item.metadata.intent_state)}
                     </option>
                   ))}
                 </select>
@@ -1773,6 +1908,143 @@ export function TaskProductLinks({
     </section>
   );
 }
+function RequirementSummary({
+  item,
+  context,
+}: {
+  item: ProductItem;
+  context: ProductContext;
+}) {
+  const product = context.snapshot.product!;
+  const view = product.assessments.find(
+    (entry) => entry.requirementKey === item.key,
+  );
+  const report =
+    view?.state === "selected"
+      ? product.items.find((entry) => entry.key === view.assessmentKey)
+      : undefined;
+  const designs = product.relations.filter(
+    (entry) =>
+      entry.targetKey === item.key &&
+      entry.link.relation === "addresses" &&
+      entry.link.state === "active" &&
+      entry.resolution === "resolved",
+  );
+  const bindings = product.bindings.filter(
+    (entry) => entry.ownerKey === item.key && entry.binding.state === "active",
+  );
+  return (
+    <div className="product-requirement-summary" data-requirement-id={item.id}>
+      <button
+        className="text-link"
+        onClick={() => context.openProduct(item.key)}
+      >
+        {item.title}
+        <ArrowRight size={13} />
+      </button>
+      <div className="product-inline">
+        <small>{item.id}</small>
+        <Tag value={item.metadata.scope} />
+        <small>
+          设计 {designs.length} · 任务关联 {bindings.length}
+        </small>
+      </div>
+      <p className="muted">
+        实施：{reportLabel(report?.metadata.implementation, "implementation")}
+        ；验证：{reportLabel(report?.metadata.verification, "verification")}
+      </p>
+      {report && list(report.metadata.pending_sources).length > 0 && (
+        <small className="muted">
+          待核对材料 {list(report.metadata.pending_sources).length}{" "}
+          项（未计入原报告结论）
+        </small>
+      )}
+    </div>
+  );
+}
+
+function BusinessScope({
+  product,
+  context,
+}: {
+  product: ProductSnapshot;
+  context: ProductContext;
+}) {
+  const requirements = product.items.filter(
+    (item) => item.usable && item.type === "requirement",
+  );
+  const scope = scopeGroups(product, requirements);
+  return (
+    <section className="product-business-scope">
+      <h3>目标与需求全景</h3>
+      <p className="muted">
+        {requirements.length} 项需求 ·{" "}
+        {scope.groups.filter((row) => row.group.type === "goal").length} 个目标
+        · {scope.groups.filter((row) => row.group.type === "module").length}{" "}
+        个模块。按已记录关系展示，同一需求可支持多个目标。
+      </p>
+      <div className="product-business-groups">
+        {scope.groups.map(({ group, requirements: entries }) => (
+          <section
+            className="product-business-group"
+            key={group.key}
+            data-scope-id={group.id}
+          >
+            <div className="section-heading">
+              <button
+                className="text-link"
+                onClick={() => context.openProduct(group.key)}
+              >
+                {group.title}
+                <ArrowRight size={14} />
+              </button>
+              <span className="status neutral">
+                {productTypeLabels[group.type]} · {entries.length} 项需求
+              </span>
+            </div>
+            <small className="muted">{group.id}</small>
+            {entries.map(({ item, inferred, indirect }) => (
+              <div key={item.key}>
+                {(inferred || indirect) && (
+                  <small className="muted">
+                    {inferred ? "vNext 记录的推断关联" : "明确声明的关联"}
+                    {indirect ? " · 经上级业务归属" : ""}
+                  </small>
+                )}
+                <RequirementSummary item={item} context={context} />
+              </div>
+            ))}
+            {!entries.length && (
+              <p className="muted">
+                尚未记录该范围下的需求关联。可阅读目标正文，与 vNext
+                讨论后整理。
+              </p>
+            )}
+          </section>
+        ))}
+        {scope.ungrouped.length > 0 && (
+          <section className="product-business-group">
+            <h4>尚未关联目标或模块 · {scope.ungrouped.length} 项</h4>
+            {scope.ungrouped.map((item) => (
+              <RequirementSummary
+                key={item.key}
+                item={item}
+                context={context}
+              />
+            ))}
+          </section>
+        )}
+      </div>
+      {!requirements.length && (
+        <p className="muted">尚未登记标准需求条目，可先阅读项目总纲。</p>
+      )}
+      <p className="muted">
+        拆分仅展示已记录的需求归属；未形成独立条目的整体要求保留在项目总纲与需求完整正文中。
+      </p>
+    </section>
+  );
+}
+
 export function ProductOverview({
   context,
   configure,
@@ -1785,130 +2057,74 @@ export function ProductOverview({
   planning: () => void;
 }) {
   const product = context.snapshot.product;
-  const requirementsItems =
-    product?.items.filter(
-      (item) => item.usable && item.type === "requirement",
-    ) || [];
+  const projects =
+    product?.items.filter((item) => item.usable && item.type === "project") ||
+    [];
   const plans =
     product?.items.filter((item) => item.usable && item.type === "plan") || [];
   return (
     <section className="product-overview">
-      <ProductStatusPanel
-        product={product}
-        open={context.open}
-        configure={configure}
-      />
-      {product && product.status !== "disabled" && (
-        <>
-          <div className="product-overview-actions">
-            <button className="secondary" onClick={requirements}>
-              查看需求与产品范围
-              <ArrowRight size={14} />
-            </button>
-            <button className="secondary" onClick={planning}>
-              查看总体规划
-              <ArrowRight size={14} />
-            </button>
-          </div>
-          <div className="product-overview-columns">
-            <section>
-              <h3>安排与后续范围</h3>
-              <p>
-                {plans.length} 份已读可用计划；
-                {
-                  requirementsItems.filter(
-                    (item) => item.metadata.scope === "planned",
-                  ).length
-                }{" "}
-                项需求声明为后续范围。
-              </p>
-              {plans.map((plan) => (
-                <p key={plan.key}>
-                  <button
-                    className="text-link"
-                    onClick={() => context.openProduct(plan.key)}
-                  >
-                    {plan.id} · {plan.title}
-                  </button>{" "}
-                  · {label(plan.metadata.intent_state)}
-                </p>
+      {product &&
+        product.manifest &&
+        ["ready", "partial", "empty"].includes(product.status) && (
+          <>
+            <OverviewDashboard
+              context={context}
+              requirements={requirements}
+              planning={planning}
+            />
+            <details className="overview-reading-details">
+              <summary>文档读取与来源核对</summary>
+              <ProductStatusPanel
+                product={product}
+                navigation={context.snapshot.navigation}
+                open={context.open}
+                configure={configure}
+              />
+              {projects.map((item) => (
+                <section className="product-project-summary" key={item.key}>
+                  <h2>{item.title}</h2>
+                  <details className="product-project-body">
+                    <summary>项目需求总纲与完整正文</summary>
+                    <Body item={item} context={context} />
+                  </details>
+                  <Inventory item={item} context={context} />
+                </section>
               ))}
-              {!plans.length && (
-                <p className="muted">
-                  未记录可用项目计划；需求与项目正文仍可阅读。
-                </p>
-              )}
-            </section>
-            <section>
-              <h3>已报告交付与待核对</h3>
-              <p className="muted">
-                仅使用每项需求明确选择的报告，按对象与范围阅读。
-              </p>
-              {requirementsItems.map((item) => {
-                const view = product.assessments.find(
-                  (entry) => entry.requirementKey === item.key,
-                );
-                const report =
-                  view?.state === "selected"
-                    ? product.items.find(
-                        (entry) => entry.key === view.assessmentKey,
-                      )
-                    : undefined;
-                const pending = list(report?.metadata.pending_sources).length;
-                return (
-                  <div className="product-report-summary" key={item.key}>
-                    <button
-                      className="text-link"
-                      onClick={() => context.openProduct(item.key)}
-                    >
-                      {item.id} · {item.title}
-                    </button>
-                    {report ? (
-                      <>
-                        <p>
-                          {label(report.metadata.implementation)} ·{" "}
-                          {label(report.metadata.verification)}
-                        </p>
-                        <small>
-                          对象：{report.metadata.subject?.kind} /{" "}
-                          {report.metadata.subject?.value || "版本未知"}
-                        </small>
-                        <p className="muted">
-                          当前适用性待核对 ·{" "}
-                          {view?.definitionState === "same"
-                            ? "需求定义摘要相同"
-                            : view?.definitionState === "changed"
-                              ? "需求定义已变化"
-                              : "需求定义对齐未知"}
-                        </p>
-                        {pending > 0 && (
-                          <p className="warning-text">
-                            待对账新材料 {pending} 项，原报告尚未纳入
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="muted">
-                        {view?.state === "unselected" || !view
-                          ? "未选择交付摘要"
-                          : "所选交付摘要不可用 / 目标需核对"}{" "}
-                        · 交付未知
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-              {!requirementsItems.length && (
-                <p className="muted">尚无可用需求报告入口，交付保持未知。</p>
-              )}
-            </section>
-          </div>
-          {product.items
-            .filter((item) => item.usable && item.type === "project")
-            .map((item) => (
-              <Inventory key={item.key} item={item} context={context} />
-            ))}
-        </>
+              <section>
+                <h3>项目计划 · {plans.length}</h3>
+                {plans.length ? (
+                  plans.map((plan) => (
+                    <p key={plan.key}>
+                      <button
+                        className="text-link"
+                        onClick={() => context.openProduct(plan.key)}
+                      >
+                        {plan.title}
+                        <ArrowRight size={14} />
+                      </button>{" "}
+                      · {intentLabel(plan.metadata.intent_state)}
+                    </p>
+                  ))
+                ) : (
+                  <p className="muted">
+                    vNext
+                    尚未登记标准项目计划；目标、需求与现有任务仍可阅读。需要制定计划时，在项目中与
+                    vNext 讨论。
+                  </p>
+                )}
+              </section>
+            </details>
+          </>
+        )}
+      {(!product?.manifest ||
+        !["ready", "partial", "empty"].includes(product.status)) && (
+        <ProductStatusPanel
+          product={product}
+          navigation={context.snapshot.navigation}
+          open={context.open}
+          configure={configure}
+        />
       )}
     </section>
   );

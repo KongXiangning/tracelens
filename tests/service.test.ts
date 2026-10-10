@@ -166,6 +166,7 @@ describe("local service acceptance", () => {
       name: "Task mentions",
       root,
       config: {
+        readingMode: "custom",
         rules: {
           management: ["numbered.md", "mentions.md"],
           requirements: [],
@@ -456,6 +457,7 @@ describe("local service acceptance", () => {
     await mkdir(empty);
     const config = {
       ...defaultConfig(),
+      readingMode: "custom" as const,
       rules: {
         management: ["bad.md"],
         requirements: [],

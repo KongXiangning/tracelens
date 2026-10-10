@@ -23,6 +23,7 @@ import {
   examplePath,
   metadataReferenceFields,
   metadataTargets,
+  readDocumentMetadata,
 } from "./document-metadata.js";
 import {
   kinds,
@@ -36,10 +37,10 @@ import {
 
 const profilePath = ".workflow-system/PROJECT_PROFILE.yaml";
 const navigationLimits = {
-  reads: 120,
+  reads: 1000,
   bytes: 10 * 1024 * 1024,
-  paths: 500,
-  depth: 3,
+  paths: 2000,
+  depth: 24,
 };
 type Evidence = DocumentRegistration["sources"][number];
 function category(value: string): ConfiguredKind | null {
@@ -102,11 +103,17 @@ export class DocumentNavigation {
     kind: ConfiguredKind | null;
     depth: number;
   }[] = [];
+  private readonly limits: typeof navigationLimits;
   constructor(
     private root: string,
     private config: ScanConfig,
     private readSession?: ScanReadSession,
-  ) {}
+  ) {
+    this.limits =
+      config.readingMode === "vnext"
+        ? navigationLimits
+        : { ...navigationLimits, reads: 120, paths: 500, depth: 3 };
+  }
   private key(filename: string): string {
     return documentPathKey(filename);
   }
@@ -235,8 +242,8 @@ export class DocumentNavigation {
       }
       return;
     }
-    if (this.entries.size >= navigationLimits.paths) {
-      this.limit("500 个登记路径上限");
+    if (this.entries.size >= this.limits.paths) {
+      this.limit(`${this.limits.paths} 个登记路径上限`);
       return;
     }
     const excluded = this.excluded(filename);
@@ -447,20 +454,17 @@ export class DocumentNavigation {
     this.readSession?.assertAllowed(filename, this.config.includeRecords);
     const cached = this.inputs.get(this.key(filename));
     if (cached) return cached;
-    if (
-      this.reads >= navigationLimits.reads ||
-      this.bytes >= navigationLimits.bytes
-    ) {
+    if (this.reads >= this.limits.reads || this.bytes >= this.limits.bytes) {
       this.limit(
-        this.reads >= navigationLimits.reads
-          ? "120 次读取上限"
+        this.reads >= this.limits.reads
+          ? `${this.limits.reads} 次读取上限`
           : "10 MiB 字节上限",
       );
       throw new Error("文档导航读取上限");
     }
     this.reads++;
     const allowance = {
-      remainingBytes: () => navigationLimits.bytes - this.bytes,
+      remainingBytes: () => this.limits.bytes - this.bytes,
       onBytesRead: (bytes: number) => {
         this.bytes += bytes;
       },
@@ -480,10 +484,7 @@ export class DocumentNavigation {
             allowance,
           );
     } catch (error) {
-      if (
-        this.bytes >= navigationLimits.bytes ||
-        /读取字节预算/.test(String(error))
-      )
+      if (this.bytes >= this.limits.bytes || /读取字节预算/.test(String(error)))
         this.limit("10 MiB 字节上限");
       throw error;
     }
@@ -501,8 +502,8 @@ export class DocumentNavigation {
       const depth = this.depths.get(key) || 0;
       if (this.processed.has(key)) continue;
       this.processed.add(key);
-      if (depth > navigationLimits.depth) {
-        this.limit("3 层跳转上限");
+      if (depth > this.limits.depth) {
+        this.limit(`${this.limits.depth} 层跳转上限`);
         continue;
       }
       try {
@@ -575,12 +576,11 @@ export class DocumentNavigation {
     if (!/\.(md|markdown)$/i.test(input.path)) return;
     let raw = input.raw;
     let offset = 0;
-    const front = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+    const front = raw.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
     if (front) {
       try {
-        const doc = parseDocument(front[1]);
-        if (doc.errors.length) throw new Error(doc.errors[0].message);
-        const metadata = record(doc.toJS({ maxAliasCount: 20 }));
+        const { value } = readDocumentMetadata(front[1]);
+        const metadata = record(value);
         if (typeof metadata.status === "string")
           entry.status = metadata.status.slice(0, 120);
         if (
@@ -711,7 +711,7 @@ export class DocumentNavigation {
               !/[\\:#?]/.test(code) &&
               !examplePath(code)
             ) {
-              if (this.shorthands.length < navigationLimits.paths)
+              if (this.shorthands.length < this.limits.paths)
                 this.shorthands.push({
                   from: entry.path,
                   raw: code,
@@ -801,26 +801,38 @@ export class DocumentNavigation {
       const fallback = kinds.find((kind) =>
         this.rules[kind].some((p) => matches(input.path, p)),
       );
+      let classification: DocumentRegistration["classification"] =
+        "unclassified";
+      let source: Evidence = {
+        path: input.path,
+        line: 1,
+        label: "规范文档目录（自动读取，未声明业务分类）",
+      };
+      if (manual) {
+        classification = "manual";
+        source = { path: "TraceLens 配置", line: 1, label: "手动分类规则" };
+      } else if (fallback) {
+        classification = "declared";
+        source = {
+          path: profilePath,
+          line: 1,
+          label: "管理文档默认范围／Profile 分类扩展",
+        };
+      }
       if (
         !this.entries.has(key) ||
         (fallback &&
           ["unclassified", "suggested"].includes(
             this.entries.get(key)!.classification,
           ))
-      )
+      ) {
         this.add(
           input.path,
           manual || fallback || input.kind,
-          manual ? "manual" : "declared",
-          {
-            path: manual ? "TraceLens 配置" : profilePath,
-            line: 1,
-            label: manual
-              ? "手动分类规则"
-              : "管理文档默认范围／Profile 分类扩展",
-          },
+          classification,
+          source,
         );
-      else if (manual)
+      } else if (manual)
         this.add(input.path, manual, "manual", {
           path: "TraceLens 配置",
           line: 1,

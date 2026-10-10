@@ -1,2 +1,3 @@
 src/server/product-assets/*.json
 tests/product-oracle/offline-reader.mjs
+tests/product-oracle/handoff-20261010/offline-reader.mjs

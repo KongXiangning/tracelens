@@ -1,4 +1,5 @@
 import path from "node:path";
+import { productStructureIssue } from "../shared/product-health.js";
 import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import type {
@@ -41,6 +42,22 @@ export async function buildSnapshot(
   const scan = await scanFiles(project, previous?.navigation);
   const parsed = scan.inputs.map((input): Parsed => {
     try {
+      // Explicit SourceRefs may point to code or extensionless UTF-8 text.
+      // Preserve captured bytes without interpreting them as task documents.
+      if (!/\.(md|markdown|ya?ml|json|txt)$/i.test(input.path))
+        return {
+          document: {
+            ...input,
+            id: stableId(project.id, input.path),
+            title: path.posix.basename(input.path),
+            headings: [],
+            recognized: false,
+          },
+          task: null,
+          statements: [],
+          references: [],
+          warnings: [],
+        };
       const envelope = inspectProductEnvelope(input.raw);
       // A standard product file is one source document with many business items.
       // Never feed its prose or state labels into generic task extraction.
@@ -329,7 +346,7 @@ export async function buildSnapshot(
     }
     if (
       ["ready", "empty", "partial"].includes(scan.product.status) &&
-      scan.product.diagnostics.some((d) => d.severity !== "info")
+      scan.product.diagnostics.some(productStructureIssue)
     )
       scan.product.status = "partial";
     warnings.push(

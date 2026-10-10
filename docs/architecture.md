@@ -89,7 +89,7 @@ src/
 
 ## 5. 扫描与解析
 
-**扫描范围：** 用户配置优先；识别已有 Profile 的已知路径字段辅助发现；默认路径仅作兜底。排除源码依赖、构建产物、`.git` 和二进制内容；`records` 默认排除，可显式允许其中的文档。不执行仓库内任何脚本。
+**扫描范围：** 用户配置优先；识别已有 Profile 的已知路径字段辅助发现；默认路径仅作兜底。排除源码依赖、构建产物、`.git` 和二进制内容；自定义模式 `records` 默认排除；vNext 模式读取 docs 内的规范文档，Runtime records 仅允许直接来源引用。不执行仓库内任何脚本。
 
 Profile 采用 vNext 现有 `paths.documentation_files` 导航种子与 `paths.workflow_home`，补充可用的 README／文档中心／DOCUMENT_CATALOG。Markdown 索引列表、表格中的明确用途和分类、已知文档类型元数据为分类依据；标题和路径仅给出建议分类，冲突或未知使用 `unclassified`。只在已识别导航入口中解释带用途的反引号路径，不把任意正文中的代码片段当作登记。管理任务的结构化依据和 Markdown 引用、已知 frontmatter `related_docs` 可扩展导航；`status` 和 `superseded_by` 保留声明，不能自动赋予需求权威性。旧分类扩展字段兼容读取，但不是新格式要求。
 
@@ -97,9 +97,9 @@ Profile 采用 vNext 现有 `paths.documentation_files` 导航种子与 `paths.w
 
 索引中的普通及引用式 Markdown 链接均支持列表、表格和段落。段落链接没有明确分类声明时仅提供建议分类。曾成功读取的可选惯例入口被删除，也按入口不可用处理并保留缺失诊断；从未存在的可选入口不制造错误。用户明确排除入口时不恢复其上次登记范围。
 
-导航与正文共享本次读取缓存，分类来源绑定缓存原文行；不会为展示重新读盘。导航最多 120 次读取、10 MiB、500 登记路径、3 层跳转，每路径最多保留 16 个来源并独立报告截断；正文仍最多 500 文件、单文件 2 MiB、合计 20 MiB，枚举 20,000 项、目录深度 24。规则采用项目相对文件路径或 glob，支持 `*`、`**`、`?` 和花括号；固定跳过依赖、构建、.vnext、journal 与符号链接／目录联接，records 默认排除可显式允许。不执行 Profile 的命令字段。
+导航与正文共享本次读取缓存，分类来源绑定缓存原文行；不会为展示重新读盘。vNext 导航最多 1000 次读取、10 MiB、2000 登记路径、24 层跳转；自定义导航为 120 次／500 路径／3 层。每路径最多保留 16 个来源并独立报告截断；正文最多 1000 文件、单文件 2 MiB、合计 20 MiB，枚举 20,000 项、目录深度 24。规则采用项目相对文件路径或 glob，支持 `*`、`**`、`?` 和花括号；固定跳过依赖、构建、.vnext、journal 与符号链接／目录联接，自定义模式 records 默认排除可显式允许。不执行 Profile 的命令字段。
 
-整理提示词在前端依据当前快照生成，包含维护约定与至多 100 项登记（每项至多 4 个来源，标明省略）；只提供预览和复制。已有文档中心是维护入口，缺少时建议按项目规范建立 `docs/README.md` 导航，不引入 TraceLens 专用权威清单或模型调用。登记核对不计算用户需求完整度，不声称 Runtime 已确认全项目文档。
+文档摘要与缺口由 shared/document-health.ts 汇总导航和 PRODUCT 结果；缺失入口、登记文件缺失、读取遗漏与结构诊断分别显示。登记列表默认折叠，普通使用不要求文件选择。整理提示词在前端依据当前预览或快照生成，包含维护约定与至多 100 项登记（每项至多 4 个来源，标明省略）；只提供预览和复制。提示词指向项目中的 vNext maintain-project，按规范维护 PRODUCT、正文及已有 Profile／文档中心登记，不引入 TraceLens 专用权威清单或模型调用。登记核对不计算用户需求完整度，不声称 Runtime 已确认全项目文档。
 
 **解析方式：** 通过 Markdown 语法树提取标题、列表、清单、链接和代码块。vNext 提取器只处理界面需要的已知结构，不要求文档完全符合某个版本。Zod 用于本工具配置和输出边界，不以严格校验整份项目文档作为展示前提。
 
@@ -131,7 +131,7 @@ Profile 采用 vNext 现有 `paths.documentation_files` 导航种子与 `paths.w
 
 通用发现修复：自动导航支持普通 Markdown 显式链接、已知 vNext `document_kind` / `kind` 及 `path_references` 的 `repo-relative` 路径；根目录与管理目录的可用 `TASKS/` 均参与默认范围。可选目录缺失不视为必需文件缺失。元数据损坏保留原文与诊断，不修复或部分信任错误 YAML。
 
-配置增加 `candidateRoots`（缺省为 `docs`、`TASKS`，空数组停用）与 `includeRecords`（缺省 false），变更纳入配置指纹；旧快照继续保留当时范围。`navigation.inventory` 保存只枚举元数据得到的未登记候选、排除原因及独立的不完整标记。候选不读取正文、不进入登记分类或完整性判断；最多 500 个候选、20,000 枚举项、深度 24，不跟随目录联接。`records` 可显式允许，其余硬排除保持有效。
+配置增加 `candidateRoots`（缺省为 `docs`、`TASKS`，空数组停用）与 `includeRecords`（缺省 false），变更纳入配置指纹；旧快照继续保留当时范围。`navigation.inventory` 保存只枚举元数据得到的未登记候选、排除原因及独立的不完整标记。候选不读取正文、不进入登记分类或完整性判断；最多 1000 个候选、20,000 枚举项、深度 24，不跟随目录联接。`records` 可显式允许，其余硬排除保持有效。
 
 反引号简写延后到明确引用读取后，在来源目录、项目根及已登记路径中核对唯一目标；示例占位符、歧义或未定位简写不生成必需文件。显式 Markdown 链接严格按来源目录解析。引用目标在范围外时仅执行有界元数据检查，分别记录存在、缺失、排除、示例或未核对状态。每文档来源超过 16 条只截断来源列表，使用独立 info 诊断；读取数、字节、路径和跳转深度各自报告真正的导航限制。
 
@@ -173,16 +173,24 @@ Markdown 禁用原始 HTML 和 MDX 执行，过滤危险链接协议，不自动
 
 ## 9. PRODUCT 标准产品通路
 
-与通用 Profile/navigation 并行，`product-reader.ts` 只枚举显式启用入口的 managed_paths，按固定契约的大小写敏感 `*`／`**`／`?` 路径语义，不使用通用花括号扩展。无旧范围恢复，来源不反向扩张通用导航。启用中的有效 PRODUCT manifest 在通用导航前读取；其 exclude_paths 使用契约专用匹配器，统一约束通用导航、手动范围、候选盘点、PRODUCT 来源、adopted-plan 及缓存命中，不并入通用 minimatch 规则。禁用、撤回或入口损坏不沿用上次 PRODUCT 定义或排除策略；普通配置仍只保有其原来明确授权的范围。`ScanReadSession` 在单次刷新共享成功和失败读取缓存以及 500 文件／20 MiB 全局预算，导航仍另有 120 次／10 MiB／三层上限；PRODUCT 受全局预算而不受该三层上限。文件无链接、真实路径、UTF-8、二进制和读取期间变更检查继续适用。读取前核对文件大小与剩余字节额度，每个实际读取块立即计费；解码、二进制或后置变化检查失败不退回消耗。物理读取串行，重复请求复用同一结果，导航的独立字节预算也按实际 I/O 计费。仅局部导航额度导致且实际读取零字节的预检拒绝不作为全局文件失败缓存：更宽但仍受全局额度与排除约束的 PRODUCT 通路可以首次读取；真实 I/O／解码失败、部分读取、全局预算耗尽及文件数限制不能借此重试绕过。
+与通用 Profile/navigation 并行，`product-reader.ts` 只枚举启用入口的 managed_paths（默认 vNext 模式自动启用标准入口），按固定契约的大小写敏感 `*`／`**`／`?` 路径语义，不使用通用花括号扩展。无旧范围恢复，来源不反向扩张通用导航。启用中的有效 PRODUCT manifest 在通用导航前读取；其 exclude_paths 使用契约专用匹配器，统一约束通用导航、手动范围、候选盘点、PRODUCT 来源、adopted-plan 及缓存命中，不并入通用 minimatch 规则。禁用、撤回或入口损坏不沿用上次 PRODUCT 定义或排除策略；普通配置仍只保有其原来明确授权的范围。`ScanReadSession` 在单次刷新共享成功和失败读取缓存以及 1000 文件／20 MiB 全局预算；vNext 导航为 1000 次／10 MiB／24 层／2000 路径，自定义模式仍为 120 次／三层／500 路径；PRODUCT 受全局预算而不受该三层上限。文件无链接、真实路径、UTF-8、二进制和读取期间变更检查继续适用。读取前核对文件大小与剩余字节额度，每个实际读取块立即计费；解码、二进制或后置变化检查失败不退回消耗。物理读取串行，重复请求复用同一结果，导航的独立字节预算也按实际 I/O 计费。仅局部导航额度导致且实际读取零字节的预检拒绝不作为全局文件失败缓存：更宽但仍受全局额度与排除约束的 PRODUCT 通路可以首次读取；真实 I/O／解码失败、部分读取、全局预算耗尽及文件数限制不能借此重试绕过。
 
-`product-parser.ts` 使用固定上游 813d314 的 v1/v2 production Schema、Ajv 2020 和根级 Markdown AST。JSON 兼容 YAML 禁止重复键、自定义 tag、anchor、alias、merge（允许契约的 JSON 内建标签）；整体不安全时停止条目解释。安全 metadata 逐项校验，必要三级章节与唯一二级标题核对；完整 body、metadata、绝对行号、文件摘要及不可用项均保存。同文件不按业务类型拆成多个 Document，标准正文不进入通用状态／任务推断。
+`product-parser.ts` 使用固定上游 813d314 的 v1/v2 production Schema、Ajv 2020 和根级 Markdown AST。JSON 兼容 YAML 禁止重复键、自定义 tag、anchor、alias、merge（允许契约的 JSON 内建标签）；根级 YAML 错误停止条目解释；条目内部的重复键、禁止特性及 YAML 错误只使该条目不可用，正常相邻条目继续读取。安全 metadata 逐项校验，必要三级章节与唯一二级标题核对；完整 body、metadata、绝对行号、文件摘要及不可用项均保存。同文件不按业务类型拆成多个 Document，标准正文不进入通用状态／任务推断。
 
 `Snapshot.product` 是派生内存数据，包括当前入口、items、relations、bindings、assessments、sources、diagnostics、coverage。条目 key 基于工作副本根、project_id 和大小写敏感 ID；工作项另含 plan 身份；binding key 属于 owner。完整元数据保持权威，派生索引不回写。业务关系与旧 reference/mention 分开建模，声明 active/dismissed 与解析 resolved/missing 分开。
 
-来源只从已读可用条目的已知字段取得，不扫描 extensions 或递归跟随来源外链。Markdown/YAML/JSON/TXT 精确来源必须命中 managed_paths 或 source_paths，排除优先；records 只允许精确引用，Runtime/journal 等仍拒绝。分别记录读取、定位和字节核对，URI 不联网。same-bytes 的摘要基于实际原字节（包括 BOM/CRLF）；定义摘要沿用 vnext-requirement-definition/v1，不混用。详情请求继续通过 documentId + snapshotId，旧 ID 返回 409，界面点击不读盘。
+来源只从已读可用条目的已知字段取得，不扫描 extensions 或递归跟随来源外链。UTF-8 文本（含 Markdown/YAML/JSON/TXT、代码及无扩展名来源） 精确来源必须命中 managed_paths 或 source_paths，排除优先；records 只允许精确引用，Runtime/journal 等仍拒绝。分别记录读取、定位和字节核对，URI 不联网。same-bytes 的摘要基于实际原字节（包括 BOM/CRLF）；定义摘要沿用 vnext-requirement-definition/v1，不混用。详情请求继续通过 documentId + snapshotId，旧 ID 返回 409，界面点击不读盘。
 
 `product-index.ts` 只依据明确真实 task_id 和受约束来源匹配任务，保留多来源和状态矛盾；不同文件 UI task ID 不做中央任务合并。同 CURRENT_TASK 改焦点后重核，历史 null 来源可读但无假任务。计划原顺序和同计划依赖保持，单／多／无计划分别展示；只沿 requirement.assessment_id 选择报告，不合成完成率，不把 repair 关闭转换为 PASS。
 
-产品读取配置 `product: { enabled, manifestPath }` 纳入校验、持久化及 configVersion；缺省关闭，预览允许只读核对而不启用。官方 offline-reader.mjs 仅随隔离测试夹具作为固定版本 oracle，生产无 shell-out、网络契约下载或 Runtime 分发。资产及合成资料出处、哈希和许可见 product-assets 与测试 oracle 的来源说明。
+产品读取配置 `product: { enabled, manifestPath }` 纳入校验、持久化及 configVersion；`readingMode` 缺省为 vnext，经 shared/scan-config.ts 规范化为自动发现及标准 PRODUCT 读取；custom 显式保留兼容配置。registry 在加载时一次性迁移旧配置并提升 configVersion，身份与排除路径保留。预览不登记项目、不发布快照，保存项目设置后前端发起刷新。官方 offline-reader.mjs 仅随隔离测试夹具作为固定版本 oracle，生产无 shell-out、网络契约下载或 Runtime 分发。资产及合成资料出处、哈希和许可见 product-assets 与测试 oracle 的来源说明。
 
-产品原文的普通 Markdown 链接由 `product-markdown.ts` 单独提取并进入原有 reference 依据，不进入任务／状态提取，不升级为业务关系，也不因补关系而读取额外正文。解析与分段展示都使用同快照完整文件的引用定义上下文，按 Markdown 第一条定义生效；展示仅保留所选条目的 AST 范围及不可见定义，原始绝对行号不变。YAML 元数据屏蔽但保留换行，正文不能借元数据里的定义或 HTML 改变解析；TXT／JSON／YAML 仍按纯文本原文处理。
+产品原文的普通 Markdown 链接由 `product-markdown.ts` 单独提取并进入原有 reference 依据，不进入任务／状态提取，不升级为业务关系，也不因补关系而读取额外正文。解析与分段展示都使用同快照完整文件的引用定义上下文，按 Markdown 第一条定义生效；展示仅保留所选条目的 AST 范围及不可见定义，原始绝对行号不变。YAML 元数据屏蔽但保留换行，正文不能借元数据里的定义或 HTML 改变解析；代码及无扩展名来源不提取任务／状态，默认按纯文本原文展示；TXT／JSON／YAML 保留原文展示。
+
+### 文档解析与业务视图修正
+
+vNext 自动模式读取规范 `docs`、`TASKS` 中全部 Markdown / YAML；未声明类型的文档保留未分类，历史材料不提升为 PRODUCT 当前定义。文档目录中的 records 不等同于 Runtime records。通用 frontmatter 兼容历史 owner/title/description 纯文本写法，重复字段保留冲突并不选择值，其余字段继续读取；PRODUCT 与 Profile 仍按正式 YAML／production Schema 验证。Markdown AST 屏蔽 frontmatter 并保持绝对行号；UTF-8 解码保留 BOM，raw 重编码与文件 SHA-256 一致。
+
+`product-health.ts` 将结构／读取、来源依据与合法业务待核对分别归类。产品 ready 只表示托管定义完整可解析，不代替业务盘点或实施验证；来源缺失仍保留。`product-scope.ts` 使用有效且已解析的 supports/part_of 关系形成多归属视图，沿上级模块归属展开时保留推断标记并防止循环。part_of 仅支持需求／模块到模块，拒绝把需求到需求的无效关系当作拆分需求，设计与任务只统计已记录的绑定，不从正文猜测。项目全文、资料盘点和来源核对默认折叠，业务视图优先。
+
+概览的 `overview-dashboard.tsx` 采用目标卡、路线卡和状态说明布局；内容样式限定在 overview-theme，共享导航限定在 modern-shell。样式由 main.tsx 入口直接加载，导航和品牌不依赖快照或延迟产品组件，进入其他页面时保持同一外壳。`overview-model.ts` 保持计划原数组顺序和计划内工作身份；无计划展示全部已知需求，多计划不自行选择。仅明确依赖到前一工作项时显示连接箭头。绑定真实 task_id 去重；null 身份按绑定保留待确认，不计为确认任务；状态来自本快照任务文档，已关闭不合并为已完成，多观察冲突单独保留。目标和需求摘录使用同快照完整文件的 Markdown 引用上下文及原始行号，详情跳转复用现有选择身份和来源守卫。

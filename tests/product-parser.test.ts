@@ -225,6 +225,7 @@ describe("pinned PRODUCT parser differential fixtures", () => {
     "product-e6",
     "product-planning/no-plan",
     "product-planning/multiple-plans",
+    "product-planning/reordered",
   ])("matches the official oracle without changing %s", (name) => {
     const root = path.join(fixtureRoot, name);
     const items = fixtureItems(root);
@@ -577,11 +578,27 @@ describe("strict JSON-compatible PRODUCT YAML", () => {
     ],
     ["unclosed flow", "    scope: [current\n", "YAML_"],
   ])(
-    "rejects the entire frontmatter for %s, without salvaging a plausible neighbor",
+    "isolates %s to its item range and matches the official degradation result",
     (_name, fragment, code) => {
       const raw = `---\nschema: vnext-product-doc/v2\nitems:\n  - id: REQ-BAD\n    type: requirement\n${fragment}  - id: REQ-GOOD\n    type: requirement\n    scope: current\n---\n${requirementBody("REQ-BAD")}\n${requirementBody("REQ-GOOD")}`;
       const result = parse(raw);
-      expect(result.items).toEqual([]);
+      compareItems(result.items, runOracle(isolated(raw)));
+      expect(
+        result.items
+          .filter((item) => !item.usable)
+          .every((item) => item.definitionSha256 === null),
+      ).toBe(true);
+      if (_name !== "unclosed flow") {
+        expect(
+          result.items.find((item) => item.id === "REQ-GOOD")?.usable,
+        ).toBe(true);
+        expect(result.items.find((item) => item.id === "REQ-BAD")?.usable).toBe(
+          false,
+        );
+        expect(
+          result.items.find((item) => item.id === "REQ-BAD")?.rawMetadata,
+        ).toBeDefined();
+      }
       expect(
         result.diagnostics.some((entry) => entry.code.startsWith(code)),
       ).toBe(true);
@@ -640,18 +657,24 @@ maintenance: enabled
       ),
     ).toMatchObject({ status: "unavailable", manifest: null });
     // Safe tag spelling does not bypass JSON value or mapping-key constraints.
-    expect(parse(raw.replace("!!float 2.5", "!!float .inf")).items).toEqual([]);
     expect(
-      parse(raw.replace("!!map {key: value}", "!!map {1: value}")).items,
-    ).toEqual([]);
+      parse(raw.replace("!!float 2.5", "!!float .inf")).items[0].usable,
+    ).toBe(false);
+    expect(
+      parse(raw.replace("!!map {key: value}", "!!map {1: value}")).items[0]
+        .usable,
+    ).toBe(false);
   });
 
-  it("documents the safer whole-YAML failure when the official oracle salvages item-range duplicate keys", () => {
+  it("rejects duplicate keys in their own item while preserving the official usable neighbor", () => {
     const raw = `---\nschema: vnext-product-doc/v2\nitems:\n  - id: REQ-BAD\n    type: requirement\n    scope: current\n    scope: planned\n  - id: REQ-GOOD\n    type: requirement\n    scope: current\n---\n${requirementBody("REQ-BAD")}\n${requirementBody("REQ-GOOD")}`;
     expect(runOracle(isolated(raw)).items.map((item) => item.id)).toEqual([
       "REQ-GOOD",
     ]);
-    expect(parse(raw).items).toEqual([]);
+    compareItems(parse(raw).items, runOracle(isolated(raw)));
+    expect(parse(raw).items.find((item) => item.id === "REQ-BAD")?.usable).toBe(
+      false,
+    );
   });
 
   it("uses the complete production schema for conditional provenance and closed nested fields", () => {

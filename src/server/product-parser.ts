@@ -128,7 +128,7 @@ function schemaMessage(error: ErrorObject, prefix = "") {
   return `${prefix}${error.instancePath}${missing}${additional || ""}: ${error.message ?? "Invalid metadata"}`;
 }
 
-/** JSON-compatible YAML only. Any syntax or forbidden-feature error rejects the whole value. */
+/** JSON-compatible YAML only; offsets isolate item problems without expanding aliases. */
 function strictYaml(text: string, path: string, lineOffset = 0) {
   const lineAt = lineLocator(text);
   const doc = parseDocument(text, {
@@ -138,12 +138,14 @@ function strictYaml(text: string, path: string, lineOffset = 0) {
     prettyErrors: false,
   });
   const diagnostics: ProductDiagnostic[] = [];
-  const problem = (code: string, message: string, offset = 0) =>
-    diagnostics.push(
-      diagnostic(code, path, message, {
-        line: lineOffset + lineAt(offset),
-      }),
-    );
+  const problems: { offset: number; diagnostic: ProductDiagnostic }[] = [];
+  const problem = (code: string, message: string, offset = 0) => {
+    const entry = diagnostic(code, path, message, {
+      line: lineOffset + lineAt(offset),
+    });
+    diagnostics.push(entry);
+    problems.push({ offset, diagnostic: entry });
+  };
   for (const issue of [...doc.errors, ...doc.warnings]) {
     problem(`YAML_${issue.code}`, issue.message, issue.pos?.[0] ?? 0);
   }
@@ -205,7 +207,7 @@ function strictYaml(text: string, path: string, lineOffset = 0) {
     problem("YAML_NODE", "Unsupported YAML node");
     return null;
   };
-  return { doc, value: convert(doc.contents), diagnostics };
+  return { doc, value: convert(doc.contents), diagnostics, problems };
 }
 
 /** Contract path syntax, separate from filesystem checks performed by the scanner. */
@@ -438,9 +440,21 @@ export function parseProductDocument(
       path,
       1,
     );
-    // Do not trust even apparently valid members of a syntactically damaged document.
-    diagnostics.push(...yaml.diagnostics);
-    if (diagnostics.length) return { items, diagnostics };
+    const sequence = yaml.doc.get("items", true);
+    const itemNodes = isSeq(sequence) ? sequence.items : [];
+    const belongsTo = (offset: number, node: unknown) =>
+      isNode(node) &&
+      node.range &&
+      offset >= node.range[0] &&
+      offset < node.range[2];
+    diagnostics.push(
+      ...yaml.problems
+        .filter(
+          (problem) =>
+            !itemNodes.some((node) => belongsTo(problem.offset, node)),
+        )
+        .map((problem) => problem.diagnostic),
+    );
     const schema = record(yaml.value) ? yaml.value.schema : undefined;
     const version =
       schema === "vnext-product-doc/v2"
@@ -469,8 +483,6 @@ export function parseProductDocument(
     )
       return { items, diagnostics };
     const metadataItems = yaml.value.items;
-    const sequence = yaml.doc.get("items", true);
-    const itemNodes = isSeq(sequence) ? sequence.items : [];
     const ast = processor.parse(text.slice(bodyStart));
     const headings = ast.children.filter(
       (node): node is Heading => node.type === "heading" && node.depth === 2,
@@ -535,6 +547,14 @@ export function parseProductDocument(
           schemaMessage(error, `/items/${index}`),
           { itemId: id || undefined, line: metadataLine },
         ),
+      );
+      itemDiagnostics.push(
+        ...yaml.problems
+          .filter((problem) => belongsTo(problem.offset, node))
+          .map((problem) => ({
+            ...problem.diagnostic,
+            itemId: id || undefined,
+          })),
       );
       if (matches.length !== 1)
         itemDiagnostics.push(

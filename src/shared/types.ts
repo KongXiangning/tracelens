@@ -16,6 +16,7 @@ export const kindLabels: Record<DocumentKind, string> = {
   unclassified: "待分类",
 };
 export interface ScanConfig {
+  readingMode?: "vnext" | "custom";
   rules: Record<ConfiguredKind, string[]>;
   excludes: string[];
   autoDiscover?: boolean;
@@ -163,6 +164,7 @@ export interface Discovery {
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
   product?: ProductPreview;
+  productRead?: ProductSnapshot;
 }
 export interface DocumentRegistration {
   path: string;

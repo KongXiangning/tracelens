@@ -353,6 +353,34 @@
   border-top: 1px solid #dfe5e1;
   margin-top: 16px;
 }
+.document-summary {
+  min-width: 0;
+}
+.document-summary h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.document-summary h4 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+}
+.document-summary .section-heading {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.document-issues li {
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+.document-issues code {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+.document-summary details {
+  margin: 12px 0;
+}
 .modal-body .checkbox-label {
   display: flex;
   flex-direction: row;
@@ -2407,4 +2435,53 @@ dialog form {
     width: 100%;
     margin-bottom: 4px;
   }
+}
+.product-business-scope {
+  padding: 20px 0;
+}
+.product-business-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 18px;
+}
+.product-business-group {
+  border: 1px solid #dce3df;
+  border-radius: 10px;
+  padding: 18px;
+  min-width: 0;
+  background: #ffffff;
+}
+.product-business-group .section-heading {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.product-business-group .text-link {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.product-requirement-summary {
+  border-top: 1px solid #dce3df;
+  padding: 13px 0;
+  margin-top: 10px;
+}
+.product-requirement-summary p {
+  margin: 8px 0;
+  font-size: 13px;
+}
+.product-subrequirements {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0 0 14px;
+}
+.product-inventory,
+.product-project-body {
+  margin: 14px 0;
+}
+.product-inventory > summary,
+.product-project-body > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.browser-detail > .product-business-scope {
+  padding: 24px;
 }

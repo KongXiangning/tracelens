@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import { z } from "zod";
 import type { Project } from "../shared/types.js";
+import { normalizeReadConfig } from "../shared/scan-config.js";
 import {
   AppError,
   assertNoLinks,
@@ -36,7 +37,21 @@ export class ProjectRegistry {
         ),
       );
       this.assertDataDirectoryOutsideProjects(projects);
-      this.projects = projects;
+      const upgraded = projects.map((project) => {
+        const config = normalizeReadConfig(project.config);
+        const changed =
+          configFingerprint(config) !== configFingerprint(project.config);
+        return {
+          ...project,
+          config,
+          configVersion: project.configVersion + Number(changed),
+        };
+      });
+      if (
+        upgraded.some((p, i) => p.configVersion !== projects[i].configVersion)
+      )
+        await this.save(upgraded);
+      else this.projects = upgraded;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
         throw new AppError(
@@ -99,7 +114,13 @@ export class ProjectRegistry {
         throw new AppError("这个目录已登记，请在项目列表切换");
       if (this.projects.length >= 100)
         throw new AppError("最多登记 100 个项目");
-      const project = { ...input, root, id: randomUUID(), configVersion: 1 };
+      const project = {
+        ...input,
+        config: normalizeReadConfig(input.config),
+        root,
+        id: randomUUID(),
+        configVersion: 1,
+      };
       await this.save([...this.projects, project]);
       return project;
     });
@@ -114,11 +135,13 @@ export class ProjectRegistry {
         body,
       );
       const previous = this.get(id);
+      const config = normalizeReadConfig(input.config);
       const changed =
-        configFingerprint(input.config) !== configFingerprint(previous.config);
+        configFingerprint(config) !== configFingerprint(previous.config);
       const project = {
         ...previous,
         ...input,
+        config,
         configVersion: previous.configVersion + Number(changed),
       };
       await this.save(this.projects.map((p) => (p.id === id ? project : p)));

@@ -14,6 +14,36 @@ function parse(raw: string, filename = "docs/workflow/CURRENT_TASK.md") {
   return parseInput("project-a", input);
 }
 describe("document extraction with provenance", () => {
+  it("reads legacy text scalars without treating frontmatter as Markdown headings or changing source lines", () => {
+    const raw =
+      "---\nowner: @maintainer\ntitle: Migration S1: wire carrier\nstatus: active\nrelated_docs: [docs/design.md]\n---\n# Actual title\n\n## 任务目标\n- 保留原文\n";
+    const result = parse(raw);
+    expect(result.warnings.filter((w) => w.level !== "info")).toEqual([]);
+    expect(result.document.raw).toBe(raw);
+    expect(result.document.headings).toMatchObject([
+      { title: "Actual title", line: 7 },
+      { line: 9 },
+    ]);
+    expect(result.references).toContainEqual(
+      expect.objectContaining({
+        target: "docs/design.md",
+        source: expect.objectContaining({ line: 5 }),
+      }),
+    );
+  });
+  it("preserves duplicate-field conflicts while reading the other metadata and body", () => {
+    const result = parse(
+      "---\ntask_id: task-a\ntask_id: task-b\nlast_updated: 2026-01-01\nlast_updated: 2026-02-01\nrelated_docs: [docs/design.md]\n---\n# Task\n",
+    );
+    expect(result.task?.realTaskId ?? null).toBe(null);
+    expect(
+      result.warnings.filter((w) => w.code === "metadata-conflict"),
+    ).toHaveLength(2);
+    expect(
+      result.references.some((ref) => ref.target === "docs/design.md"),
+    ).toBe(true);
+    expect(result.document.headings[0].line).toBe(8);
+  });
   it("reads generated task focus and step instead of historical table rows", () => {
     const result = parse(`---
 kind: vnext-task-view

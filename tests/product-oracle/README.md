@@ -16,6 +16,14 @@ license; `THIRD_PARTY_NOTICES.txt` preserves licenses for its bundled dependenci
 
 Differential tests compare metadata, complete Markdown bodies, line numbers,
 requirement definition hashes, relations, and plan/work order. They also compare
-safe item-level degradation. Damaged YAML has an intentional stricter result in
-TraceLens: the entire frontmatter is rejected instead of salvaging its decoded
-members. See `src/server/product-assets/PROVENANCE.md`.
+safe item-level degradation. Root YAML errors reject the envelope; errors within
+an item exclude that item while keeping valid neighbors and all original bytes.
+See `src/server/product-assets/PROVENANCE.md`.
+
+`handoff-20261010/offline-reader.mjs` is a second, unchanged copy from the current
+upstream working tree at HEAD `334580494634cbd88c60b62bcdf50345e1b0abe5`.
+The tree includes uncommitted path-coverage changes; this snapshot must not be
+described as a committed release. SHA-256:
+`76110a5cc9b23d560e8135893cf4fd75b2dcb9b5cb600ec05d88dd24d6bf5eaa`.
+It uses the same parent-directory MIT license and bundled dependency notices. Tests pin
+its bytes, compare full items and reading coverage, and preserve original inputs.

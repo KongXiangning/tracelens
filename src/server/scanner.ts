@@ -25,7 +25,7 @@ import type { ProductSnapshot } from "../shared/product-types.js";
 import { matchesProductPath, parseProductManifest } from "./product-parser.js";
 
 export const limits = {
-  files: 500,
+  files: 1000,
   fileBytes: 2 * 1024 * 1024,
   totalBytes: 20 * 1024 * 1024,
   entries: 20000,
@@ -37,7 +37,6 @@ const blocked = new Set([
   "dist",
   "build",
   "coverage",
-  "records",
   ".vnext",
   "journal",
 ]);
@@ -46,8 +45,8 @@ export function blockedPath(relative: string, includeRecords = false): boolean {
     .split("/")
     .some(
       (segment) =>
-        blocked.has(segment.toLowerCase()) &&
-        !(includeRecords && segment.toLowerCase() === "records"),
+        blocked.has(segment.toLowerCase()) ||
+        (segment.toLowerCase() === "records" && !includeRecords),
     );
 }
 export function matches(file: string, pattern: string): boolean {
@@ -103,6 +102,9 @@ export class ScanReadSession {
     this.productExclusions = [...patterns];
   }
   exclusion(relative: string, includeRecords = false): string | null {
+    includeRecords ||=
+      this.config?.readingMode === "vnext" &&
+      relative.toLowerCase().startsWith("docs/");
     if (blockedPath(relative, includeRecords)) return "文件路径超出允许范围";
     if (
       this.config?.excludes.some(
@@ -133,6 +135,9 @@ export class ScanReadSession {
     includeRecords = false,
     allowance?: ReadAllowance,
   ): Promise<Omit<InputFile, "kind">> {
+    includeRecords ||=
+      this.config?.readingMode === "vnext" &&
+      relative.toLowerCase().startsWith("docs/");
     // Policy is checked before cached success or failure is returned.
     this.assertAllowed(relative, includeRecords);
     const key = documentPathKey(relative);
@@ -157,7 +162,7 @@ export class ScanReadSession {
       !this.attemptedPaths.has(key) &&
       this.attemptedPaths.size >= limits.files
     )
-      throw new AppError("达到 500 文件读取上限，扫描不完整");
+      throw new AppError("达到 1000 文件读取上限，扫描不完整");
     this.attemptedPaths.add(key);
     // Serialize physical reads so concurrent callers cannot each spend the same
     // remaining budget. Coalesced requests still reuse one promise/byte image.
@@ -275,9 +280,10 @@ export async function readBounded(
     if (!within(root, await realpath(filename)))
       throw new AppError("读取期间真实路径变化");
     const bytes = buffer.subarray(0, length);
-    const raw = new TextDecoder("utf-8", { fatal: true })
-      .decode(bytes)
-      .replace(/^\uFEFF/, "");
+    const raw = new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(bytes);
     if (raw.includes("\0")) throw new AppError("文件包含二进制内容");
     return {
       path: relative,
@@ -296,22 +302,33 @@ export async function discover(
   suppliedConfig?: ScanConfig,
 ): Promise<Discovery> {
   const root = await validateRoot(rootInput, dataDir);
-  const config: ScanConfig = suppliedConfig || {
-    autoDiscover: true,
-    rules: { management: [], requirements: [], design: [], planning: [] },
-    excludes: [],
-  };
-  const scan = await scanFiles(
-    { id: "discovery", name: "发现预览", root, config, configVersion: 1 },
-    undefined,
-    true,
+  const { normalizeReadConfig } = await import("../shared/scan-config.js");
+  const config: ScanConfig = normalizeReadConfig(
+    suppliedConfig || {
+      autoDiscover: true,
+      rules: { management: [], requirements: [], design: [], planning: [] },
+      excludes: [],
+    },
   );
+  const previewProject = {
+    id: "discovery",
+    name: "发现预览",
+    root,
+    config,
+    configVersion: 1,
+  };
+  const scan = await scanFiles(previewProject, undefined, true);
+  if (config.readingMode === "vnext")
+    await (
+      await import("./product-reader.js")
+    ).readProduct(previewProject, scan);
   return {
     config,
     warnings: scan.warnings,
     profileUsed: scan.navigation.profileUsed,
     navigation: scan.navigation,
     effectiveRules: scan.effectiveRules,
+    productRead: scan.product,
     product: await (
       await import("./product-reader.js")
     ).previewProduct(root, config, scan.readSession),
@@ -377,7 +394,7 @@ export async function scanFiles(
       if (!truncated)
         warnings.push({
           code: "limit",
-          message: "达到枚举数量、深度或 500 文件上限，扫描不完整",
+          message: "达到枚举数量、深度或 1000 文件上限，扫描不完整",
         });
       truncated = true;
       return;
@@ -454,6 +471,7 @@ export async function scanFiles(
     }
     const key = documentPathKey(relative);
     const existing = selected.get(key);
+    if (existing && kind === "unclassified") return;
     if (existing && existing.kind !== kind)
       warnings.push({
         code: "classification",
@@ -474,7 +492,7 @@ export async function scanFiles(
           truncated = true;
           warnings.push({
             code: "limit",
-            message: "达到 500 文件上限，扫描不完整",
+            message: "达到 1000 文件上限，扫描不完整",
           });
           break;
         }
@@ -495,6 +513,23 @@ export async function scanFiles(
             path: pattern,
             message: "此匹配规则未发现文档",
           });
+      }
+    }
+  }
+  // Standard project documents are readable even before they have a declared
+  // business classification. This never promotes history to managed PRODUCT.
+  if (project.config.readingMode === "vnext") {
+    for (const directory of ["docs", "TASKS"]) {
+      try {
+        if (!(await lstat(path.join(root, directory))).isDirectory()) continue;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      for (const extension of ["md", "markdown", "yaml", "yml"]) {
+        const pattern = `${directory}/**/*.${extension}`;
+        effectiveRules.unclassified.push(pattern);
+        await walk(directory, 0, "unclassified", pattern);
       }
     }
   }
@@ -532,7 +567,7 @@ export async function scanFiles(
         warnings.push({
           code: "limit",
           path: ".workflow-system/PROJECT_PROFILE.yaml",
-          message: "达到 500 文件上限，未读取 Profile，扫描不完整",
+          message: "达到 1000 文件上限，未读取 Profile，扫描不完整",
         });
     }
   } catch (error) {

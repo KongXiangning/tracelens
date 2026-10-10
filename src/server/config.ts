@@ -46,6 +46,7 @@ const pattern = z
     "规则须为项目内的相对路径，使用 /，不能包含 ..、盘符或反斜杠",
   );
 export const configSchema = z.object({
+  readingMode: z.enum(["vnext", "custom"]).optional(),
   product: z
     .object({
       enabled: z.boolean(),
@@ -165,6 +166,7 @@ export async function validateRoot(
 }
 export function configFingerprint(config: ScanConfig): string {
   return JSON.stringify([
+    config.readingMode,
     Boolean(config.autoDiscover),
     Boolean(config.includeRecords),
     config.product ?? {

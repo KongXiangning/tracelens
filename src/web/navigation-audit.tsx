@@ -7,6 +7,10 @@ import {
   type Snapshot,
 } from "../shared/types";
 import { organizationPrompt } from "../shared/organization-prompt";
+import {
+  documentIssues,
+  type ProductReadState,
+} from "../shared/document-health";
 import { Modal, SourceButton, type OpenSource } from "./components";
 
 const classifications = {
@@ -154,8 +158,8 @@ export function CandidateList({ report }: { report: NavigationReport }) {
       <p className="muted">
         盘点目录：{inventory.roots.join("、") || "未配置"}。
         {inventory.incomplete ? "盘点不完整。" : "已完成本次目录盘点。"}
-        这里只确认文件存在，尚未读取正文或确认用途；可在高级扫描设置中按用途添加文件路径，也可将整理提示词交给该项目的
-        agent 核对登记。
+        这里只确认文件存在，尚未读取正文或确认用途。请将整理提示词交给项目中的
+        vNext，由它核对用途、规范位置和登记。
       </p>
       <input
         aria-label="搜索未登记文档"
@@ -193,22 +197,21 @@ export function CandidateList({ report }: { report: NavigationReport }) {
   );
 }
 
-export function NavigationAudit({
-  snapshot,
+export function OrganizationPromptButton({
+  report,
+  product,
   projectName,
   root,
-  open,
 }: {
-  snapshot: Snapshot;
+  report: NavigationReport;
+  product?: ProductReadState;
   projectName: string;
   root: string;
-  open: OpenSource;
 }) {
-  const report = snapshot.navigation;
   const [promptOpen, setPromptOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
-  const prompt = organizationPrompt(projectName, root, report);
+  const prompt = organizationPrompt(projectName, root, report, product);
   async function copy() {
     try {
       await navigator.clipboard.writeText(prompt);
@@ -219,45 +222,26 @@ export function NavigationAudit({
     }
   }
   return (
-    <section className="navigation-audit">
-      <div className="section-heading">
-        <h3>
-          <FileText size={17} />
-          文档登记与缺口
-        </h3>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            setPromptOpen(true);
-            setCopied(false);
-            setCopyError("");
-          }}
-        >
-          <MessageSquareText size={16} />
-          文档整理提示词
-        </button>
-      </div>
-      <p className="navigation-boundary">
-        用户需求完整性：尚未确认。以下核对文档登记与可读性；是否覆盖全部用户需求和设计，仍需对照原始需求。
-      </p>
-      {report.gaps.length > 0 && (
-        <ul className="navigation-gaps">
-          {report.gaps.map((gap) => (
-            <li key={gap}>{gap}</li>
-          ))}
-        </ul>
-      )}
-      <details open={report.entries.length <= 12}>
-        <summary>
-          登记来源 <span>{report.entries.length}</span>
-        </summary>
-        <RegistrationList report={report} snapshot={snapshot} open={open} />
-      </details>
-      <CandidateList report={report} />
+    <>
+      <button
+        type="button"
+        className="secondary"
+        onClick={() => {
+          setPromptOpen(true);
+          setCopied(false);
+          setCopyError("");
+        }}
+      >
+        <MessageSquareText size={16} />
+        交给 vNext 整理
+      </button>
       {promptOpen && (
         <Modal title="文档整理提示词" close={() => setPromptOpen(false)}>
           <div className="modal-body">
+            <p className="muted">
+              复制到该项目的 vNext 对话中，讨论并整理后回到 TraceLens
+              刷新。文档结构与登记由 vNext 维护。
+            </p>
             <textarea
               aria-label="文档整理提示词"
               className="organization-prompt"
@@ -290,6 +274,110 @@ export function NavigationAudit({
           </div>
         </Modal>
       )}
+    </>
+  );
+}
+
+export function DocumentSummary({
+  report,
+  product,
+  projectName,
+  root,
+}: {
+  report: NavigationReport;
+  product?: ProductReadState;
+  projectName: string;
+  root: string;
+}) {
+  const issues = documentIssues(report, product);
+  const read = report.entries.filter(
+    (entry) => entry.availability === "read",
+  ).length;
+  let productSummary = "标准产品资料待就绪";
+  if (product && ["ready", "partial", "empty"].includes(product.status)) {
+    productSummary = "已找到标准产品入口";
+    if ("items" in product)
+      productSummary = `${product.items.filter((item) => item.usable).length} 个标准产品条目`;
+  }
+  return (
+    <section className="document-summary" aria-label="vNext 文档状态">
+      <div className="section-heading">
+        <h3>
+          <FileText size={17} /> vNext 文档
+        </h3>
+        <OrganizationPromptButton
+          report={report}
+          product={product}
+          projectName={projectName}
+          root={root}
+        />
+      </div>
+      <p>
+        已读取 {read} 份项目文档 · {productSummary}
+      </p>
+      <p className="muted">
+        自动跟随 vNext 的文档登记。缺失内容请在项目中与 vNext
+        讨论、整理，完成后刷新即可。
+      </p>
+      {issues.length > 0 ? (
+        <>
+          <details>
+            <summary>文档读取与引用待处理 · {issues.length} 项</summary>
+            <IssueList issues={issues} />
+          </details>
+        </>
+      ) : (
+        <p className="muted">
+          本次未发现登记与读取问题。业务内容是否齐全，仍需在 vNext 中确认。
+        </p>
+      )}
+    </section>
+  );
+}
+
+function IssueList({ issues }: { issues: ReturnType<typeof documentIssues> }) {
+  return (
+    <ul className="navigation-gaps document-issues">
+      {issues.map((issue, index) => (
+        <li key={index}>
+          {issue.path && <code>{issue.path}</code>}
+          <span>{issue.message}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function NavigationAudit({
+  snapshot,
+  projectName,
+  root,
+  open,
+}: {
+  snapshot: Snapshot;
+  projectName: string;
+  root: string;
+  open: OpenSource;
+}) {
+  return (
+    <section className="navigation-audit">
+      <DocumentSummary
+        report={snapshot.navigation}
+        product={snapshot.product}
+        projectName={projectName}
+        root={root}
+      />
+      <details>
+        <summary>
+          文档登记与读取详情 · {snapshot.navigation.entries.length} 项
+        </summary>
+        <RegistrationList
+          report={snapshot.navigation}
+          snapshot={snapshot}
+          open={open}
+        />
+        <CandidateList report={snapshot.navigation} />
+      </details>
     </section>
   );
 }

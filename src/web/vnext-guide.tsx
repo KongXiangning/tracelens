@@ -127,8 +127,9 @@ export function VNextGuide() {
       <section className="guide-notes">
         <h3>标准产品文档与只读规划</h3>
         <p>
-          在项目配置预览 .workflow-system/PRODUCT.yaml
-          后，明确启用并手动刷新。支持固定契约 v2，并只读兼容 v1；条目 type
+          选择项目后自动读取 vNext 登记的标准产品文档。缺少资料时，使用“交给
+          vNext 整理”回到项目讨论，由 maintain-project
+          在规范位置维护，完成后刷新。支持固定契约 v2，并只读兼容 v1；条目 type
           与普通文档分类分开。上游契约核对基线：813d3146561c974c1437fc4d116144dc800bc1ad。
         </p>
         <p>

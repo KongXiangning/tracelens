@@ -28,6 +28,7 @@ import { documentPathKey } from "./config.js";
 import {
   metadataReferenceFields,
   metadataTargets,
+  readDocumentMetadata,
 } from "./document-metadata.js";
 
 export function stableId(projectId: string, value: string): string {
@@ -195,7 +196,7 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
       if (parsed?.errors.length)
         throw new Error(parsed.errors.map((e) => e.message).join("; "));
       const value = isJson
-        ? JSON.parse(input.raw)
+        ? JSON.parse(input.raw.replace(/^\uFEFF/, ""))
         : parsed!.toJS({ maxAliasCount: 20 });
       document.recognized = true;
       for (const warning of parsed?.warnings || [])
@@ -256,13 +257,33 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
     }
     return { document, task: null, statements, references, warnings };
   }
-  const frontmatter = input.raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  const frontmatter = input.raw.match(
+    /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/,
+  );
   let taskViewMetadata = false;
   if (frontmatter) {
     try {
-      const metadata = parseDocument(frontmatter[1]);
-      if (metadata.errors.length) throw new Error(metadata.errors[0].message);
-      const value = metadata.toJS({ maxAliasCount: 20 });
+      const {
+        document: metadata,
+        value,
+        notices,
+        conflicts,
+      } = readDocumentMetadata(frontmatter[1]);
+      for (const message of notices)
+        warnings.push({
+          code: "metadata-compatibility",
+          path: input.path,
+          line: 1,
+          level: "info",
+          message,
+        });
+      for (const field of conflicts)
+        warnings.push({
+          code: "metadata-conflict",
+          path: input.path,
+          line: 1,
+          message: `元数据 ${field} 重复声明，该字段保持未确定；其余字段与正文已读取。`,
+        });
       taskViewMetadata = value?.kind === "vnext-task-view";
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const node = metadata.get("task_id", true) as
@@ -311,7 +332,11 @@ export function parseInput(projectId: string, input: InputFile): Parsed {
       });
     }
   }
-  const tree = processor.parse(input.raw) as Root;
+  const markdown = frontmatter
+    ? frontmatter[0].replace(/[^\r\n]/g, " ") +
+      input.raw.slice(frontmatter[0].length)
+    : input.raw;
+  const tree = processor.parse(markdown) as Root;
   const duplicates = new Map<string, number>();
   visit(tree, "heading", (node: MdHeading) => {
     const title = toString(node);

@@ -62,6 +62,10 @@ const multiple = await copyFixture(
   "product-planning/multiple-plans",
   "多份独立计划与同名工作项",
 );
+const reordered = await copyFixture(
+  "product-planning/reordered",
+  "B A C 重排与历史报告",
+);
 const missing = path.join(run, "PRODUCT 入口缺失");
 await mkdir(missing);
 const unsupported = await copyFixture(
@@ -96,6 +100,20 @@ full.body = full.body.replace(
 );
 const requirement = full.metadata.items.find(
   (item) => item.id === "REQ-IMPORT",
+);
+const codePath = "docs/evidence/source.js";
+requirement.sources ??= [];
+requirement.sources.push({
+  kind: "file",
+  path: codePath,
+  lines: { start: 2, end: 2 },
+});
+await mkdir(path.dirname(path.join(comprehensive, codePath)), {
+  recursive: true,
+});
+await writeFile(
+  path.join(comprehensive, codePath),
+  '// Captured source, never executed.\nconst text = "TASK-777 fake task";\n',
 );
 const taskA = {
   task_id: "browser-task-baseline",
@@ -168,6 +186,7 @@ const fixtureInfo = {
   e6,
   noPlan,
   multiple,
+  reordered,
   missing,
   unsupported,
   badItem,
@@ -192,6 +211,7 @@ if (process.env.TRACELENS_PREFLIGHT_ONLY === "1") {
     e6,
     noPlan,
     multiple,
+    reordered,
     missing,
     unsupported,
     badItem,
@@ -419,7 +439,7 @@ async function selectItem(id) {
     .click();
   await visible(page.locator(`.product-detail[data-product-id="${id}"]`));
 }
-async function add(root, name, enabled = true) {
+async function add(root, name) {
   await page
     .getByRole("button", { name: "添加项目", exact: true })
     .first()
@@ -434,24 +454,14 @@ async function add(root, name, enabled = true) {
     .click();
   await page.getByRole("button", { name: "选择当前目录" }).click();
   await page.getByRole("textbox", { name: "项目名称", exact: true }).fill(name);
-  const checkbox = page.getByRole("checkbox", { name: "启用标准产品文档读取" });
+  await visible(page.getByRole("region", { name: "vNext 文档状态" }));
   assert.equal(
-    await checkbox.isChecked(),
-    false,
-    "Discovery cannot opt into PRODUCT",
+    await page.getByRole("checkbox", { name: "启用标准产品文档读取" }).count(),
+    0,
   );
-  const preview = page.waitForResponse(
-    (r) => r.url().endsWith("/discover") && r.request().method() === "POST",
-  );
-  await page
-    .getByRole("button", { name: "预览 PRODUCT 范围", exact: true })
-    .click();
-  await preview;
-  await visible(page.getByRole("region", { name: "PRODUCT 发现预览" }));
   assert.equal(
-    await checkbox.isChecked(),
-    false,
-    "Preview cannot opt into PRODUCT",
+    await page.locator("dialog .registration-row:visible").count(),
+    0,
   );
   if (name === "综合产品 · 中文与超长标题") {
     assert.equal(
@@ -460,9 +470,8 @@ async function add(root, name, enabled = true) {
       "Preview must not register a project",
     );
     assert.equal(refreshCount, 0, "Preview must not refresh");
-    await screenshot("1440-product-preview-unchecked");
+    await screenshot("1440-vnext-automatic-preview");
   }
-  if (enabled) await checkbox.check();
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/refresh") && r.request().method() === "POST",
   );
@@ -523,26 +532,10 @@ try {
       refreshCount++;
   });
   await page.goto(base);
-  const main = await add(comprehensive, "综合产品 · 中文与超长标题", false);
+  const main = await add(comprehensive, "综合产品 · 中文与超长标题");
   let mainView = await view(main.id);
-  assert.equal(mainView.snapshot.product.status, "disabled");
   await nav("需求");
-  await visible(
-    page.getByRole("heading", { name: "PRODUCT 未启用", exact: true }),
-  );
-  await page
-    .getByRole("button", { name: "启用 PRODUCT 阅读", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "预览 PRODUCT 范围", exact: true })
-    .click();
-  await page.getByRole("checkbox", { name: "启用标准产品文档读取" }).check();
-  await page.getByRole("button", { name: "保存配置", exact: true }).click();
-  await visible(page.getByText("配置已变更，需刷新", { exact: true }));
-  assert.equal((await view(main.id)).snapshot.id, mainView.snapshot.id);
-  assert.equal((await view(main.id)).snapshot.product.status, "disabled");
-  mainView = await refresh();
-  assert.equal(mainView.snapshot.product.status, "partial");
+  assert.equal(mainView.snapshot.product.status, "ready");
   assert.equal(
     mainView.snapshot.product.items.every((item) => item.usable),
     true,
@@ -560,8 +553,118 @@ try {
     "matched",
   );
   assert.equal(mainView.snapshot.product.items.length, 12);
+  const codeCheck = mainView.snapshot.product.sources.find(
+    (check) =>
+      check.reference.kind === "file" && check.reference.path === codePath,
+  );
+  assert.equal(codeCheck.readState, "read");
+  await selectItem("REQ-IMPORT");
+  await page
+    .locator(".product-detail > details.product-coverage > summary")
+    .click();
+  await page
+    .getByRole("button", { name: `${codePath}:2`, exact: true })
+    .first()
+    .click();
+  await visible(page.locator(".document-reader .raw-document"));
+  await visible(
+    page.locator('.document-reader .source-highlight[data-line="2"]'),
+  );
   await mark(
-    "Directory add and PRODUCT preview stay unchecked; explicit opt-in saves without scanning, then refresh publishes PRODUCT",
+    "Explicit code source opens captured plain text at its exact line without execution or task synthesis",
+  );
+  await nav("需求");
+  await mark(
+    "Directory selection previews vNext documentation without file choices; add automatically reads standard PRODUCT entries",
+  );
+
+  // Delay both data and the lazy product script to prove navigation CSS is an
+  // entry asset, independent of snapshot completion or product module loading.
+  let releaseSnapshot, releaseProduct;
+  const snapshotGate = new Promise((resolve) => {
+    releaseSnapshot = resolve;
+  });
+  const productGate = new Promise((resolve) => {
+    releaseProduct = resolve;
+  });
+  const snapshotRoute = `**/api/projects/${main.id}/snapshot`;
+  await page.route(snapshotRoute, async (route) => {
+    await snapshotGate;
+    await route.continue();
+  });
+  await page.route("**/assets/product-*.js", async (route) => {
+    await productGate;
+    await route.continue();
+  });
+  await page.reload();
+  await visible(
+    page.getByRole("heading", { name: "正在读取快照", exact: true }),
+  );
+  await visible(page.getByRole("navigation", { name: "主导航" }));
+  assert.equal(
+    await page
+      .locator(".sidebar")
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+    "rgb(247, 251, 255)",
+  );
+  assert.equal(await page.locator(".overview-dashboard").count(), 0);
+  await screenshot("1440-startup-before-snapshot");
+  releaseSnapshot();
+  await visible(page.getByText("正在读取产品概况…", { exact: true }));
+  assert.equal(
+    await page
+      .locator(".sidebar")
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+    "rgb(247, 251, 255)",
+  );
+  await screenshot("1440-startup-before-product-module");
+  releaseProduct();
+  await visible(page.getByRole("heading", { name: "需求路线图", exact: true }));
+  await page.unroute(snapshotRoute);
+  await page.unroute("**/assets/product-*.js");
+  await mark(
+    "First paint and delayed snapshot/product module use the same modern navigation; startup never displays the legacy shell",
+  );
+
+  const overviewReads = refreshCount;
+  await nav("概览");
+  await visible(page.getByRole("heading", { name: "需求路线图", exact: true }));
+  assert.equal(await page.locator(".overview-theme").count(), 1);
+  const overviewPlan = mainView.snapshot.product.items.find(
+    (item) => item.type === "plan",
+  );
+  assert.deepEqual(
+    await page
+      .locator(".overview-road-card")
+      .evaluateAll((cards) => cards.map((card) => card.dataset.overviewCard)),
+    overviewPlan.metadata.work_items.map((work) => work.id),
+  );
+  await visible(
+    page.locator(".overview-road-card").getByText("已关闭 1", { exact: true }),
+  );
+  for (const size of [
+    { width: 1440, height: 1000 },
+    { width: 1024, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(size);
+    await noOverflow(`${size.width} redesigned overview`);
+    await screenshot(`${size.width}-overview-dashboard`);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page
+    .locator('[data-overview-card="W-BASE"]')
+    .getByRole("button", { name: "查看详情", exact: true })
+    .click();
+  await visible(page.locator('[data-work-item-id="W-BASE"]'));
+  assert.equal(
+    refreshCount,
+    overviewReads,
+    "Overview navigation never refreshes",
+  );
+  await nav("需求");
+  await mark(
+    "Reference overview layout shows real goals, original work order and document task states at 1440/1024/390; detail navigation preserves identity and does not refresh",
   );
 
   const browseRefreshCount = refreshCount;
@@ -723,9 +826,8 @@ try {
       .locator('[data-work-item-id="W-CHECK"]')
       .scrollIntoViewIfNeeded();
     await screenshot(`${size.width}-scoped-repair-plan`);
-    await page
-      .getByRole("button", { name: "配置扫描范围", exact: true })
-      .click();
+    await page.getByRole("button", { name: "项目设置", exact: true }).click();
+    await visible(page.getByRole("region", { name: "vNext 文档状态" }));
     await noOverflow(`${size.width} configuration`);
     await screenshot(`${size.width}-product-configuration`);
     await page.getByRole("button", { name: "取消", exact: true }).click();
@@ -860,6 +962,43 @@ try {
     "Canonical E6 C binding verified; copied C-not-created variant removes only B-C, retaining E6C order/dependency and added scoped repair, old failure and pending evidence",
   );
 
+  const reorderedProject = await add(reordered, "重排 · 原顺序与历史报告");
+  await nav("规划");
+  await visible(page.locator('[data-work-item-id="B"]'));
+  assert.deepEqual(
+    await page
+      .locator(".product-work-card")
+      .evaluateAll((cards) => cards.map((card) => card.dataset.workItemId)),
+    ["B", "A", "C"],
+  );
+  for (const id of ["A", "C"])
+    assert.equal(
+      await page
+        .locator(`[data-work-item-id="${id}"] .product-binding`)
+        .count(),
+      0,
+    );
+  assert.equal(
+    await page
+      .locator('[data-work-item-id="B"] [data-binding-id="B-NEW"]')
+      .count(),
+    1,
+  );
+  const reorderedSnapshot = (await view(reorderedProject.id)).snapshot;
+  assert.equal(reorderedSnapshot.product.items.length, 10);
+  assert.equal(reorderedSnapshot.tasks.length, 0);
+  await selectItem("REQ-IMPORT");
+  await visible(page.getByText("报告通过", { exact: true }));
+  await visible(
+    page.getByRole("heading", { name: "待对账新材料 · 1 项", exact: true }),
+  );
+  await screenshot("1440-reordered-old-report-and-pending");
+  await nav("规划");
+  await screenshot("1440-reordered-B-A-C");
+  await mark(
+    "Current handoff fixture keeps B/A/C order, only B's explicit binding, historical partial pass and pending evidence without synthesizing tasks",
+  );
+
   const noPlanProject = await add(noPlan, "无计划 · 动态业务选择");
   await nav("规划");
   await visible(page.getByText("未记录项目计划", { exact: true }));
@@ -879,6 +1018,23 @@ try {
   );
   await screenshot("1440-no-plan-full-known-business-scope");
   const multiProject = await add(multiple, "多计划 · 不合并同名工作");
+  await visible(page.getByRole("heading", { name: "需求路线图", exact: true }));
+  await visible(page.getByText("尚未选定实施顺序", { exact: true }));
+  const overviewMulti = (await view(multiProject.id)).snapshot;
+  const overviewChooser = page.getByRole("combobox", { name: "概览项目计划" });
+  await overviewChooser.selectOption(
+    overviewMulti.product.items.find((item) => item.id === "PLAN-IMPORT").key,
+  );
+  assert.deepEqual(
+    await page
+      .locator(".overview-road-card")
+      .evaluateAll((cards) => cards.map((card) => card.dataset.overviewCard)),
+    ["W-VERIFY", "W-BASE", "W-RELEASE"],
+  );
+  await overviewChooser.selectOption(
+    overviewMulti.product.items.find((item) => item.id === "PLAN-EXPORT").key,
+  );
+  assert.equal(await page.locator(".overview-road-card").count(), 1);
   await nav("规划");
   await visible(
     page.getByRole("heading", { name: "请选择要查看的计划", exact: true }),
@@ -945,6 +1101,23 @@ try {
     const state = (await view(project.id)).snapshot.product;
     assert.equal(state.status, status);
     await visible(page.getByRole("heading", { name: heading, exact: true }));
+    if (status === "missing") {
+      await page
+        .getByRole("button", { name: "交给 vNext 整理", exact: true })
+        .click();
+      const prompt = await page
+        .getByRole("textbox", { name: "文档整理提示词", exact: true })
+        .inputValue();
+      assert.ok(prompt.includes("maintain-project"));
+      assert.ok(prompt.includes(".workflow-system/PRODUCT.yaml"));
+      assert.ok(prompt.includes("不要求用户上传、选择缺失文件"));
+      await screenshot("1440-missing-product-vnext-handoff");
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "关闭", exact: true })
+        .last()
+        .click();
+    }
     if (status === "partial") {
       await selectItem("REQ-EXPORT");
       await visible(page.getByText("结构不可用 · 原文保留", { exact: true }));

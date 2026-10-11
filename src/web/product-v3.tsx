@@ -428,6 +428,8 @@ export function RequirementsV3({
     ? (JSON.parse(state.subject) as Subject)
     : undefined;
   const item = product.items.find((i) => i.key === selected);
+  const scopeKey = (target: ProductItem) =>
+    JSON.stringify([target.type === "goal" ? target.id : goal?.id, target.id]);
   const reqs = goalRequirements(product, goal?.key).filter(
     (i) => i.metadata.scope === "current",
   );
@@ -437,7 +439,7 @@ export function RequirementsV3({
       i.id,
       goal?.id || "",
       subject,
-      state.scope[i.id],
+      state.scope[scopeKey(i)],
     ).conclusion;
     return (
       `${i.id} ${i.title} ${i.body}`
@@ -522,7 +524,7 @@ export function RequirementsV3({
       i.id,
       goal?.id || "",
       subject,
-      state.scope[i.id],
+      state.scope[scopeKey(i)],
     );
     return {
       id: i.key,
@@ -679,9 +681,9 @@ export function RequirementsV3({
               item={item}
               goal={item.type === "goal" ? item : goal || undefined}
               subject={subject}
-              scopeId={state.scope[item.id]}
+              scopeId={state.scope[scopeKey(item)]}
               chooseScope={(s) =>
-                update({ scope: { ...state.scope, [item.id]: s } })
+                update({ scope: { ...state.scope, [scopeKey(item)]: s } })
               }
               context={context}
             />

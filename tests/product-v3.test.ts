@@ -4,12 +4,13 @@ import path from "node:path";
 import { parse, stringify } from "yaml";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ScopedConclusion } from "../src/web/product-v3.js";
+import { OverviewV3, ScopedConclusion } from "../src/web/product-v3.js";
 import { buildSnapshot } from "../src/server/snapshot.js";
 import {
   productView,
   goalRequirements,
   selectAssessment,
+  reportedSubjects,
 } from "../src/shared/product-view.js";
 import type { ProductSnapshot } from "../src/shared/product-types.js";
 const roots: string[] = [];
@@ -55,6 +56,39 @@ const subject = {
 };
 const selection = (p: ProductSnapshot, goal = "G-DEMO") =>
   selectAssessment(p, "R-IMPORT", goal, subject);
+it.each(["kind", "value", "revision", "limitations"])(
+  "isolates a malformed subject.%s without losing other reports or the overview",
+  async (field) => {
+    const f = await fixture();
+    await f.mutate("ASSESSMENTS.md", (items) => {
+      items[0].subject[field] = { invalid: "retained for inspection" };
+    });
+    const snapshot = await f.readSnapshot(),
+      product = snapshot.product!;
+    const report = product.items.find((i) => i.id === "A-DEMO")!;
+    expect(report.usable).toBe(false);
+    expect(report.rawMetadata).toMatchObject({
+      subject: { [field]: { invalid: "retained for inspection" } },
+    });
+    expect(reportedSubjects({ ...product, items: [report] })).toEqual([]);
+    expect(reportedSubjects(product)).toContainEqual(subject);
+    expect(selection(product, "G-LIVE").conclusion).toBe("partially-satisfied");
+    const html = renderToStaticMarkup(
+      createElement(OverviewV3, {
+        context: {
+          snapshot,
+          open: () => {},
+          openProduct: () => {},
+          openTask: () => {},
+          relations: () => {},
+        },
+        requirements: () => {},
+      }),
+    );
+    expect(html).toContain("需求全景");
+    expect(html).toContain("R-IMPORT");
+  },
+);
 it("renders an invalid report's original fields without changing the current undetermined conclusion", async () => {
   const f = await fixture();
   await f.mutate("ASSESSMENTS.md", (items) => {
@@ -64,6 +98,7 @@ it("renders an invalid report's original fields without changing the current und
     product = snapshot.product!;
   const report = product.items.find((i) => i.id === "A-DEMO")!;
   expect(report.usable).toBe(false);
+  expect(reportedSubjects({ ...product, items: [report] })).toEqual([subject]);
   expect(report.rawMetadata).toMatchObject({
     conclusion: "satisfied",
     checked_at: "yesterday",

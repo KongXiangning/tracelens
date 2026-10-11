@@ -74,3 +74,19 @@ TL-01：异步短进程 task-status/read、全局并发与预算、单副本显�
 复现：同 SHA-256 tgz 安装到独立包环境；设置 TRACELENS_TEST_PACKAGE_DIR、Git 根之外的 TRACELENS_TEST_OUTPUT_ROOT，运行 node tests/setup-scoped-browser.mjs。启动 build 后服务（隔离 TRACELENS_DATA_DIR，PORT=4439，TRACELENS_QUERY_PAGE_SIZE=2），以 inputs 中对应名称登记 A/B/C。设置 TRACELENS_TEST_INPUT 后运行 npm run test:browser:scoped。固定模块夹具有 MIT/来源记录，排除自动格式重写。生产查询仍需显式信任，合成脚本不能代真实项目作选择。
 
 本任务测试服务及 tracelens-tl 浏览器会话已停止，4439 无监听；工作文件已落盘。保持未提交／未推送状态，不发布／部署、不自行睡眠；电脑睡眠仅由父线程后续统一安排。
+
+## 2026-10-11 三项 P2 定向修复与页面复核
+
+本节记录基于 `f0fe334` 的后续本地修复，与前述云端验收分开。用户授权仅修复本次审查已复现的三项 P2；均由 TraceLens 确定性消费或展示逻辑执行，按 TL-01、TL-02、TL-05 的隔离、降级和范围选择约束处理。
+
+| 问题与触发 | 必要修复 | 本轮观察 |
+| --- | --- | --- |
+| 单份报告的 `subject.value` 为对象，导致整个页面空白 | 对象选择器核对 kind、value 及可选 revision／limitations 的字段类型；异常原始报告仍可检查，其他字段异常但对象有效的报告不被整体排除 | 四个对象字段的错误类型回归通过；真实页面保留五张需求卡片、导航、异常报告原文和元数据，正常 G-LIVE 报告仍为部分满足 |
+| 续页响应晚于刷新响应返回，覆盖新快照并使 Task 详情返回 409 | 显式刷新开始即使旧续页失效；应用响应时同时核对刷新代次和请求所属快照，失效请求的错误也不覆盖当前提示 | 只延迟真实 API 响应的交付，新快照保持与服务端一致；详情真实 task_id 一致，随后正常续页 1/2 → 2/2 和另一 Task 详情均可读 |
+| 同一需求切换目标后沿用旧 scope，错误显示尚未判定并漏出缺口筛选 | 范围选择按目标与条目身份共同保存，图、筛选和详情使用同一键 | G-DEMO/FULL 已满足 → G-LIVE/RECOVERABLE 部分满足；缺口图保留 R-IMPORT，切回目标及从报告返回后 FULL 选择仍保留 |
+
+本轮检查：`npx vitest run tests/product-v3.test.ts tests/product-handoff.test.tsx tests/product-ui.test.tsx --reporter=dot`，3 文件、46 项通过；`npm run build`（含类型检查）通过；改动文件格式检查及 `git diff --check` 通过。新增 `npm run test:browser:p2` 为上述三项问题的专用复现入口，自动准备隔离合成资料、启动构建后服务并清理浏览器／服务生命周期。
+
+最终浏览器执行为 Windows / Edge、1440×1080，共 5 项检查通过，无 pageerror。记录、DOM 文本和截图在 `output/playwright/p2-regression-0g7kFJ/`，结果为 `result.json`；已检查需求缺口图、异常报告可读性和 Task 详情截图。被观察合成项目在页面操作前后的全部文件摘要一致。此前一轮同样通过的记录保留在 `output/playwright/p2-regression-ClJ26r/`，最终一轮另核对详情真实 task_id。
+
+本次 Runtime 分页使用已固定来源的四模块夹具与真实合成 Task 事实，属于针对性消费回归，不作为新的 VN-05 分发安装或完整 INT-01 验收。修复保持原有报告选择算法与保守摘要策略，不增加业务 Task 门槛；改动保存于工作区，测试服务和浏览器已退出。

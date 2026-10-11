@@ -328,11 +328,19 @@ export function reportedSubjects(product: ProductSnapshot): Subject[] {
     ...new Map(
       product.items
         .filter((i) => i.type === "assessment")
-        .map(metadata)
+        .map((item) => metadata(item).subject)
         .filter(
-          (m) => m.subject && m.subject.kind !== "unknown" && m.subject.value,
+          (subject): subject is Subject =>
+            subject != null &&
+            ["working-copy", "commit", "release"].includes(subject.kind) &&
+            typeof subject.value === "string" &&
+            subject.value.length > 0 &&
+            (subject.revision === undefined ||
+              typeof subject.revision === "string") &&
+            (subject.limitations === undefined ||
+              typeof subject.limitations === "string"),
         )
-        .map((m) => [subjectKey(m.subject), m.subject!]),
+        .map((subject) => [subjectKey(subject), subject]),
     ).values(),
   ];
 }

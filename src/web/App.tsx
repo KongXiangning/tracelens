@@ -158,6 +158,7 @@ export function App() {
     }, 100);
   }
   const mounted = useRef(true);
+  const refreshGenerations = useRef<Record<string, number>>({});
   const project = projects.find((p) => p.id === active);
   const view = views[active];
   const snapshot = view?.snapshot;
@@ -223,6 +224,7 @@ export function App() {
     setSelection((s) => ({ ...s, line: 1 }));
   }, [snapshot?.id]);
   async function refresh(id = active) {
+    refreshGenerations.current[id] = (refreshGenerations.current[id] || 0) + 1;
     setError("");
     setViews((v) => ({
       ...v,
@@ -692,6 +694,10 @@ export function App() {
               disabled={paging || scanning || configChanged}
               onClick={async () => {
                 const id = snapshot.projectId;
+                const generation = refreshGenerations.current[id] || 0;
+                const isCurrent = () =>
+                  mounted.current &&
+                  (refreshGenerations.current[id] || 0) === generation;
                 setPaging(true);
                 try {
                   const next = await api<SnapshotView>(
@@ -699,9 +705,14 @@ export function App() {
                     { snapshotId: snapshot.id },
                     "POST",
                   );
-                  if (mounted.current) setViews((v) => ({ ...v, [id]: next }));
+                  if (mounted.current)
+                    setViews((v) =>
+                      isCurrent() && v[id]?.snapshot?.id === snapshot.id
+                        ? { ...v, [id]: next }
+                        : v,
+                    );
                 } catch (e) {
-                  setError(String(e));
+                  if (isCurrent()) setError(String(e));
                 } finally {
                   setPaging(false);
                 }

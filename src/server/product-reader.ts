@@ -187,6 +187,7 @@ function references(
   many("sources", m.sources);
   many("pending_sources", m.pending_sources);
   one("target_basis", m.target_basis);
+  one("goal_basis", m.goal_basis);
   one("raw_ref", m.raw_ref);
   many("inventory.checked_sources", m.inventory?.checked_sources);
   many("inventory.unreviewed_sources", m.inventory?.unreviewed_sources);
@@ -227,6 +228,7 @@ function located(
   state: ProductSourceCheck["locationState"];
   detail: string;
   definitionSha256?: string | null;
+  definitionAlgorithm?: string | null;
 } {
   const raw = input.raw;
   const lines = raw.split(/\r\n|\r|\n/);
@@ -234,6 +236,7 @@ function located(
     end = lines.length;
   const headings = layout.headings;
   let definitionSha256: string | null = null;
+  let definitionAlgorithm: string | null = null;
   if (reference.item_id) {
     const found = layout.items.filter(
       (item) => item.id === reference.item_id && Boolean(item.body),
@@ -258,6 +261,7 @@ function located(
     start = found[0].source.line;
     end = found[0].endLine;
     definitionSha256 = found[0].usable ? found[0].definitionSha256 : null;
+    definitionAlgorithm = found[0].definitionAlgorithm ?? null;
   }
   if (reference.section) {
     const found = headings.filter(
@@ -301,6 +305,7 @@ function located(
     endLine: end,
     state: "located",
     definitionSha256,
+    definitionAlgorithm,
     detail: "已在同次快照定位；读取并不证明来源内容已采纳或报告适用",
   };
 }
@@ -646,6 +651,7 @@ export async function readProduct(
             }
             const location = located(input, layout, reference);
             check.definitionSha256 = location.definitionSha256 ?? null;
+            check.definitionAlgorithm = location.definitionAlgorithm ?? null;
             check.locationState = location.state;
             check.detail = location.detail;
             check.endLine = location.endLine;

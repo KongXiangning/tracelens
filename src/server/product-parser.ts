@@ -26,6 +26,7 @@ import manifestV1 from "./product-assets/product-manifest-v1.json" with { type: 
 import manifestV2 from "./product-assets/product-manifest-v2.json" with { type: "json" };
 import documentV1 from "./product-assets/product-doc-v1.json" with { type: "json" };
 import documentV2 from "./product-assets/product-doc-v2.json" with { type: "json" };
+import documentV3 from "./product-assets/product-doc-v3.json" with { type: "json" };
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -68,7 +69,7 @@ const processor = unified().use(remarkParse);
 // strict:false permits their deliberately implicit object types in conditional rules.
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 function validators(
-  schema: typeof documentV1 | typeof documentV2,
+  schema: typeof documentV1 | typeof documentV2 | typeof documentV3,
   version: number,
 ) {
   const root = ajv.compile({
@@ -98,6 +99,7 @@ function validators(
 const documentValidators = {
   1: validators(documentV1, 1),
   2: validators(documentV2, 2),
+  3: validators(documentV3, 3),
 };
 const manifestValidators = {
   1: ajv.compile(manifestV1),
@@ -457,11 +459,13 @@ export function parseProductDocument(
     );
     const schema = record(yaml.value) ? yaml.value.schema : undefined;
     const version =
-      schema === "vnext-product-doc/v2"
-        ? 2
-        : schema === "vnext-product-doc/v1"
-          ? 1
-          : null;
+      schema === "vnext-product-doc/v3"
+        ? 3
+        : schema === "vnext-product-doc/v2"
+          ? 2
+          : schema === "vnext-product-doc/v1"
+            ? 1
+            : null;
     if (!version)
       return fail(
         "UNSUPPORTED_VERSION",
@@ -556,6 +560,55 @@ export function parseProductDocument(
             itemId: id || undefined,
           })),
       );
+      if (version === 3 && type === "assessment") {
+        const m = metadata as unknown as ProductMetadata;
+        const problem = (message: string) =>
+          itemDiagnostics.push(
+            diagnostic("ASSESSMENT_METADATA", path, message, {
+              itemId: id || undefined,
+              line: metadataLine,
+            }),
+          );
+        if (
+          (m.target_basis?.kind === "file"
+            ? m.target_basis.item_id
+            : undefined) !== m.target ||
+          (m.goal_basis?.kind === "file" ? m.goal_basis.item_id : undefined) !==
+            m.applicability?.goal_id
+        )
+          problem(
+            "Definition basis item_id must match target and applicability.goal_id",
+          );
+        if (
+          !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(m.checked_at ?? "") ||
+          !Number.isFinite(Date.parse(m.checked_at ?? ""))
+        )
+          problem("checked_at must be an actual ISO time with timezone");
+        if (
+          m.subject?.kind === "working-copy" &&
+          !m.subject.revision &&
+          !m.subject.limitations
+        )
+          problem("Unfixed working copy requires limitations");
+        if (
+          m.target === m.applicability?.goal_id &&
+          (m.target_definition_algorithm !== m.goal_definition_algorithm ||
+            m.target_definition_sha256 !== m.goal_definition_sha256)
+        )
+          problem(
+            "Goal self-assessment requires equal target and goal algorithms/digests",
+          );
+        if (
+          metadataItems.some(
+            (member) =>
+              record(member) &&
+              ["requirement", "goal"].includes(String(member.type)),
+          )
+        )
+          problem(
+            "Assessments must be stored separately from requirement and goal definitions",
+          );
+      }
       if (matches.length !== 1)
         itemDiagnostics.push(
           diagnostic(
@@ -597,6 +650,7 @@ export function parseProductDocument(
       for (const entry of itemDiagnostics)
         entry.source = { ...source, line: entry.line ?? source.line };
       const item: ProductItem = {
+        version,
         key:
           id && itemDiagnostics.length === 0
             ? productItemKey(namespace, id)
@@ -624,8 +678,19 @@ export function parseProductDocument(
         definitionSha256: null,
         diagnostics: itemDiagnostics,
       };
-      if (item.usable && item.type === "requirement")
-        item.definitionSha256 = requirementDefinitionDigest(item);
+      if (
+        item.usable &&
+        (item.type === "requirement" || (version === 3 && item.type === "goal"))
+      ) {
+        item.definitionAlgorithm =
+          version === 3
+            ? "vnext-product-definition/v1"
+            : "vnext-requirement-definition/v1";
+        item.definitionSha256 =
+          version === 3
+            ? productDefinitionDigest(item)
+            : requirementDefinitionDigest(item);
+      }
       items.push(item);
     }
     for (const heading of identified) {
@@ -691,4 +756,58 @@ export function requirementDefinitionDigest(item: ProductItem): string {
     body: item.body.replace(/\r\n|\r/g, "\n").replace(/\n+$/, ""),
   };
   return hash(`vnext-requirement-definition/v1\n${JSON.stringify(definition)}`);
+}
+
+export function productDefinitionDigest(item: ProductItem): string | null {
+  const links = (item.metadata.links || []).filter(
+    (l) =>
+      l.origin === "declared" &&
+      l.state === "active" &&
+      [
+        "part_of",
+        "supports",
+        "depends_on",
+        "replaces",
+        "derived_from",
+      ].includes(l.relation),
+  );
+  const relations = [
+    ...new Map(
+      links.map((l) => [
+        JSON.stringify([l.relation, l.target]),
+        [l.relation, l.target],
+      ]),
+    ).values(),
+  ].sort((a, b) =>
+    a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0,
+  );
+  const scopes =
+    item.type === "goal"
+      ? (item.metadata.assessment_scopes || [])
+          .map((s) => ({
+            target: s.target,
+            scope_id: s.scope_id,
+            coverage: s.coverage.replace(/\r\n|\r/g, "\n"),
+          }))
+          .sort((a, b) =>
+            a.target < b.target
+              ? -1
+              : a.target > b.target
+                ? 1
+                : a.scope_id < b.scope_id
+                  ? -1
+                  : a.scope_id > b.scope_id
+                    ? 1
+                    : 0,
+          )
+      : null;
+  if (
+    scopes &&
+    new Set(scopes.map((s) => JSON.stringify([s.target, s.scope_id]))).size !==
+      scopes.length
+  )
+    return null;
+  return hash(
+    `vnext-product-definition/v1\n${JSON.stringify({ type: item.type, id: item.id, scope: item.metadata.scope, goal_kind: item.type === "goal" ? item.metadata.goal_kind || "outcome" : null, relations, assessment_scopes: scopes, body: item.body.replace(/\r\n|\r/g, "\n").replace(/\n+$/, "") })}`,
+  );
 }

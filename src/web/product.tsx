@@ -20,6 +20,7 @@ import {
 } from "../shared/product-health";
 import { scopeGroups } from "../shared/product-scope";
 import { OverviewDashboard } from "./overview-dashboard";
+import { lifecycleLabels } from "./runtime";
 
 import {
   productLabels,
@@ -438,9 +439,9 @@ export function ProductSourceRow({
       <p className="muted">{check.detail}</p>
       {check.definitionSha256 !== undefined && (
         <p className="muted">
-          来源中实际需求定义摘要：
+          来源中实际定义摘要：
           <code>{check.definitionSha256 || "未知"}</code> ·
-          vnext-requirement-definition/v1
+          {check.definitionAlgorithm || "算法未知"}
         </p>
       )}
       {check.source && <SourceButton source={check.source} open={open} />}
@@ -551,12 +552,16 @@ function TaskMatch({
             {task.number || "无显示编号"} · {task.title}
             <ArrowRight size={13} />
           </button>
-          <p className="muted">文档声明的状态：</p>
+          <p className="muted">
+            {task.runtimeLifecycle ? "Runtime 生命周期：" : "文档声明的状态："}
+          </p>
           {task.statuses.length ? (
             task.statuses.map((entry, i) => (
               <div className="product-inline" key={i}>
                 <Status text={entry.text} />
-                <SourceButton source={entry.source} open={open} />
+                {!task.runtimeLifecycle && (
+                  <SourceButton source={entry.source} open={open} />
+                )}
               </div>
             ))
           ) : (
@@ -564,7 +569,9 @@ function TaskMatch({
               未记录状态{task.current ? "；当前焦点不等于正在执行" : ""}
             </p>
           )}
-          <SourceButton source={task.source} open={open} />
+          {!task.runtimeLifecycle && (
+            <SourceButton source={task.source} open={open} />
+          )}
         </div>
       ))}
       <ProductEvidence
@@ -973,6 +980,7 @@ function ProductRelations({
                       missing: "目标未定位",
                       ambiguous: "目标有歧义",
                       "invalid-direction": "关系方向无效",
+                      cycle: "关系存在循环",
                     }[entry.resolution]
                   }
                 </span>
@@ -1099,14 +1107,14 @@ export function ProductDetail({
           {item.type === "project" && (
             <Inventory item={item} context={context} />
           )}
-          {item.type === "requirement" && (
+          {item.type === "requirement" && item.version !== 3 && (
             <RequirementAssessment item={item} context={context} />
           )}
           {item.type === "assessment" && (
             <>
               <p className="muted">
-                本条为独立范围化报告。只有需求的 assessment_id
-                明确选中时才成为其展示入口。
+                本条为独立范围化报告。当前结论由所选目标的范围声明、对象与两份定义依据确定；assessment_id
+                仅为历史导航入口。
               </p>
               <AssessmentFacts
                 item={item}
@@ -1191,13 +1199,17 @@ export function ProductDetail({
             <section>
               <h3>关联任务与范围 · {bindings.length}</h3>
               {bindings.length ? (
-                bindings.map((binding) => (
-                  <BindingCard
-                    key={binding.key}
-                    view={binding}
-                    context={context}
-                  />
-                ))
+                item.version === 3 ? (
+                  <CompactTasks bindings={bindings} context={context} />
+                ) : (
+                  bindings.map((binding) => (
+                    <BindingCard
+                      key={binding.key}
+                      view={binding}
+                      context={context}
+                    />
+                  ))
+                )
               ) : (
                 <p className="muted">
                   未记录任务关联；不表示该业务范围未实现。
@@ -1241,166 +1253,58 @@ export function ProductDetail({
     </article>
   );
 }
-
-export function RequirementsPage({
-  selected,
-  select,
-  configure,
-  ...context
-}: ProductContext & {
-  selected?: string;
-  select: (key: string) => void;
-  configure: () => void;
+function CompactTasks({
+  bindings,
+  context,
+}: {
+  bindings: ProductBindingView[];
+  context: ProductContext;
 }) {
-  const product = context.snapshot.product;
-  const [query, setQuery] = useState("");
-  const [type, setType] = useState("requirement");
-  const [scope, setScope] = useState("all");
-  const item = product?.items.find((entry) => entry.key === selected);
-  useEffect(() => {
-    if (selected) {
-      setQuery("");
-      setType("all");
-      setScope("all");
-    }
-  }, [selected]);
-  const filtered =
-    product?.items.filter(
-      (entry) =>
-        (type === "all" || entry.type === type) &&
-        (scope === "all" || entry.metadata.scope === scope) &&
-        `${entry.id} ${entry.title} ${entry.source.path} ${entry.body}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-    ) || [];
+  const groups = new Map<string, ProductBindingView[]>();
+  for (const binding of bindings) {
+    const id = binding.binding.task.task_id || binding.key;
+    groups.set(id, [...(groups.get(id) || []), binding]);
+  }
   return (
-    <div className="product-page">
-      <div className="page-title">
-        <h2>需求与产品范围</h2>
-        <span className="muted">目标、模块、需求与设计可多向关联</span>
-      </div>
-      <ProductStatusPanel
-        product={product}
-        navigation={context.snapshot.navigation}
-        open={context.open}
-        configure={configure}
-      />
-      {product && product.items.length > 0 && (
-        <div className="browser-page product-browser">
-          <div className="browser-list">
-            <div className="list-header">
-              <h3>
-                {type === "requirement" ? "需求" : "产品条目"} ·{" "}
-                {filtered.length}
-              </h3>
-              <div className="search">
-                <Search size={15} />
-                <input
-                  aria-label="搜索产品条目"
-                  placeholder="标题、ID、路径或正文"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-              <label>
-                条目类型
-                <select
-                  aria-label="产品条目类型"
-                  value={type}
-                  onChange={(event) => setType(event.target.value)}
-                >
-                  <option value="all">全部九类条目</option>
-                  {Object.entries(productTypeLabels).map(([value, text]) => (
-                    <option key={value} value={value}>
-                      {text}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                业务范围
-                <select
-                  aria-label="产品范围筛选"
-                  value={scope}
-                  onChange={(event) => setScope(event.target.value)}
-                >
-                  <option value="all">全部业务范围</option>
-                  {["current", "planned", "candidate", "retired"].map(
-                    (value) => (
-                      <option key={value} value={value}>
-                        {label(value)}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </label>
-              <p className="muted" role="status">
-                当前筛选 {filtered.length} / 本次已读 {product.items.length} 条
-                · {scope === "all" ? "全部范围" : label(scope)}
-              </p>
-              <small className="muted">
-                当前范围包含已交付后仍需保持的要求；退出范围不表示完成。
-              </small>
-            </div>
-            <div className="list-items">
-              {filtered.map((entry) => (
-                <button
-                  className={`document-item ${entry.key === selected ? "selected" : ""}`}
-                  key={entry.key}
-                  onClick={() => select(entry.key)}
-                >
-                  <span className="doc-kind">
-                    {productTypeLabels[entry.type] || entry.type} · {entry.id}
-                  </span>
-                  <strong>{entry.title}</strong>
-                  <span className="product-inline">
-                    {entry.metadata.scope && (
-                      <Tag value={entry.metadata.scope} />
-                    )}
-                    {entry.metadata.intent_state && (
-                      <Tag value={entry.metadata.intent_state} intent />
-                    )}
-                    {!entry.usable && (
-                      <span className="status amber">结构不可用</span>
-                    )}
-                  </span>
-                  <small>
-                    {entry.source.path}:{entry.source.line}
-                  </small>
-                </button>
-              ))}
-              {!filtered.length && (
-                <p className="list-empty">当前筛选无匹配条目</p>
-              )}
-            </div>
-          </div>
-          <div className="browser-detail">
-            {item ? (
-              <ProductDetail item={item} context={context} />
-            ) : !selected ? (
-              <BusinessScope product={product} context={context} />
-            ) : (
-              <Empty
-                title={selected ? "所选条目已退出本次范围" : "选择一个产品条目"}
-                detail={
-                  selected
-                    ? "刷新后的当前定义中无法找到该稳定身份。请从列表明确重新选择，不会跳到同名或首个条目。"
-                    : "选择需求查看完整正文、拆分关系、方案、任务和报告。"
-                }
-              />
+    <ul className="compact-task-list">
+      {[...groups].map(([id, rows]) => {
+        const task = context.snapshot.tasks.find((t) =>
+          rows.some(
+            (b) =>
+              b.match.state === "matched" && b.match.taskIds.includes(t.id),
+          ),
+        );
+        return (
+          <li key={id}>
+            <strong>{task?.title || id}</strong> ·{" "}
+            {task?.runtimeLifecycle
+              ? lifecycleLabels[task.runtimeLifecycle]
+              : "身份或任务数据待核对"}
+            {task && (
+              <button
+                className="text-link"
+                onClick={() => context.openTask(task.id)}
+              >
+                查看 Task / Step
+              </button>
             )}
-          </div>
-        </div>
-      )}
-      {selected && !product?.items.length && (
-        <Empty
-          title="所选条目在当前快照不可用"
-          detail="保留原选择，不会用另一条目替代。请核对 PRODUCT 状态。"
-        />
-      )}
-    </div>
+            <small>
+              {rows.map((r) => `${r.binding.id}：${r.match.detail}`).join("；")}
+            </small>
+            <details>
+              <summary>关联范围与来源 · {rows.length}</summary>
+              {rows.map((r) => (
+                <BindingCard key={r.key} view={r} context={context} />
+              ))}
+            </details>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
+
+export { RequirementsV3 as RequirementsPage } from "./product-v3";
 
 function Targets({
   targets,

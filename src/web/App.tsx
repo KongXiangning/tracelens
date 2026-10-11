@@ -27,6 +27,8 @@ import { api, session } from "./api";
 import { Empty, IconButton, Modal, ProjectForm } from "./components";
 import { Overview, TasksPage, DocumentsPage } from "./pages";
 import { VNextGuide } from "./vnext-guide";
+import { RuntimeStatus, RuntimeTrustPanel } from "./runtime";
+import { navigationScrollContainer } from "./navigation-scroll";
 import type {
   Project,
   ScanConfig,
@@ -113,6 +115,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [loadingView, setLoadingView] = useState(false);
   const [error, setError] = useState("");
+  const [paging, setPaging] = useState(false);
   const [form, setForm] = useState<"add" | "edit" | null>(null);
   const [remove, setRemove] = useState(false);
   const [dataDir, setDataDir] = useState("");
@@ -127,6 +130,33 @@ export function App() {
     plan?: string;
     work?: string;
   }>({});
+  const [backStack, setBackStack] = useState<
+    { page: Page; selection: typeof selection; scroll: number }[]
+  >([]);
+  useEffect(() => {
+    setBackStack([]);
+  }, [active]);
+  function remember() {
+    setBackStack((v) => [
+      ...v.slice(-19),
+      {
+        page,
+        selection,
+        scroll: navigationScrollContainer()?.scrollTop || 0,
+      },
+    ]);
+  }
+  function back() {
+    const previous = backStack.at(-1);
+    if (!previous) return;
+    setBackStack((v) => v.slice(0, -1));
+    setSelection(previous.selection);
+    setPage(previous.page);
+    setTimeout(() => {
+      const container = navigationScrollContainer();
+      if (container) container.scrollTop = previous.scroll;
+    }, 100);
+  }
   const mounted = useRef(true);
   const project = projects.find((p) => p.id === active);
   const view = views[active];
@@ -265,10 +295,12 @@ export function App() {
     }
   }
   function openSource(source: SourceRef) {
+    remember();
     setSelection((s) => ({ ...s, doc: source.documentId, line: source.line }));
     setPage("documents");
   }
   function openTask(id: string) {
+    remember();
     setSelection((s) => ({
       ...s,
       task: id,
@@ -287,6 +319,7 @@ export function App() {
     setPage("relations");
   }
   function openProduct(key: string, workItemId?: string) {
+    remember();
     const item = snapshot?.product?.items.find((entry) => entry.key === key);
     if (item?.type === "plan") {
       setSelection((s) => ({ ...s, plan: key, work: workItemId }));
@@ -362,6 +395,7 @@ export function App() {
         return (
           <Suspense fallback={<ProductLoading />}>
             <RequirementsPage
+              key={active}
               {...context}
               selected={selection.product}
               select={(key) => setSelection((s) => ({ ...s, product: key }))}
@@ -633,7 +667,52 @@ export function App() {
             </div>
           </div>
         )}
-        <div className="page-content">
+        <div className="page-content" key={active}>
+          {!!backStack.length && (
+            <button className="secondary navigation-back" onClick={back}>
+              返回上一视图
+            </button>
+          )}
+          {project && page !== "guide" && (
+            <RuntimeTrustPanel
+              key={`runtime-trust:${project.id}`}
+              project={project}
+              saved={(p) => {
+                setProjects((v) => v.map((x) => (x.id === p.id ? p : x)));
+                void refresh(p.id);
+              }}
+            />
+          )}
+          {snapshot && page !== "guide" && page !== "tasks" && (
+            <RuntimeStatus view={snapshot.runtime} />
+          )}
+          {snapshot?.runtime?.nextRequest && page !== "guide" && (
+            <button
+              className="secondary"
+              disabled={paging || scanning || configChanged}
+              onClick={async () => {
+                const id = snapshot.projectId;
+                setPaging(true);
+                try {
+                  const next = await api<SnapshotView>(
+                    `/projects/${id}/task-page`,
+                    { snapshotId: snapshot.id },
+                    "POST",
+                  );
+                  if (mounted.current) setViews((v) => ({ ...v, [id]: next }));
+                } catch (e) {
+                  setError(String(e));
+                } finally {
+                  setPaging(false);
+                }
+              }}
+            >
+              {" "}
+              {paging
+                ? "续读中…"
+                : `读取下一页 Task（已读 ${snapshot.tasks.length}/${snapshot.runtime.total}）`}
+            </button>
+          )}
           {renderContent()}
           {loading === false && error && !projects.length && (
             <button className="secondary retry" onClick={() => void load()}>

@@ -110,7 +110,7 @@ it("uses the Profile current task source and never promotes archived current dec
   expect(snapshot.navigation.currentTaskPath).toBe(
     "notes/治理/CURRENT_TASK.md",
   );
-  expect(snapshot.tasks.filter((t) => t.current)).toMatchObject([
+  expect(snapshot.taskObservations!.filter((t) => t.current)).toMatchObject([
     { number: "TASK-811", title: "法规导入修复" },
   ]);
   expect(
@@ -126,7 +126,7 @@ it("uses the Profile current task source and never promotes archived current dec
     "<!-- vnext-task-view/v1 -->\n# CURRENT_TASK\n## Current work\n- No unambiguous active work focus.\n- Step: none\n",
   );
   const noFocus = await buildSnapshot(project, new Date().toISOString());
-  expect(noFocus.tasks.filter((t) => t.current)).toEqual([]);
+  expect(noFocus.taskObservations!.filter((t) => t.current)).toEqual([]);
   expect(
     noFocus.statements.filter((s) =>
       ["currentTask", "currentStep"].includes(s.kind),
@@ -134,7 +134,7 @@ it("uses the Profile current task source and never promotes archived current dec
   ).toEqual([]);
   await unlink(path.join(root, "notes/治理/CURRENT_TASK.md"));
   const missing = await buildSnapshot(project, new Date().toISOString());
-  expect(missing.tasks.filter((t) => t.current)).toEqual([]);
+  expect(missing.taskObservations!.filter((t) => t.current)).toEqual([]);
   expect(
     missing.statements.filter((s) =>
       ["currentTask", "currentStep"].includes(s.kind),
@@ -485,9 +485,9 @@ it("recognizes canonical metadata and root task directories while following ordi
   );
   expect(s.documents.some((d) => d.path === "docs/detail.md")).toBe(true);
   expect(s.documents.some((d) => d.path === "docs/ignored.md")).toBe(false);
-  expect(s.tasks.find((t) => t.number === "TASK-123")?.statuses[0].text).toBe(
-    "archived",
-  );
+  expect(
+    s.taskObservations!.find((t) => t.number === "TASK-123")?.statuses[0].text,
+  ).toBe("archived");
   expect(
     s.relations.find(
       (r) =>

@@ -71,6 +71,18 @@ export interface ProductWorkItem {
   sources?: ProductSource[];
 }
 export interface ProductMetadata {
+  root_goal_id?: string | null;
+  requirement_order?: string[];
+  goal_kind?: "outcome" | "stage";
+  assessment_scopes?: { target: string; scope_id: string; coverage: string }[];
+  applicability?: { goal_id: string; scope_id: string; coverage: string };
+  target_definition_algorithm?: string;
+  goal_definition_algorithm?: string;
+  goal_definition_sha256?: string | null;
+  goal_basis?: ProductSource;
+  conclusion?:
+    "satisfied" | "partially-satisfied" | "not-satisfied" | "undetermined";
+  supersedes?: string[];
   id: string;
   type: ProductType;
   scope?: "current" | "planned" | "candidate" | "retired";
@@ -92,7 +104,12 @@ export interface ProductMetadata {
   target_basis?: ProductSource;
   target_definition_sha256?: string | null;
   checked_at?: string;
-  subject?: { kind: string; value: string | null };
+  subject?: {
+    kind: string;
+    value: string | null;
+    revision?: string;
+    limitations?: string;
+  };
   implementation?: string;
   verification?: string;
   pending_sources?: ProductSource[];
@@ -119,6 +136,8 @@ export interface ProductDiagnostic {
   source?: SourceRef;
 }
 export interface ProductItem {
+  version?: number;
+  definitionAlgorithm?: string | null;
   key: string;
   id: string;
   type: ProductType | "unknown";
@@ -145,6 +164,7 @@ export interface ProductManifest {
   extensions?: Record<string, unknown>;
 }
 export interface ProductSourceCheck {
+  definitionAlgorithm?: string | null;
   definitionSha256?: string | null;
   id: string;
   ownerKey: string;
@@ -170,7 +190,8 @@ export interface ProductRelation {
   ownerKey: string;
   link: ProductLink;
   targetKey: string | null;
-  resolution: "resolved" | "missing" | "ambiguous" | "invalid-direction";
+  resolution:
+    "resolved" | "missing" | "ambiguous" | "invalid-direction" | "cycle";
 }
 export interface ProductTaskMatch {
   task: ProductTaskRef;

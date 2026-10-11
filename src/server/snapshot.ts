@@ -33,13 +33,17 @@ import {
   type PendingReference,
 } from "./parser.js";
 import type { ProjectRegistry } from "./registry.js";
+import { RuntimeReader, runtimeTasks } from "./runtime-reader.js";
+const runtimeReader = new RuntimeReader();
 
 export async function buildSnapshot(
   project: Project,
   startedAt: string,
   previous?: Snapshot,
+  runtimeContext = { reader: runtimeReader, isCurrent: () => true },
 ): Promise<Snapshot> {
   const scan = await scanFiles(project, previous?.navigation);
+  if (!runtimeContext.isCurrent()) throw new AppError("扫描上下文已过期", 409);
   const parsed = scan.inputs.map((input): Parsed => {
     try {
       // Explicit SourceRefs may point to code or extensionless UTF-8 text.
@@ -112,13 +116,19 @@ export async function buildSnapshot(
       : undefined;
   await attachCurrentPlan(project, scan, parsed, currentPath);
   const documents = parsed.map((p) => p.document);
-  const tasks = parsed.flatMap((p) => (p.task ? [p.task] : []));
+  const documentTasks = parsed.flatMap((p) => (p.task ? [p.task] : []));
+  for (const task of documentTasks)
+    task.current = Boolean(
+      currentPath &&
+      documentPathKey(task.source.path) === documentPathKey(currentPath),
+    );
+  if (!runtimeContext.isCurrent()) throw new AppError("查询上下文已过期", 409);
+  const runtime = await runtimeContext.reader.refresh(project);
+  const tasks = runtimeTasks(project, runtime);
   const isCurrentSource = (filename: string) =>
     Boolean(
       currentPath && documentPathKey(filename) === documentPathKey(currentPath),
     );
-  for (const task of tasks)
-    task.current = task.current && isCurrentSource(task.source.path);
   const statements = parsed
     .flatMap((p) => p.statements)
     .filter(
@@ -148,7 +158,7 @@ export async function buildSnapshot(
       state: "outside",
     };
     if (ref.method === "task-number") {
-      const matches = tasks.filter(
+      const matches = documentTasks.filter(
         (t) => taskNumberKey(t.number || "") === taskNumberKey(ref.target),
       );
       if (matches.length === 1)
@@ -272,7 +282,7 @@ export async function buildSnapshot(
     for (const ref of item.references) {
       if (
         ref.method === "task-number" &&
-        !tasks.some(
+        !documentTasks.some(
           (t) => taskNumberKey(t.number || "") === taskNumberKey(ref.target),
         ) &&
         !/^(?:TASK-\d+|\d{8}-\d{3})$/.test(ref.target)
@@ -305,7 +315,7 @@ export async function buildSnapshot(
     string,
     { value: string; source: (typeof statements)[number]["source"] }[]
   >();
-  for (const task of tasks) {
+  for (const task of documentTasks) {
     const key = taskNumberKey(task.number || "") || task.id;
     const declarations = statusGroups.get(key) || [];
     declarations.push(
@@ -316,7 +326,7 @@ export async function buildSnapshot(
   for (const statement of statements.filter(
     (s) =>
       s.kind === "status" &&
-      !tasks.some((t) => t.source.documentId === s.source.documentId),
+      !documentTasks.some((t) => t.source.documentId === s.source.documentId),
   )) {
     const key = taskNumberKey(statement.taskNumber || "") || "项目状态";
     const group = statusGroups.get(key) || [];
@@ -331,7 +341,7 @@ export async function buildSnapshot(
       });
   }
   if (scan.product) {
-    buildProductIndex(scan.product, tasks);
+    buildProductIndex(scan.product, [...tasks, ...documentTasks]);
     for (const diagnostic of scan.product.diagnostics) {
       const document =
         diagnostic.path && byPath.get(documentPathKey(diagnostic.path));
@@ -369,6 +379,7 @@ export async function buildSnapshot(
     outcome: warnings.some((w) => w.level !== "info") ? "partial" : "success",
     documents,
     tasks,
+    taskObservations: documentTasks,
     statements,
     relations,
     files: scan.files,
@@ -376,6 +387,7 @@ export async function buildSnapshot(
     navigation: scan.navigation,
     effectiveRules: scan.effectiveRules,
     product: scan.product,
+    runtime,
   };
 }
 export const relationLabels = {
@@ -392,13 +404,27 @@ export const relationLabels = {
   unsafe: "不安全或越界引用",
 };
 export class SnapshotStore {
+  private reader: RuntimeReader;
+  private isCurrent(project: Project): boolean {
+    try {
+      const current = this.registry.get(project.id);
+      return (
+        current.configVersion === project.configVersion &&
+        current.root === project.root
+      );
+    } catch {
+      return false;
+    }
+  }
   private snapshots = new Map<string, Snapshot>();
   private attempts = new Map<string, RefreshAttempt>();
   private running = new Map<string, Promise<SnapshotView>>();
   constructor(
     private registry: ProjectRegistry,
     private builder = buildSnapshot,
-  ) {}
+  ) {
+    this.reader = new RuntimeReader((project) => this.isCurrent(project));
+  }
   view(id: string): SnapshotView {
     const project = this.registry.get(id);
     const snapshot = this.snapshots.get(id) || null;
@@ -413,11 +439,13 @@ export class SnapshotStore {
   remove(id: string): void {
     this.snapshots.delete(id);
     this.attempts.delete(id);
+    this.reader.remove(id);
   }
   refresh(id: string): Promise<SnapshotView> {
-    const existing = this.running.get(id);
-    if (existing) return existing;
     const project = this.registry.get(id);
+    const runKey = `${id}:${project.configVersion}`;
+    const existing = this.running.get(runKey);
+    if (existing) return existing;
     const startedAt = new Date().toISOString();
     this.attempts.set(id, { state: "scanning", startedAt });
     const operation = (async () => {
@@ -426,8 +454,14 @@ export class SnapshotStore {
           project,
           startedAt,
           this.snapshots.get(id),
+          { reader: this.reader, isCurrent: () => this.isCurrent(project) },
         );
-        this.registry.get(id);
+        const current = this.registry.get(id);
+        if (
+          current.configVersion !== project.configVersion ||
+          current.root !== project.root
+        )
+          return this.view(id);
         this.snapshots.set(id, snapshot);
         this.attempts.set(id, {
           state: snapshot.outcome,
@@ -435,6 +469,12 @@ export class SnapshotStore {
           completedAt: snapshot.completedAt,
         });
       } catch (error) {
+        try {
+          if (this.registry.get(id).configVersion !== project.configVersion)
+            return this.view(id);
+        } catch {
+          return { snapshot: null, attempt: null, configChanged: false };
+        }
         this.attempts.set(id, {
           state: "failed",
           startedAt,
@@ -442,12 +482,109 @@ export class SnapshotStore {
           error: error instanceof Error ? error.message : String(error),
         });
       } finally {
-        this.running.delete(id);
+        this.running.delete(runKey);
       }
       return this.view(id);
     })();
-    this.running.set(id, operation);
+    this.running.set(runKey, operation);
     return operation;
+  }
+  async taskDetail(
+    id: string,
+    snapshotId: string,
+    taskId: string,
+    stepId?: string,
+  ) {
+    const project = this.registry.get(id);
+    const snapshot = this.view(id).snapshot;
+    if (
+      !snapshot ||
+      snapshot.id !== snapshotId ||
+      snapshot.configVersion !== project.configVersion
+    )
+      throw new AppError("快照或配置已变化，请刷新", 409);
+    if (!snapshot.runtime) throw new AppError("任务数据暂不可用", 503);
+    const result = await this.reader.detail(
+      project,
+      snapshot.runtime,
+      taskId,
+      stepId,
+    );
+    if (
+      this.registry.get(id).configVersion !== project.configVersion ||
+      this.view(id).snapshot?.id !== snapshotId
+    )
+      throw new AppError("请求期间快照已变化", 409);
+    return result;
+  }
+  async moreTasks(id: string, snapshotId: string): Promise<SnapshotView> {
+    const project = this.registry.get(id),
+      snapshot = this.view(id).snapshot;
+    if (
+      !snapshot ||
+      snapshot.id !== snapshotId ||
+      snapshot.configVersion !== project.configVersion ||
+      !snapshot.runtime
+    )
+      throw new AppError("快照或配置已变化，请刷新", 409);
+    const runtime = await this.reader.more(project, snapshot.runtime);
+    if (
+      this.registry.get(id).configVersion !== project.configVersion ||
+      this.view(id).snapshot?.id !== snapshotId
+    )
+      throw new AppError("续读期间上下文已变化", 409);
+    const next = {
+      ...snapshot,
+      id: randomUUID(),
+      runtime,
+      tasks: runtimeTasks(project, runtime),
+      product: snapshot.product ? structuredClone(snapshot.product) : undefined,
+    };
+    if (next.product) {
+      const observations = next.documents
+        .filter((d) => !inspectProductEnvelope(d.raw).isProduct)
+        .flatMap((d) => {
+          try {
+            const parsed = parseInput(project.id, d);
+            return parsed.task ? [parsed.task] : [];
+          } catch {
+            return [];
+          }
+        });
+      buildProductIndex(next.product, [...next.tasks, ...observations]);
+    }
+    this.snapshots.set(id, next);
+    return this.view(id);
+  }
+  async taskSource(id: string, snapshotId: string, ref: string) {
+    const project = this.registry.get(id),
+      snapshot = this.view(id).snapshot;
+    if (
+      !snapshot ||
+      snapshot.id !== snapshotId ||
+      snapshot.configVersion !== project.configVersion
+    )
+      throw new AppError("快照或配置已变化", 409);
+    if (!snapshot.runtime) throw new AppError("任务数据暂不可用", 503);
+    const allowed = (snapshot.product?.sources || []).flatMap((s) =>
+      s.reference.kind === "file" &&
+      s.readState !== "outside" &&
+      s.readState !== "excluded"
+        ? [s.reference.path]
+        : [],
+    );
+    const result = await this.reader.readSource(
+      project,
+      snapshot.runtime,
+      ref,
+      allowed,
+    );
+    if (
+      this.registry.get(id).configVersion !== project.configVersion ||
+      this.view(id).snapshot?.id !== snapshotId
+    )
+      throw new AppError("读取期间快照已变化", 409);
+    return result;
   }
   document(id: string, documentId: string, snapshotId: string | undefined) {
     const snapshot = this.view(id).snapshot;

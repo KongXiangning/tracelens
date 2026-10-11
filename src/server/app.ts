@@ -10,6 +10,7 @@ import { ProjectRegistry } from "./registry.js";
 import { discover } from "./scanner.js";
 import { SnapshotStore } from "./snapshot.js";
 import { browseDirectories, codexProjects } from "./project-sources.js";
+import { runtimeHashes, runtimeBudgets } from "./runtime-reader.js";
 
 export interface AppOptions {
   dataDir?: string;
@@ -106,11 +107,66 @@ export async function createApp(options: AppOptions = {}) {
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (request) =>
     registry.update(request.params.id, request.body),
   );
+  app.post("/api/runtime-source-preview", async (request) => {
+    const input = validate(
+      z.object({ sourceDirectory: z.string().min(1).max(2000) }),
+      request.body,
+    );
+    return {
+      sourceDirectory: input.sourceDirectory,
+      moduleHashes: await runtimeHashes(input.sourceDirectory),
+      budgets: runtimeBudgets,
+    };
+  });
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/runtime-trust",
+    async (request) => registry.selectRuntime(request.params.id, request.body),
+  );
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/task-detail",
+    async (request) => {
+      const input = validate(
+        z.object({
+          snapshotId: z.string().min(1),
+          taskId: z.string().min(1),
+          stepId: z.string().min(1).optional(),
+        }),
+        request.body,
+      );
+      return store.taskDetail(
+        request.params.id,
+        input.snapshotId,
+        input.taskId,
+        input.stepId,
+      );
+    },
+  );
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/task-page",
+    async (request) => {
+      const input = validate(
+        z.object({ snapshotId: z.string().min(1) }),
+        request.body,
+      );
+      return store.moreTasks(request.params.id, input.snapshotId);
+    },
+  );
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/task-source",
+    async (request) => {
+      const input = validate(
+        z.object({
+          snapshotId: z.string().min(1),
+          ref: z.string().min(1).max(2000),
+        }),
+        request.body,
+      );
+      return store.taskSource(request.params.id, input.snapshotId, input.ref);
+    },
+  );
   app.delete<{ Params: { id: string } }>(
     "/api/projects/:id",
     async (request) => {
-      if (store.view(request.params.id).attempt?.state === "scanning")
-        throw new AppError("请等待扫描结束后移除项目", 409);
       await registry.remove(request.params.id);
       store.remove(request.params.id);
       return { removed: true };

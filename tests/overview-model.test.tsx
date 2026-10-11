@@ -100,8 +100,9 @@ it("keeps all known requirements without a plan and distinguishes plans sharing 
       planning={() => {}}
     />,
   );
-  expect(html).toContain("选择要查看的计划");
-  expect(html).toContain("尚未选定实施顺序");
+  expect(html).toContain("需求全景");
+  expect(html).toContain("未指定顺序");
+  expect(html).not.toContain("选择要查看的计划");
   expect(html).not.toContain("overview-road-arrow");
 });
 it("deduplicates real task identities and keeps closed, conflicting and unknown identity separate from completion", async () => {

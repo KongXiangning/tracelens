@@ -1,5 +1,16 @@
 # PRODUCT contract assets
 
+## VN-03 / VN-05 v3 handoff
+
+product-doc-v3.json is the full closed production schema, copied unchanged from
+the VN-03 generated support asset and confirmed against the installed VN-05
+local candidate. SHA-256: c08c9ffa781c2ffce8bf8889567aa8eff155b433376fd149454f8df5b15d405b.
+Candidate: 0.24.5, bundle-1d2110dac6531342ab66df9d, manifest
+9a3bc3f567b31ae7ca4ad579c78ce74b7b5035b85230aa1d1ce435b123cfe909.
+product-parser adapts the current product-definition/v1 digest;
+shared/product-view adapts scoped.ts selection. Product reads remain independent
+of task queries. The following provenance of older v1/v2 assets is retained.
+
 Source repository: https://github.com/KongXiangning/vibe-coding-workflow-system
 
 Pinned commit: `813d3146561c974c1437fc4d116144dc800bc1ad`

@@ -315,8 +315,8 @@ describe("controlled PRODUCT read and snapshot integration", () => {
       true,
     );
     expect(
-      scan.tasks.find((t) => t.realTaskId === "real-record-task")?.statuses[0]
-        .text,
+      scan.taskObservations!.find((t) => t.realTaskId === "real-record-task")
+        ?.statuses[0].text,
     ).toBe("paused");
     expect(scan.product?.sources[2].locationState).toBe("located");
     expect(scan.product?.sources[2].source?.line).toBeGreaterThan(1);
@@ -658,8 +658,8 @@ describe("controlled PRODUCT read and snapshot integration", () => {
       new Date().toISOString(),
       first,
     );
-    expect(second.tasks[0].id).toBe(first.tasks[0].id);
-    expect(second.tasks[0].realTaskId).toBe("real-B");
+    expect(second.taskObservations![0].id).toBe(first.taskObservations![0].id);
+    expect(second.taskObservations![0].realTaskId).toBe("real-B");
     expect(second.product!.bindings[0].match.state).toBe("conflict");
     expect(second.product!.bindings[0].match.taskIds).toEqual([]);
   });

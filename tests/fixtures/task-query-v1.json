@@ -1,0 +1,3413 @@
+{
+  "description": "VN-02 共用契约样例；所有任务与结果均为合成夹具，绝非真实交付或 TraceLens 测试",
+  "generated_on": "2026-10-11",
+  "runtime_source_version": "0.24.5 (working tree)",
+  "project_context": {
+    "registered_copy": "sample-query-copy-a",
+    "root": "<registered absolute temporary project root; CLI --root argument>",
+    "workflow_home": "custom/workflow",
+    "entry": "<trusted source-repository assistance.mjs; installed entry resolution is specified separately>"
+  },
+  "cases": [
+    {
+      "id": "summary",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "workflow_home": "custom/workflow",
+        "limit": 1
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [
+          {
+            "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "display_id": "TASK-001",
+            "title": "合成导入任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "plan_status": "adopted",
+            "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "legacy_plan_ref": null,
+            "legacy_source": null,
+            "current_step_id": "S1",
+            "current_step": {
+              "id": "S1",
+              "title": "导入",
+              "state": "executed",
+              "legacy_step_status": null,
+              "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+              "execution_result": "completed",
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "review_choice": null,
+              "review_decision_ref": null,
+              "disposition_ref": null,
+              "finding_count": 0,
+              "test_count": 1
+            },
+            "next_route": "review-change",
+            "next_mode": null,
+            "next_action": "review-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "dependencies": [],
+            "return_result": null,
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "remaining_work": null,
+            "gaps": null,
+            "counts": {
+              "steps": 2,
+              "unfinished_steps": 2,
+              "findings_in_current_plan": 0,
+              "plans": 1,
+              "executions": 1,
+              "tests": 1,
+              "reviews": 0,
+              "review_decisions": 0,
+              "commits": 0
+            },
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "workflow_home": "custom/workflow"
+            }
+          }
+        ],
+        "pagination": {
+          "total": 2,
+          "offset": 0,
+          "limit": 1,
+          "next_offset": 1,
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "next_request": {
+            "detail": "summary",
+            "offset": 1,
+            "limit": 1,
+            "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+            "workflow_home": "custom/workflow"
+          }
+        }
+      },
+      "expectation": "有事实但无 task-view.json 仍重算两个任务；第一页可续读"
+    },
+    {
+      "id": "summary-next",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "offset": 1,
+        "limit": 1,
+        "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "workflow_home": "custom/workflow"
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [
+          {
+            "task_id": "task-b0ac78b9-d88c-496e-96f1-66650bad9dab",
+            "display_id": "TASK-002",
+            "title": "合成历史任务",
+            "lifecycle": "closed",
+            "lifecycle_ref": ".workflow-system/records/events/1791658637365-cf6be6ee-b399-4aab-8a40-441967e9473b.json",
+            "plan_status": "adopted",
+            "adopted_plan_ref": ".workflow-system/records/events/1791658637289-ff26ddaf-57b2-4295-b62f-5f283795bde2.json",
+            "adopted_by": ".workflow-system/records/events/1791658637325-fe013c72-4acb-4d9c-a09f-2a096a82c47b.json",
+            "legacy_plan_ref": null,
+            "legacy_source": null,
+            "current_step_id": null,
+            "current_step": null,
+            "next_route": null,
+            "next_mode": null,
+            "next_action": null,
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "dependencies": [],
+            "return_result": null,
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "remaining_work": [
+              "OLD 未执行"
+            ],
+            "gaps": [
+              "未做业务验证"
+            ],
+            "counts": {
+              "steps": 1,
+              "unfinished_steps": 1,
+              "findings_in_current_plan": 0,
+              "plans": 1,
+              "executions": 0,
+              "tests": 0,
+              "reviews": 0,
+              "review_decisions": 0,
+              "commits": 0
+            },
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-b0ac78b9-d88c-496e-96f1-66650bad9dab",
+              "workflow_home": "custom/workflow"
+            }
+          }
+        ],
+        "pagination": {
+          "total": 2,
+          "offset": 1,
+          "limit": 1,
+          "next_offset": null,
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "next_request": null
+        }
+      },
+      "expectation": "同版本第二页；全局计数不变"
+    },
+    {
+      "id": "task",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "task",
+        "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "workflow_home": "custom/workflow",
+        "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75"
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "task",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "selected-task"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "task": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "display_id": "TASK-001",
+          "title": "合成导入任务",
+          "lifecycle": "active",
+          "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+          "plan_status": "adopted",
+          "plan": {
+            "title": "合成导入任务",
+            "goal": "保留真实执行与验证结果",
+            "acceptance": [
+              "可只读查询"
+            ],
+            "scope": [
+              "合成资料"
+            ],
+            "exclusions": [
+              "业务项目"
+            ],
+            "steps": [
+              {
+                "id": "S1",
+                "title": "导入",
+                "validation": [
+                  "合成检查"
+                ]
+              },
+              {
+                "id": "S2",
+                "title": "恢复"
+              }
+            ],
+            "ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "parent_plan_ref": null
+          },
+          "plans": [
+            {
+              "title": "合成导入任务",
+              "goal": "保留真实执行与验证结果",
+              "acceptance": [
+                "可只读查询"
+              ],
+              "scope": [
+                "合成资料"
+              ],
+              "exclusions": [
+                "业务项目"
+              ],
+              "steps": [
+                {
+                  "id": "S1",
+                  "title": "导入",
+                  "validation": [
+                    "合成检查"
+                  ]
+                },
+                {
+                  "id": "S2",
+                  "title": "恢复"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+              "parent_plan_ref": null
+            }
+          ],
+          "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "adoption": {
+            "workflow_home": "custom/workflow",
+            "plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "focus": true,
+            "decision_text": "合成夹具采用",
+            "activate": true,
+            "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json"
+          },
+          "candidate_plan_refs": [],
+          "current_step_id": "S1",
+          "steps": [
+            {
+              "id": "S1",
+              "title": "导入",
+              "validation": [
+                "合成检查"
+              ],
+              "state": "executed",
+              "legacy_step_status": null,
+              "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+              "execution": {
+                "workflow_home": "custom/workflow",
+                "plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+                "step_id": "S1",
+                "result": "completed",
+                "observations": "合成入库成果，不是业务验证",
+                "ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+                "interpretation_ref": null
+              },
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "findings": [],
+              "review_choice": null,
+              "review_decision_ref": null,
+              "review_decisions": [],
+              "tests": [
+                {
+                  "workflow_home": "custom/workflow",
+                  "plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+                  "step_id": "S1",
+                  "command": "synthetic-check",
+                  "result": "failed",
+                  "ref": ".workflow-system/records/events/1791658637240-4d2be980-7eb2-4875-a651-d664947fc0e7.json",
+                  "interpretation_ref": null
+                }
+              ],
+              "disposition_ref": null,
+              "historical_execution_refs": []
+            },
+            {
+              "id": "S2",
+              "title": "恢复",
+              "state": "not-started",
+              "legacy_step_status": null,
+              "execution_ref": null,
+              "execution": null,
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "findings": [],
+              "review_choice": null,
+              "review_decision_ref": null,
+              "review_decisions": [],
+              "tests": [],
+              "disposition_ref": null,
+              "historical_execution_refs": []
+            }
+          ],
+          "reviews": [],
+          "executions": [
+            {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+              "step_id": "S1",
+              "result": "completed",
+              "observations": "合成入库成果，不是业务验证",
+              "ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+              "interpretation_ref": null
+            }
+          ],
+          "tests": [
+            {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+              "step_id": "S1",
+              "command": "synthetic-check",
+              "result": "failed",
+              "ref": ".workflow-system/records/events/1791658637240-4d2be980-7eb2-4875-a651-d664947fc0e7.json",
+              "interpretation_ref": null
+            }
+          ],
+          "review_decisions": [],
+          "commits": [],
+          "dispositions": [],
+          "next_route": "review-change",
+          "next_mode": null,
+          "next_action": "review-step",
+          "recommendation_only": true,
+          "origin": null,
+          "dependency": {
+            "state": "not-applicable",
+            "ref": null
+          },
+          "return_entry": null,
+          "return_result": null,
+          "dependencies": [],
+          "waiting_on_task_ids": [],
+          "continuation": null,
+          "legacy_source": null,
+          "legacy_plan_ref": null,
+          "legacy_plan": null,
+          "heads": [
+            ".workflow-system/records/events/1791658637240-4d2be980-7eb2-4875-a651-d664947fc0e7.json"
+          ]
+        }
+      },
+      "expectation": "完整任务；完成的执行与失败的验证分开"
+    },
+    {
+      "id": "step",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "step",
+        "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "step_id": "S1",
+        "workflow_home": "custom/workflow",
+        "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75"
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "step",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          },
+          "requested_step_id": "S1",
+          "step_status": "resolved"
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "selected-step-projection-only"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "task": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "display_id": "TASK-001",
+          "lifecycle": "active",
+          "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+          "legacy_plan_ref": null
+        },
+        "step": {
+          "id": "S1",
+          "title": "导入",
+          "validation": [
+            "合成检查"
+          ],
+          "state": "executed",
+          "legacy_step_status": null,
+          "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+          "execution": {
+            "workflow_home": "custom/workflow",
+            "plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "step_id": "S1",
+            "result": "completed",
+            "observations": "合成入库成果，不是业务验证",
+            "ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+            "interpretation_ref": null
+          },
+          "review_ref": null,
+          "review_status": "not-reviewed",
+          "findings": [],
+          "review_choice": null,
+          "review_decision_ref": null,
+          "review_decisions": [],
+          "tests": [
+            {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+              "step_id": "S1",
+              "command": "synthetic-check",
+              "result": "failed",
+              "ref": ".workflow-system/records/events/1791658637240-4d2be980-7eb2-4875-a651-d664947fc0e7.json",
+              "interpretation_ref": null
+            }
+          ],
+          "disposition_ref": null,
+          "historical_execution_refs": []
+        },
+        "review": null,
+        "detail_request": {
+          "detail": "task",
+          "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "workflow_home": "custom/workflow"
+        }
+      },
+      "expectation": "精确 S1，有失败测试且未审查"
+    },
+    {
+      "id": "closed-task",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "task",
+        "task_ref": "task-b0ac78b9-d88c-496e-96f1-66650bad9dab",
+        "workflow_home": "custom/workflow",
+        "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75"
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "task",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": "task-b0ac78b9-d88c-496e-96f1-66650bad9dab",
+          "task_id": "task-b0ac78b9-d88c-496e-96f1-66650bad9dab",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-b0ac78b9-d88c-496e-96f1-66650bad9dab",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "selected-task"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "task": {
+          "task_id": "task-b0ac78b9-d88c-496e-96f1-66650bad9dab",
+          "display_id": "TASK-002",
+          "title": "合成历史任务",
+          "lifecycle": "closed",
+          "lifecycle_ref": ".workflow-system/records/events/1791658637365-cf6be6ee-b399-4aab-8a40-441967e9473b.json",
+          "adopted_plan_ref": ".workflow-system/records/events/1791658637289-ff26ddaf-57b2-4295-b62f-5f283795bde2.json",
+          "plan_status": "adopted",
+          "plan": {
+            "title": "合成历史任务",
+            "steps": [
+              {
+                "id": "OLD",
+                "title": "尚未执行"
+              }
+            ],
+            "ref": ".workflow-system/records/events/1791658637289-ff26ddaf-57b2-4295-b62f-5f283795bde2.json",
+            "parent_plan_ref": null
+          },
+          "plans": [
+            {
+              "title": "合成历史任务",
+              "steps": [
+                {
+                  "id": "OLD",
+                  "title": "尚未执行"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791658637289-ff26ddaf-57b2-4295-b62f-5f283795bde2.json",
+              "parent_plan_ref": null
+            }
+          ],
+          "adopted_by": ".workflow-system/records/events/1791658637325-fe013c72-4acb-4d9c-a09f-2a096a82c47b.json",
+          "adoption": {
+            "workflow_home": "custom/workflow",
+            "plan_ref": ".workflow-system/records/events/1791658637289-ff26ddaf-57b2-4295-b62f-5f283795bde2.json",
+            "focus": false,
+            "activate": true,
+            "ref": ".workflow-system/records/events/1791658637325-fe013c72-4acb-4d9c-a09f-2a096a82c47b.json"
+          },
+          "candidate_plan_refs": [],
+          "current_step_id": null,
+          "steps": [
+            {
+              "id": "OLD",
+              "title": "尚未执行",
+              "state": "not-started",
+              "legacy_step_status": null,
+              "execution_ref": null,
+              "execution": null,
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "findings": [],
+              "review_choice": null,
+              "review_decision_ref": null,
+              "review_decisions": [],
+              "tests": [],
+              "disposition_ref": null,
+              "historical_execution_refs": []
+            }
+          ],
+          "reviews": [],
+          "executions": [],
+          "tests": [],
+          "review_decisions": [],
+          "commits": [],
+          "dispositions": [
+            {
+              "workflow_home": "custom/workflow",
+              "remaining_work": [
+                "OLD 未执行"
+              ],
+              "gaps": [
+                "未做业务验证"
+              ],
+              "decision_text": "合成关闭观察",
+              "ref": ".workflow-system/records/events/1791658637365-cf6be6ee-b399-4aab-8a40-441967e9473b.json",
+              "action": "close"
+            }
+          ],
+          "next_route": null,
+          "next_mode": null,
+          "next_action": null,
+          "recommendation_only": true,
+          "origin": null,
+          "dependency": {
+            "state": "not-applicable",
+            "ref": null
+          },
+          "return_entry": null,
+          "return_result": null,
+          "dependencies": [],
+          "waiting_on_task_ids": [],
+          "continuation": null,
+          "legacy_source": null,
+          "legacy_plan_ref": null,
+          "legacy_plan": null,
+          "heads": [
+            ".workflow-system/records/events/1791658637365-cf6be6ee-b399-4aab-8a40-441967e9473b.json"
+          ]
+        }
+      },
+      "expectation": "closed 仍保留未执行 OLD，不等于全部完成"
+    },
+    {
+      "id": "context",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "context",
+      "request": {
+        "detail": "summary",
+        "workflow_home": "custom/workflow",
+        "limit": 1
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "status": "available",
+        "workflow_home": "custom/workflow",
+        "sources": [
+          "custom/workflow/CURRENT_TASK.md",
+          ".workflow-system/records/events"
+        ],
+        "issues": [],
+        "management": {
+          "runtime_role": "assistance",
+          "development_gate": false,
+          "qualification": "not-evaluated",
+          "kind": "task-query/v1",
+          "detail": "summary",
+          "status": "available",
+          "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+          "workflow_home": "custom/workflow",
+          "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "focus": {
+            "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "conflict": null
+          },
+          "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "next_step_id": "S1",
+          "next_route": "review-change",
+          "next_mode": null,
+          "next_action": "review-step",
+          "selection": {
+            "requested_task_ref": null,
+            "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "status": "resolved",
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "workflow_home": "custom/workflow"
+            }
+          },
+          "health": "consistent",
+          "state_completeness": "complete",
+          "records_scanned": 7,
+          "projection": {
+            "cache": "missing",
+            "display": "stale-or-edited",
+            "display_format": "unknown",
+            "display_comparison": "semantic-content",
+            "display_issue": {
+              "id": "issue-0b3583ba55b7e68ded3cc519",
+              "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+              "ref": "custom/workflow/CURRENT_TASK.md",
+              "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+            },
+            "read_only_rebuilt": true
+          },
+          "recovery_options": [
+            "rebuild",
+            "link",
+            "correct",
+            "resolve",
+            "defer",
+            "pause",
+            "close"
+          ],
+          "issues": [],
+          "unassociated_records": [],
+          "task_count": 2,
+          "lifecycle_counts": {
+            "active": 1,
+            "closed": 1
+          },
+          "coverage": {
+            "computation": "full-journal-rebuild",
+            "diagnostics": "all",
+            "history": "not-expanded"
+          },
+          "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+          "tasks": [
+            {
+              "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "display_id": "TASK-001",
+              "title": "合成导入任务",
+              "lifecycle": "active",
+              "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+              "plan_status": "adopted",
+              "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+              "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+              "legacy_plan_ref": null,
+              "legacy_source": null,
+              "current_step_id": "S1",
+              "current_step": {
+                "id": "S1",
+                "title": "导入",
+                "state": "executed",
+                "legacy_step_status": null,
+                "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+                "execution_result": "completed",
+                "review_ref": null,
+                "review_status": "not-reviewed",
+                "review_choice": null,
+                "review_decision_ref": null,
+                "disposition_ref": null,
+                "finding_count": 0,
+                "test_count": 1
+              },
+              "next_route": "review-change",
+              "next_mode": null,
+              "next_action": "review-step",
+              "recommendation_only": true,
+              "origin": null,
+              "dependency": {
+                "state": "not-applicable",
+                "ref": null
+              },
+              "dependencies": [],
+              "return_result": null,
+              "waiting_on_task_ids": [],
+              "continuation": null,
+              "remaining_work": null,
+              "gaps": null,
+              "counts": {
+                "steps": 2,
+                "unfinished_steps": 2,
+                "findings_in_current_plan": 0,
+                "plans": 1,
+                "executions": 1,
+                "tests": 1,
+                "reviews": 0,
+                "review_decisions": 0,
+                "commits": 0
+              },
+              "detail_request": {
+                "detail": "task",
+                "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+                "workflow_home": "custom/workflow"
+              }
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "offset": 0,
+            "limit": 1,
+            "next_offset": 1,
+            "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+            "next_request": {
+              "detail": "summary",
+              "offset": 1,
+              "limit": 1,
+              "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+              "workflow_home": "custom/workflow"
+            }
+          }
+        },
+        "note": "Task data occurs once under management. Use its detail requests or explicit find/read for evidence; navigation is not task state."
+      },
+      "expectation": "任务数据仅在 management"
+    },
+    {
+      "id": "source-read",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "read",
+      "request": {
+        "ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+        "workflow_home": "custom/workflow",
+        "offset": 0,
+        "max_bytes": 32
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "status": "read",
+        "ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+        "sha256": null,
+        "actual_sha256": "56805befa6628362ea02a3bcc2b9367aa36c0e387057afce92088ed730231846",
+        "size": 1275,
+        "offset": 0,
+        "next_offset": 32,
+        "encoding": "base64",
+        "data": "ewogICJzY2hlbWFfdmVyc2lvbiI6IDEsCiAgImtpbmQ=",
+        "text_preview": "{\n  \"schema_version\": 1,\n  \"kind",
+        "storage": "loose",
+        "verification": "whole-file",
+        "read_metrics": {
+          "metadata_bytes_read": 0,
+          "metadata_bytes_examined": 0,
+          "metadata_cache_hits": 0,
+          "manifests_read": 0,
+          "indices_read": 0,
+          "compressed_bytes_read": 0,
+          "pack_bytes_read": 0,
+          "decompressed_bytes": 0,
+          "chunks_read": 0,
+          "loose_bytes_hashed": 1275,
+          "loose_bytes_read": 32
+        },
+        "issues": [],
+        "note": "Base64 is exact; UTF-8 preview may split a character at a byte-page boundary. Archive pages validate their blocks; archive verify checks complete objects and packs. Historical availability does not imply current applicability."
+      },
+      "expectation": "原始事件字节分页，无 task-query kind"
+    },
+    {
+      "id": "source-read-next",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "read",
+      "request": {
+        "ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+        "workflow_home": "custom/workflow",
+        "offset": 32,
+        "max_bytes": 65536
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "status": "read",
+        "ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+        "sha256": null,
+        "actual_sha256": "56805befa6628362ea02a3bcc2b9367aa36c0e387057afce92088ed730231846",
+        "size": 1275,
+        "offset": 32,
+        "next_offset": null,
+        "encoding": "base64",
+        "data": "IjogIndvcmtmbG93LW9ic2VydmF0aW9uIiwKICAicmVjb3JkZWRfYXQiOiAiMjAyNi0xMC0xMFQxODo1NzoxNy4yMDVaIiwKICAicGF5bG9hZF9zaGEyNTYiOiAiN2FkZWY4ZjYyMDU2NjAxZjRiOWMzZjlkZGRmMzVjZTUxZTdiZGY4YzllNGViZjc4OGUzNGU2NWFmYzdlNmI4OCIsCiAgImFzc3VyYW5jZSI6ICJjYWxsZXItcmVwb3J0ZWQiLAogICJwYXlsb2FkIjogewogICAgImtpbmQiOiAidGFzay1ldmVudCIsCiAgICAicmVxdWVzdCI6IHsKICAgICAgImFjdGlvbiI6ICJleGVjdXRpb24iLAogICAgICAid29ya2Zsb3dfaG9tZSI6ICJjdXN0b20vd29ya2Zsb3ciLAogICAgICAidGFza19pZCI6ICJ0YXNrLTY5NDZlYjNiLTJhODEtNDM5ZC05ZWM1LWQwNTc1ODRlZjIwZCIsCiAgICAgICJwbGFuX3JlZiI6ICIud29ya2Zsb3ctc3lzdGVtL3JlY29yZHMvZXZlbnRzLzE3OTE2NTg2MzcxMjgtMTYyOWY2ZWQtOTMwMC00ZmRhLTgzMTItMTlhMjliY2FlNGRkLmpzb24iLAogICAgICAic3RlcF9pZCI6ICJTMSIsCiAgICAgICJyZXN1bHQiOiAiY29tcGxldGVkIiwKICAgICAgIm9ic2VydmF0aW9ucyI6ICLlkIjmiJDlhaXlupPmiJDmnpzvvIzkuI3mmK/kuJrliqHpqozor4EiCiAgICB9LAogICAgIndvcmtmbG93X2hvbWUiOiAiY3VzdG9tL3dvcmtmbG93IiwKICAgICJ0YXNrX2V2ZW50IjogewogICAgICAidmVyc2lvbiI6IDEsCiAgICAgICJhY3Rpb24iOiAiZXhlY3V0aW9uIiwKICAgICAgInRhc2tfaWQiOiAidGFzay02OTQ2ZWIzYi0yYTgxLTQzOWQtOWVjNS1kMDU3NTg0ZWYyMGQiLAogICAgICAicGFyZW50cyI6IFsKICAgICAgICAiLndvcmtmbG93LXN5c3RlbS9yZWNvcmRzL2V2ZW50cy8xNzkxNjU4NjM3MTY5LTNmZDc1Yzg3LTAzMWQtNDBlYS04YjE3LTY1OWMyZmM1NzE5Yi5qc29uIgogICAgICBdLAogICAgICAiZGF0YSI6IHsKICAgICAgICAid29ya2Zsb3dfaG9tZSI6ICJjdXN0b20vd29ya2Zsb3ciLAogICAgICAgICJwbGFuX3JlZiI6ICIud29ya2Zsb3ctc3lzdGVtL3JlY29yZHMvZXZlbnRzLzE3OTE2NTg2MzcxMjgtMTYyOWY2ZWQtOTMwMC00ZmRhLTgzMTItMTlhMjliY2FlNGRkLmpzb24iLAogICAgICAgICJzdGVwX2lkIjogIlMxIiwKICAgICAgICAicmVzdWx0IjogImNvbXBsZXRlZCIsCiAgICAgICAgIm9ic2VydmF0aW9ucyI6ICLlkIjmiJDlhaXlupPmiJDmnpzvvIzkuI3mmK/kuJrliqHpqozor4EiCiAgICAgIH0KICAgIH0KICB9LAogICJpc3N1ZXMiOiBbXQp9Cg==",
+        "text_preview": "\": \"workflow-observation\",\n  \"recorded_at\": \"2026-10-10T18:57:17.205Z\",\n  \"payload_sha256\": \"7adef8f62056601f4b9c3f9dddf35ce51e7bdf8c9e4ebf788e34e65afc7e6b88\",\n  \"assurance\": \"caller-reported\",\n  \"payload\": {\n    \"kind\": \"task-event\",\n    \"request\": {\n      \"action\": \"execution\",\n      \"workflow_home\": \"custom/workflow\",\n      \"task_id\": \"task-6946eb3b-2a81-439d-9ec5-d057584ef20d\",\n      \"plan_ref\": \".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json\",\n      \"step_id\": \"S1\",\n      \"result\": \"completed\",\n      \"observations\": \"合成入库成果，不是业务验证\"\n    },\n    \"workflow_home\": \"custom/workflow\",\n    \"task_event\": {\n      \"version\": 1,\n      \"action\": \"execution\",\n      \"task_id\": \"task-6946eb3b-2a81-439d-9ec5-d057584ef20d\",\n      \"parents\": [\n        \".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json\"\n      ],\n      \"data\": {\n        \"workflow_home\": \"custom/workflow\",\n        \"plan_ref\": \".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json\",\n        \"step_id\": \"S1\",\n        \"result\": \"completed\",\n        \"observations\": \"合成入库成果，不是业务验证\"\n      }\n    }\n  },\n  \"issues\": []\n}\n",
+        "storage": "loose",
+        "verification": "whole-file",
+        "read_metrics": {
+          "metadata_bytes_read": 0,
+          "metadata_bytes_examined": 0,
+          "metadata_cache_hits": 0,
+          "manifests_read": 0,
+          "indices_read": 0,
+          "compressed_bytes_read": 0,
+          "pack_bytes_read": 0,
+          "decompressed_bytes": 0,
+          "chunks_read": 0,
+          "loose_bytes_hashed": 1275,
+          "loose_bytes_read": 1243
+        },
+        "issues": [],
+        "note": "Base64 is exact; UTF-8 preview may split a character at a byte-page boundary. Archive pages validate their blocks; archive verify checks complete objects and packs. Historical availability does not imply current applicability."
+      },
+      "expectation": "按 next_offset 续读，data base64 恢复字节"
+    },
+    {
+      "id": "unresolved-task",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "task",
+        "task_ref": "not-a-retained-task",
+        "workflow_home": "custom/workflow"
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "task",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": "not-a-retained-task",
+          "task_id": null,
+          "status": "unresolved",
+          "detail_request": null
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [
+          {
+            "id": "issue-58765b79cb9d655f2ebc3195",
+            "code": "TASK_SELECTION_UNRESOLVED",
+            "ref": "not-a-retained-task",
+            "message": "No unique task matches this reference; inspect candidates or link the saved plan."
+          }
+        ],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "selected-task"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "task": null
+      },
+      "expectation": "available 但 task=null，不替换为焦点任务"
+    },
+    {
+      "id": "unresolved-step",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "step",
+        "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "step_id": "ABSENT",
+        "workflow_home": "custom/workflow"
+      },
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "step",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          },
+          "requested_step_id": "ABSENT",
+          "step_status": "unresolved"
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "selected-step-projection-only"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "task": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "display_id": "TASK-001",
+          "lifecycle": "active",
+          "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+          "legacy_plan_ref": null
+        },
+        "step": null,
+        "review": null,
+        "detail_request": {
+          "detail": "task",
+          "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "workflow_home": "custom/workflow"
+        }
+      },
+      "expectation": "step=null，step_status=unresolved"
+    },
+    {
+      "id": "invalid-selector",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "workflow_home": "custom/workflow"
+      },
+      "exit_code": 1,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "status": "unavailable",
+        "recorded": false,
+        "command": "task-status",
+        "code": "INVALID_QUERY",
+        "message": "Use task_ref for selection; step detail reads the adopted/legacy plan. Read historical plan refs with read.",
+        "next_action": "Report this service failure; retain output elsewhere when authorized. Do not turn it into a development stop, rerun business commands, or claim successful persistence."
+      },
+      "expectation": "查询字段错误，不写事实或改焦点"
+    },
+    {
+      "id": "source-failure",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "read",
+      "request": {
+        "ref": "docs/evidence/missing.md",
+        "workflow_home": "custom/workflow"
+      },
+      "exit_code": 1,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "status": "unavailable",
+        "recorded": false,
+        "command": "read",
+        "code": "ENOENT",
+        "message": "ENOENT: no such file or directory, open 'C:\\Users\\kongx\\AppData\\Local\\Temp\\vn02-contract-ZDFzWd\\docs\\evidence\\missing.md'",
+        "next_action": "Report this service failure; retain output elsewhere when authorized. Do not turn it into a development stop, rerun business commands, or claim successful persistence."
+      },
+      "expectation": "ENOENT 仅来源不可读，仍可打开已定位任务"
+    },
+    {
+      "id": "unsafe-source",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "read",
+      "request": {
+        "ref": "../outside.md",
+        "workflow_home": "custom/workflow"
+      },
+      "exit_code": 1,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "status": "unavailable",
+        "recorded": false,
+        "command": "read",
+        "code": "UNSAFE_PATH",
+        "message": "Expected a repository-relative path without traversal into external or Git-control files.",
+        "next_action": "Report this service failure; retain output elsewhere when authorized. Do not turn it into a development stop, rerun business commands, or claim successful persistence."
+      },
+      "expectation": "UNSAFE_PATH 拒绝越界来源"
+    },
+    {
+      "id": "view-changed",
+      "provenance": "actual-source-cli-in-temporary-fixture",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "offset": 1,
+        "limit": 1,
+        "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "workflow_home": "custom/workflow"
+      },
+      "exit_code": 1,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "status": "unavailable",
+        "recorded": false,
+        "command": "task-status",
+        "code": "QUERY_VIEW_CHANGED",
+        "message": "The live view changed; restart the query. This is not a workflow gate.",
+        "next_action": "Report this service failure; retain output elsewhere when authorized. Do not turn it into a development stop, rerun business commands, or claim successful persistence."
+      },
+      "expectation": "正常写入后 QUERY_VIEW_CHANGED，重启本批读取，不能混合页"
+    },
+    {
+      "id": "unknown-additive-field",
+      "provenance": "synthetic-consumer-input-variant",
+      "based_on": "summary",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "workflow_home": "custom/workflow",
+        "limit": 1
+      },
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [
+          {
+            "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "display_id": "TASK-001",
+            "title": "合成导入任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "plan_status": "adopted",
+            "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "legacy_plan_ref": null,
+            "legacy_source": null,
+            "current_step_id": "S1",
+            "current_step": {
+              "id": "S1",
+              "title": "导入",
+              "state": "executed",
+              "legacy_step_status": null,
+              "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+              "execution_result": "completed",
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "review_choice": null,
+              "review_decision_ref": null,
+              "disposition_ref": null,
+              "finding_count": 0,
+              "test_count": 1
+            },
+            "next_route": "review-change",
+            "next_mode": null,
+            "next_action": "review-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "dependencies": [],
+            "return_result": null,
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "remaining_work": null,
+            "gaps": null,
+            "counts": {
+              "steps": 2,
+              "unfinished_steps": 2,
+              "findings_in_current_plan": 0,
+              "plans": 1,
+              "executions": 1,
+              "tests": 1,
+              "reviews": 0,
+              "review_decisions": 0,
+              "commits": 0
+            },
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "workflow_home": "custom/workflow"
+            },
+            "future_detail": "ignored"
+          }
+        ],
+        "pagination": {
+          "total": 2,
+          "offset": 0,
+          "limit": 1,
+          "next_offset": 1,
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "next_request": {
+            "detail": "summary",
+            "offset": 1,
+            "limit": 1,
+            "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "future_metadata": {
+          "example": true
+        }
+      },
+      "expectation": "忽略未知附加字段，照常显示已知数据"
+    },
+    {
+      "id": "optional-fields-absent",
+      "provenance": "synthetic-consumer-input-variant",
+      "based_on": "summary",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "workflow_home": "custom/workflow",
+        "limit": 1
+      },
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [
+          {
+            "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "display_id": "TASK-001",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "plan_status": "adopted",
+            "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "legacy_plan_ref": null,
+            "legacy_source": null,
+            "current_step_id": "S1",
+            "next_route": "review-change",
+            "next_mode": null,
+            "next_action": "review-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "dependencies": [],
+            "return_result": null,
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "remaining_work": null,
+            "gaps": null,
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "workflow_home": "custom/workflow"
+            }
+          }
+        ],
+        "pagination": {
+          "total": 2,
+          "offset": 0,
+          "limit": 1,
+          "next_offset": 1,
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "next_request": {
+            "detail": "summary",
+            "offset": 1,
+            "limit": 1,
+            "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+            "workflow_home": "custom/workflow"
+          }
+        }
+      },
+      "expectation": "用真实 ID 标识；局部信息隐藏，不推断通过或没有记录"
+    },
+    {
+      "id": "required-field-error",
+      "provenance": "synthetic-consumer-input-variant",
+      "based_on": "summary",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "workflow_home": "custom/workflow",
+        "limit": 1
+      },
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [
+          {
+            "task_id": 42,
+            "display_id": "TASK-001",
+            "title": "合成导入任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "plan_status": "adopted",
+            "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "legacy_plan_ref": null,
+            "legacy_source": null,
+            "current_step_id": "S1",
+            "current_step": {
+              "id": "S1",
+              "title": "导入",
+              "state": "executed",
+              "legacy_step_status": null,
+              "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+              "execution_result": "completed",
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "review_choice": null,
+              "review_decision_ref": null,
+              "disposition_ref": null,
+              "finding_count": 0,
+              "test_count": 1
+            },
+            "next_route": "review-change",
+            "next_mode": null,
+            "next_action": "review-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "dependencies": [],
+            "return_result": null,
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "remaining_work": null,
+            "gaps": null,
+            "counts": {
+              "steps": 2,
+              "unfinished_steps": 2,
+              "findings_in_current_plan": 0,
+              "plans": 1,
+              "executions": 1,
+              "tests": 1,
+              "reviews": 0,
+              "review_decisions": 0,
+              "commits": 0
+            },
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "workflow_home": "custom/workflow"
+            }
+          }
+        ],
+        "pagination": {
+          "total": 2,
+          "offset": 0,
+          "limit": 1,
+          "next_offset": 1,
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "next_request": {
+            "detail": "summary",
+            "offset": 1,
+            "limit": 1,
+            "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+            "workflow_home": "custom/workflow"
+          }
+        }
+      },
+      "expectation": "相关查询结果不可用，不能用标题或显示编号代替身份"
+    },
+    {
+      "id": "required-field-absent",
+      "provenance": "synthetic-consumer-input-variant",
+      "based_on": "summary",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "workflow_home": "custom/workflow",
+        "limit": 1
+      },
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [
+          {
+            "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "display_id": "TASK-001",
+            "title": "合成导入任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "plan_status": "adopted",
+            "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "legacy_plan_ref": null,
+            "legacy_source": null,
+            "current_step_id": "S1",
+            "current_step": {
+              "id": "S1",
+              "title": "导入",
+              "state": "executed",
+              "legacy_step_status": null,
+              "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+              "execution_result": "completed",
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "review_choice": null,
+              "review_decision_ref": null,
+              "disposition_ref": null,
+              "finding_count": 0,
+              "test_count": 1
+            },
+            "next_route": "review-change",
+            "next_mode": null,
+            "next_action": "review-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "dependencies": [],
+            "return_result": null,
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "remaining_work": null,
+            "gaps": null,
+            "counts": {
+              "steps": 2,
+              "unfinished_steps": 2,
+              "findings_in_current_plan": 0,
+              "plans": 1,
+              "executions": 1,
+              "tests": 1,
+              "reviews": 0,
+              "review_decisions": 0,
+              "commits": 0
+            },
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "workflow_home": "custom/workflow"
+            }
+          }
+        ],
+        "pagination": {
+          "total": 2,
+          "offset": 0,
+          "limit": 1,
+          "next_offset": 1,
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "next_request": {
+            "detail": "summary",
+            "offset": 1,
+            "limit": 1,
+            "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+            "workflow_home": "custom/workflow"
+          }
+        }
+      },
+      "expectation": "不能宣称跨页／详情同版本，降级相关结果"
+    },
+    {
+      "id": "unrecognized-kind",
+      "provenance": "synthetic-consumer-input-variant",
+      "based_on": "summary",
+      "command": "task-status",
+      "request": {
+        "detail": "summary",
+        "workflow_home": "custom/workflow",
+        "limit": 1
+      },
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "unknown-task-query",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "dadea39d36165cb3aac433c670bd60a73650f578e9da6f9efc80d7a7ce959bd9",
+        "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+        "display_revision": "dd7a2940a56dedfc6452e4a3202d56b03ca8de6f845c1b780156a972daa34995",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "focus": {
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+          "conflict": null
+        },
+        "next_task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+        "next_step_id": "S1",
+        "next_route": "review-change",
+        "next_mode": null,
+        "next_action": "review-step",
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+          "status": "resolved",
+          "detail_request": {
+            "detail": "task",
+            "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "workflow_home": "custom/workflow"
+          }
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 7,
+        "projection": {
+          "cache": "missing",
+          "display": "stale-or-edited",
+          "display_format": "unknown",
+          "display_comparison": "semantic-content",
+          "display_issue": {
+            "id": "issue-0b3583ba55b7e68ded3cc519",
+            "code": "CURRENT_TASK_FORMAT_UNRECOGNIZED",
+            "ref": "custom/workflow/CURRENT_TASK.md",
+            "message": "Current display has an unknown or invalid managed-view format; its baseline cannot be inferred."
+          },
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 2,
+        "lifecycle_counts": {
+          "active": 1,
+          "closed": 1
+        },
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [
+          {
+            "task_id": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+            "display_id": "TASK-001",
+            "title": "合成导入任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "plan_status": "adopted",
+            "adopted_plan_ref": ".workflow-system/records/events/1791658637128-1629f6ed-9300-4fda-8312-19a29bcae4dd.json",
+            "adopted_by": ".workflow-system/records/events/1791658637169-3fd75c87-031d-40ea-8b17-659c2fc5719b.json",
+            "legacy_plan_ref": null,
+            "legacy_source": null,
+            "current_step_id": "S1",
+            "current_step": {
+              "id": "S1",
+              "title": "导入",
+              "state": "executed",
+              "legacy_step_status": null,
+              "execution_ref": ".workflow-system/records/events/1791658637205-02ef0e43-2144-4d03-a500-a96e4c0667f3.json",
+              "execution_result": "completed",
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "review_choice": null,
+              "review_decision_ref": null,
+              "disposition_ref": null,
+              "finding_count": 0,
+              "test_count": 1
+            },
+            "next_route": "review-change",
+            "next_mode": null,
+            "next_action": "review-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "dependencies": [],
+            "return_result": null,
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "remaining_work": null,
+            "gaps": null,
+            "counts": {
+              "steps": 2,
+              "unfinished_steps": 2,
+              "findings_in_current_plan": 0,
+              "plans": 1,
+              "executions": 1,
+              "tests": 1,
+              "reviews": 0,
+              "review_decisions": 0,
+              "commits": 0
+            },
+            "detail_request": {
+              "detail": "task",
+              "task_ref": "task-6946eb3b-2a81-439d-9ec5-d057584ef20d",
+              "workflow_home": "custom/workflow"
+            }
+          }
+        ],
+        "pagination": {
+          "total": 2,
+          "offset": 0,
+          "limit": 1,
+          "next_offset": 1,
+          "view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+          "next_request": {
+            "detail": "summary",
+            "offset": 1,
+            "limit": 1,
+            "expected_view_revision": "c62f060e62ac2723054e3b4e17cf5f65ddf50e900d972f36d28280b9f8ff1b75",
+            "workflow_home": "custom/workflow"
+          }
+        }
+      },
+      "expectation": "不支持的协议 kind，降级并提示配套更新，不维护历史分支"
+    },
+    {
+      "id": "empty-retained-facts",
+      "provenance": "actual-source-cli-in-empty-temporary-fixture",
+      "command": "task-status",
+      "request": {},
+      "exit_code": 0,
+      "response": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-query/v1",
+        "detail": "summary",
+        "status": "available",
+        "source_revision": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "view_revision": "22cef0e2dd6f8d2be8f6b46c06120c3b6f717f5ea73ff56d598e1109d8aae70f",
+        "display_revision": "ede935ddb78fc376fb60a7b61df0fe2ef1a3f7229afacc08c73dd277945b7fb2",
+        "workflow_home": "docs/workflow",
+        "current_task_id": null,
+        "focus": {
+          "task_id": null,
+          "ref": null,
+          "conflict": null
+        },
+        "next_task_id": null,
+        "next_step_id": null,
+        "next_route": null,
+        "next_mode": null,
+        "next_action": null,
+        "selection": {
+          "requested_task_ref": null,
+          "task_id": null,
+          "status": "unresolved",
+          "detail_request": null
+        },
+        "health": "consistent",
+        "state_completeness": "complete",
+        "records_scanned": 0,
+        "projection": {
+          "cache": "missing",
+          "display": "missing",
+          "display_format": null,
+          "display_comparison": "semantic-content",
+          "read_only_rebuilt": true
+        },
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "issues": [],
+        "unassociated_records": [],
+        "task_count": 0,
+        "lifecycle_counts": {},
+        "coverage": {
+          "computation": "full-journal-rebuild",
+          "diagnostics": "all",
+          "history": "not-expanded"
+        },
+        "note": "Presentation of the complete live rebuild. Omitted detail is not absent history, clean review or permission. Read record refs with read; use detail=full for the compatibility view.",
+        "tasks": [],
+        "pagination": {
+          "total": 0,
+          "offset": 0,
+          "limit": 20,
+          "next_offset": null,
+          "view_revision": "22cef0e2dd6f8d2be8f6b46c06120c3b6f717f5ea73ff56d598e1109d8aae70f",
+          "next_request": null
+        }
+      },
+      "expectation": "确认的空事实集为零，安装不会创造或恢复丢失事实；不要把失败当成空集"
+    }
+  ],
+  "revised_on": "2026-10-11",
+  "snapshot_examples": [
+    {
+      "id": "existing-file-without-runtime",
+      "provenance": "actual-published-source-runtime-view-in-temporary-fixture",
+      "project_context": {
+        "registered_copy": "sample-snapshot-copy-a",
+        "root": "<registered absolute temporary snapshot project root>",
+        "workflow_home": "custom/workflow"
+      },
+      "file_payload": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-view/v1",
+        "source_revision": "476fdcf7e7464535dc9383ce20b5e2fd61e2e91a2e9d544da1c7ce88d9ba369d",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+        "current_task": {
+          "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+          "display_id": "TASK-001",
+          "title": "合成快照任务",
+          "lifecycle": "active",
+          "lifecycle_ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "adopted_plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+          "plan_status": "adopted",
+          "plan": {
+            "title": "合成快照任务",
+            "steps": [
+              {
+                "id": "S1",
+                "title": "未执行步骤"
+              }
+            ],
+            "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "parent_plan_ref": null
+          },
+          "plans": [
+            {
+              "title": "合成快照任务",
+              "steps": [
+                {
+                  "id": "S1",
+                  "title": "未执行步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "parent_plan_ref": null
+            }
+          ],
+          "adopted_by": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "adoption": {
+            "workflow_home": "custom/workflow",
+            "plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "focus": true,
+            "decision_text": "合成夹具采用",
+            "activate": true,
+            "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+          },
+          "candidate_plan_refs": [],
+          "current_step_id": "S1",
+          "steps": [
+            {
+              "id": "S1",
+              "title": "未执行步骤",
+              "state": "not-started",
+              "legacy_step_status": null,
+              "execution_ref": null,
+              "execution": null,
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "findings": [],
+              "review_choice": null,
+              "review_decision_ref": null,
+              "review_decisions": [],
+              "tests": [],
+              "disposition_ref": null,
+              "historical_execution_refs": []
+            }
+          ],
+          "reviews": [],
+          "executions": [],
+          "tests": [],
+          "review_decisions": [],
+          "commits": [],
+          "dispositions": [],
+          "next_route": "execute-step",
+          "next_mode": null,
+          "next_action": "implement-step",
+          "recommendation_only": true,
+          "origin": null,
+          "dependency": {
+            "state": "not-applicable",
+            "ref": null
+          },
+          "return_entry": null,
+          "return_result": null,
+          "dependencies": [],
+          "waiting_on_task_ids": [],
+          "continuation": null,
+          "legacy_source": null,
+          "legacy_plan_ref": null,
+          "legacy_plan": null,
+          "heads": [
+            ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+          ]
+        },
+        "tasks": [
+          {
+            "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+            "display_id": "TASK-001",
+            "title": "合成快照任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+            "adopted_plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "plan_status": "adopted",
+            "plan": {
+              "title": "合成快照任务",
+              "steps": [
+                {
+                  "id": "S1",
+                  "title": "未执行步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "parent_plan_ref": null
+            },
+            "plans": [
+              {
+                "title": "合成快照任务",
+                "steps": [
+                  {
+                    "id": "S1",
+                    "title": "未执行步骤"
+                  }
+                ],
+                "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+                "parent_plan_ref": null
+              }
+            ],
+            "adopted_by": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+            "adoption": {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "focus": true,
+              "decision_text": "合成夹具采用",
+              "activate": true,
+              "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+            },
+            "candidate_plan_refs": [],
+            "current_step_id": "S1",
+            "steps": [
+              {
+                "id": "S1",
+                "title": "未执行步骤",
+                "state": "not-started",
+                "legacy_step_status": null,
+                "execution_ref": null,
+                "execution": null,
+                "review_ref": null,
+                "review_status": "not-reviewed",
+                "findings": [],
+                "review_choice": null,
+                "review_decision_ref": null,
+                "review_decisions": [],
+                "tests": [],
+                "disposition_ref": null,
+                "historical_execution_refs": []
+              }
+            ],
+            "reviews": [],
+            "executions": [],
+            "tests": [],
+            "review_decisions": [],
+            "commits": [],
+            "dispositions": [],
+            "next_route": "execute-step",
+            "next_mode": null,
+            "next_action": "implement-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "return_entry": null,
+            "return_result": null,
+            "dependencies": [],
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "legacy_source": null,
+            "legacy_plan_ref": null,
+            "legacy_plan": null,
+            "heads": [
+              ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+            ]
+          },
+          {
+            "task_id": "task-dd97fb20-b721-424b-a2da-6f3496ecdea4",
+            "display_id": "TASK-002",
+            "title": "合成已关闭任务",
+            "lifecycle": "closed",
+            "lifecycle_ref": ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json",
+            "adopted_plan_ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+            "plan_status": "adopted",
+            "plan": {
+              "title": "合成已关闭任务",
+              "steps": [
+                {
+                  "id": "OLD",
+                  "title": "未执行历史步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+              "parent_plan_ref": null
+            },
+            "plans": [
+              {
+                "title": "合成已关闭任务",
+                "steps": [
+                  {
+                    "id": "OLD",
+                    "title": "未执行历史步骤"
+                  }
+                ],
+                "ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+                "parent_plan_ref": null
+              }
+            ],
+            "adopted_by": ".workflow-system/records/events/1791660323267-1c814788-faf6-4944-b2ef-e1fd2d923a8b.json",
+            "adoption": {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+              "focus": false,
+              "activate": true,
+              "ref": ".workflow-system/records/events/1791660323267-1c814788-faf6-4944-b2ef-e1fd2d923a8b.json"
+            },
+            "candidate_plan_refs": [],
+            "current_step_id": null,
+            "steps": [
+              {
+                "id": "OLD",
+                "title": "未执行历史步骤",
+                "state": "not-started",
+                "legacy_step_status": null,
+                "execution_ref": null,
+                "execution": null,
+                "review_ref": null,
+                "review_status": "not-reviewed",
+                "findings": [],
+                "review_choice": null,
+                "review_decision_ref": null,
+                "review_decisions": [],
+                "tests": [],
+                "disposition_ref": null,
+                "historical_execution_refs": []
+              }
+            ],
+            "reviews": [],
+            "executions": [],
+            "tests": [],
+            "review_decisions": [],
+            "commits": [],
+            "dispositions": [
+              {
+                "workflow_home": "custom/workflow",
+                "remaining_work": [
+                  "OLD 未执行"
+                ],
+                "gaps": [
+                  "没有业务验证"
+                ],
+                "decision_text": "合成关闭观察",
+                "ref": ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json",
+                "action": "close"
+              }
+            ],
+            "next_route": null,
+            "next_mode": null,
+            "next_action": null,
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "return_entry": null,
+            "return_result": null,
+            "dependencies": [],
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "legacy_source": null,
+            "legacy_plan_ref": null,
+            "legacy_plan": null,
+            "heads": [
+              ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json"
+            ]
+          }
+        ],
+        "focus": {
+          "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+          "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "conflict": null
+        },
+        "next_task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+        "next_step_id": "S1",
+        "next_route": "execute-step",
+        "next_mode": null,
+        "next_action": "implement-step",
+        "issues": [],
+        "unassociated_records": [],
+        "health": "consistent",
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "heads": [
+          ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json"
+        ],
+        "records_scanned": 5,
+        "state_completeness": "complete",
+        "view_revision": "cbd721b42f6e9f199a843c628897f765c7363409f79df04385f3441c2e226bc3",
+        "display_revision": "17239b2886088357e9ed90809906b1138d8a194a0690d1e07594122fd564a4e3"
+      },
+      "consumer_metadata": {
+        "source": "file-snapshot",
+        "registered_copy": "sample-snapshot-copy-a",
+        "workflow_home": "custom/workflow",
+        "path": ".workflow-system/records/task-view.json",
+        "source_revision": "476fdcf7e7464535dc9383ce20b5e2fd61e2e91a2e9d544da1c7ce88d9ba369d",
+        "view_revision": "cbd721b42f6e9f199a843c628897f765c7363409f79df04385f3441c2e226bc3",
+        "read_at": "2026-10-10T19:25:23.333Z",
+        "file_mtime": "2026-10-10T19:25:23.329Z",
+        "generated_at": null,
+        "freshness": "stale-or-unknown",
+        "query_failure": {
+          "origin": "consumer",
+          "code": "runtime-missing",
+          "message": "该合成项目没有安装固定 Runtime 入口；未启动进程"
+        }
+      },
+      "expectation": "文件可识别，可显示两项快照 Task；闭合任务保留 OLD 缺口；不称 live 查询成功或当前零任务"
+    },
+    {
+      "id": "snapshot-unknown-kind",
+      "provenance": "synthetic-consumer-input-variant",
+      "based_on": "existing-file-without-runtime",
+      "file_payload": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "unsupported-task-view",
+        "source_revision": "476fdcf7e7464535dc9383ce20b5e2fd61e2e91a2e9d544da1c7ce88d9ba369d",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+        "current_task": {
+          "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+          "display_id": "TASK-001",
+          "title": "合成快照任务",
+          "lifecycle": "active",
+          "lifecycle_ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "adopted_plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+          "plan_status": "adopted",
+          "plan": {
+            "title": "合成快照任务",
+            "steps": [
+              {
+                "id": "S1",
+                "title": "未执行步骤"
+              }
+            ],
+            "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "parent_plan_ref": null
+          },
+          "plans": [
+            {
+              "title": "合成快照任务",
+              "steps": [
+                {
+                  "id": "S1",
+                  "title": "未执行步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "parent_plan_ref": null
+            }
+          ],
+          "adopted_by": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "adoption": {
+            "workflow_home": "custom/workflow",
+            "plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "focus": true,
+            "decision_text": "合成夹具采用",
+            "activate": true,
+            "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+          },
+          "candidate_plan_refs": [],
+          "current_step_id": "S1",
+          "steps": [
+            {
+              "id": "S1",
+              "title": "未执行步骤",
+              "state": "not-started",
+              "legacy_step_status": null,
+              "execution_ref": null,
+              "execution": null,
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "findings": [],
+              "review_choice": null,
+              "review_decision_ref": null,
+              "review_decisions": [],
+              "tests": [],
+              "disposition_ref": null,
+              "historical_execution_refs": []
+            }
+          ],
+          "reviews": [],
+          "executions": [],
+          "tests": [],
+          "review_decisions": [],
+          "commits": [],
+          "dispositions": [],
+          "next_route": "execute-step",
+          "next_mode": null,
+          "next_action": "implement-step",
+          "recommendation_only": true,
+          "origin": null,
+          "dependency": {
+            "state": "not-applicable",
+            "ref": null
+          },
+          "return_entry": null,
+          "return_result": null,
+          "dependencies": [],
+          "waiting_on_task_ids": [],
+          "continuation": null,
+          "legacy_source": null,
+          "legacy_plan_ref": null,
+          "legacy_plan": null,
+          "heads": [
+            ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+          ]
+        },
+        "tasks": [
+          {
+            "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+            "display_id": "TASK-001",
+            "title": "合成快照任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+            "adopted_plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "plan_status": "adopted",
+            "plan": {
+              "title": "合成快照任务",
+              "steps": [
+                {
+                  "id": "S1",
+                  "title": "未执行步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "parent_plan_ref": null
+            },
+            "plans": [
+              {
+                "title": "合成快照任务",
+                "steps": [
+                  {
+                    "id": "S1",
+                    "title": "未执行步骤"
+                  }
+                ],
+                "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+                "parent_plan_ref": null
+              }
+            ],
+            "adopted_by": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+            "adoption": {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "focus": true,
+              "decision_text": "合成夹具采用",
+              "activate": true,
+              "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+            },
+            "candidate_plan_refs": [],
+            "current_step_id": "S1",
+            "steps": [
+              {
+                "id": "S1",
+                "title": "未执行步骤",
+                "state": "not-started",
+                "legacy_step_status": null,
+                "execution_ref": null,
+                "execution": null,
+                "review_ref": null,
+                "review_status": "not-reviewed",
+                "findings": [],
+                "review_choice": null,
+                "review_decision_ref": null,
+                "review_decisions": [],
+                "tests": [],
+                "disposition_ref": null,
+                "historical_execution_refs": []
+              }
+            ],
+            "reviews": [],
+            "executions": [],
+            "tests": [],
+            "review_decisions": [],
+            "commits": [],
+            "dispositions": [],
+            "next_route": "execute-step",
+            "next_mode": null,
+            "next_action": "implement-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "return_entry": null,
+            "return_result": null,
+            "dependencies": [],
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "legacy_source": null,
+            "legacy_plan_ref": null,
+            "legacy_plan": null,
+            "heads": [
+              ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+            ]
+          },
+          {
+            "task_id": "task-dd97fb20-b721-424b-a2da-6f3496ecdea4",
+            "display_id": "TASK-002",
+            "title": "合成已关闭任务",
+            "lifecycle": "closed",
+            "lifecycle_ref": ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json",
+            "adopted_plan_ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+            "plan_status": "adopted",
+            "plan": {
+              "title": "合成已关闭任务",
+              "steps": [
+                {
+                  "id": "OLD",
+                  "title": "未执行历史步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+              "parent_plan_ref": null
+            },
+            "plans": [
+              {
+                "title": "合成已关闭任务",
+                "steps": [
+                  {
+                    "id": "OLD",
+                    "title": "未执行历史步骤"
+                  }
+                ],
+                "ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+                "parent_plan_ref": null
+              }
+            ],
+            "adopted_by": ".workflow-system/records/events/1791660323267-1c814788-faf6-4944-b2ef-e1fd2d923a8b.json",
+            "adoption": {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+              "focus": false,
+              "activate": true,
+              "ref": ".workflow-system/records/events/1791660323267-1c814788-faf6-4944-b2ef-e1fd2d923a8b.json"
+            },
+            "candidate_plan_refs": [],
+            "current_step_id": null,
+            "steps": [
+              {
+                "id": "OLD",
+                "title": "未执行历史步骤",
+                "state": "not-started",
+                "legacy_step_status": null,
+                "execution_ref": null,
+                "execution": null,
+                "review_ref": null,
+                "review_status": "not-reviewed",
+                "findings": [],
+                "review_choice": null,
+                "review_decision_ref": null,
+                "review_decisions": [],
+                "tests": [],
+                "disposition_ref": null,
+                "historical_execution_refs": []
+              }
+            ],
+            "reviews": [],
+            "executions": [],
+            "tests": [],
+            "review_decisions": [],
+            "commits": [],
+            "dispositions": [
+              {
+                "workflow_home": "custom/workflow",
+                "remaining_work": [
+                  "OLD 未执行"
+                ],
+                "gaps": [
+                  "没有业务验证"
+                ],
+                "decision_text": "合成关闭观察",
+                "ref": ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json",
+                "action": "close"
+              }
+            ],
+            "next_route": null,
+            "next_mode": null,
+            "next_action": null,
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "return_entry": null,
+            "return_result": null,
+            "dependencies": [],
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "legacy_source": null,
+            "legacy_plan_ref": null,
+            "legacy_plan": null,
+            "heads": [
+              ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json"
+            ]
+          }
+        ],
+        "focus": {
+          "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+          "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "conflict": null
+        },
+        "next_task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+        "next_step_id": "S1",
+        "next_route": "execute-step",
+        "next_mode": null,
+        "next_action": "implement-step",
+        "issues": [],
+        "unassociated_records": [],
+        "health": "consistent",
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "heads": [
+          ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json"
+        ],
+        "records_scanned": 5,
+        "state_completeness": "complete",
+        "view_revision": "cbd721b42f6e9f199a843c628897f765c7363409f79df04385f3441c2e226bc3",
+        "display_revision": "17239b2886088357e9ed90809906b1138d8a194a0690d1e07594122fd564a4e3"
+      },
+      "expectation": "文件不可识别；不映射成 task-query/v1，改用同上下文成功内存批次或任务暂不可用"
+    },
+    {
+      "id": "snapshot-required-field-absent",
+      "provenance": "synthetic-consumer-input-variant",
+      "based_on": "existing-file-without-runtime",
+      "file_payload": {
+        "runtime_role": "assistance",
+        "development_gate": false,
+        "qualification": "not-evaluated",
+        "kind": "task-view/v1",
+        "source_revision": "476fdcf7e7464535dc9383ce20b5e2fd61e2e91a2e9d544da1c7ce88d9ba369d",
+        "workflow_home": "custom/workflow",
+        "current_task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+        "current_task": {
+          "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+          "display_id": "TASK-001",
+          "title": "合成快照任务",
+          "lifecycle": "active",
+          "lifecycle_ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "adopted_plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+          "plan_status": "adopted",
+          "plan": {
+            "title": "合成快照任务",
+            "steps": [
+              {
+                "id": "S1",
+                "title": "未执行步骤"
+              }
+            ],
+            "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "parent_plan_ref": null
+          },
+          "plans": [
+            {
+              "title": "合成快照任务",
+              "steps": [
+                {
+                  "id": "S1",
+                  "title": "未执行步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "parent_plan_ref": null
+            }
+          ],
+          "adopted_by": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "adoption": {
+            "workflow_home": "custom/workflow",
+            "plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "focus": true,
+            "decision_text": "合成夹具采用",
+            "activate": true,
+            "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+          },
+          "candidate_plan_refs": [],
+          "current_step_id": "S1",
+          "steps": [
+            {
+              "id": "S1",
+              "title": "未执行步骤",
+              "state": "not-started",
+              "legacy_step_status": null,
+              "execution_ref": null,
+              "execution": null,
+              "review_ref": null,
+              "review_status": "not-reviewed",
+              "findings": [],
+              "review_choice": null,
+              "review_decision_ref": null,
+              "review_decisions": [],
+              "tests": [],
+              "disposition_ref": null,
+              "historical_execution_refs": []
+            }
+          ],
+          "reviews": [],
+          "executions": [],
+          "tests": [],
+          "review_decisions": [],
+          "commits": [],
+          "dispositions": [],
+          "next_route": "execute-step",
+          "next_mode": null,
+          "next_action": "implement-step",
+          "recommendation_only": true,
+          "origin": null,
+          "dependency": {
+            "state": "not-applicable",
+            "ref": null
+          },
+          "return_entry": null,
+          "return_result": null,
+          "dependencies": [],
+          "waiting_on_task_ids": [],
+          "continuation": null,
+          "legacy_source": null,
+          "legacy_plan_ref": null,
+          "legacy_plan": null,
+          "heads": [
+            ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+          ]
+        },
+        "tasks": [
+          {
+            "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+            "display_id": "TASK-001",
+            "title": "合成快照任务",
+            "lifecycle": "active",
+            "lifecycle_ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+            "adopted_plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+            "plan_status": "adopted",
+            "plan": {
+              "title": "合成快照任务",
+              "steps": [
+                {
+                  "id": "S1",
+                  "title": "未执行步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "parent_plan_ref": null
+            },
+            "plans": [
+              {
+                "title": "合成快照任务",
+                "steps": [
+                  {
+                    "id": "S1",
+                    "title": "未执行步骤"
+                  }
+                ],
+                "ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+                "parent_plan_ref": null
+              }
+            ],
+            "adopted_by": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+            "adoption": {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791660323144-86624c47-6051-4148-8ea9-d4a949e68108.json",
+              "focus": true,
+              "decision_text": "合成夹具采用",
+              "activate": true,
+              "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+            },
+            "candidate_plan_refs": [],
+            "current_step_id": "S1",
+            "steps": [
+              {
+                "id": "S1",
+                "title": "未执行步骤",
+                "state": "not-started",
+                "legacy_step_status": null,
+                "execution_ref": null,
+                "execution": null,
+                "review_ref": null,
+                "review_status": "not-reviewed",
+                "findings": [],
+                "review_choice": null,
+                "review_decision_ref": null,
+                "review_decisions": [],
+                "tests": [],
+                "disposition_ref": null,
+                "historical_execution_refs": []
+              }
+            ],
+            "reviews": [],
+            "executions": [],
+            "tests": [],
+            "review_decisions": [],
+            "commits": [],
+            "dispositions": [],
+            "next_route": "execute-step",
+            "next_mode": null,
+            "next_action": "implement-step",
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "return_entry": null,
+            "return_result": null,
+            "dependencies": [],
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "legacy_source": null,
+            "legacy_plan_ref": null,
+            "legacy_plan": null,
+            "heads": [
+              ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json"
+            ]
+          },
+          {
+            "task_id": "task-dd97fb20-b721-424b-a2da-6f3496ecdea4",
+            "display_id": "TASK-002",
+            "title": "合成已关闭任务",
+            "lifecycle": "closed",
+            "lifecycle_ref": ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json",
+            "adopted_plan_ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+            "plan_status": "adopted",
+            "plan": {
+              "title": "合成已关闭任务",
+              "steps": [
+                {
+                  "id": "OLD",
+                  "title": "未执行历史步骤"
+                }
+              ],
+              "ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+              "parent_plan_ref": null
+            },
+            "plans": [
+              {
+                "title": "合成已关闭任务",
+                "steps": [
+                  {
+                    "id": "OLD",
+                    "title": "未执行历史步骤"
+                  }
+                ],
+                "ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+                "parent_plan_ref": null
+              }
+            ],
+            "adopted_by": ".workflow-system/records/events/1791660323267-1c814788-faf6-4944-b2ef-e1fd2d923a8b.json",
+            "adoption": {
+              "workflow_home": "custom/workflow",
+              "plan_ref": ".workflow-system/records/events/1791660323229-94a6d8c4-55f4-44b6-81a7-53856dd78c0d.json",
+              "focus": false,
+              "activate": true,
+              "ref": ".workflow-system/records/events/1791660323267-1c814788-faf6-4944-b2ef-e1fd2d923a8b.json"
+            },
+            "candidate_plan_refs": [],
+            "current_step_id": null,
+            "steps": [
+              {
+                "id": "OLD",
+                "title": "未执行历史步骤",
+                "state": "not-started",
+                "legacy_step_status": null,
+                "execution_ref": null,
+                "execution": null,
+                "review_ref": null,
+                "review_status": "not-reviewed",
+                "findings": [],
+                "review_choice": null,
+                "review_decision_ref": null,
+                "review_decisions": [],
+                "tests": [],
+                "disposition_ref": null,
+                "historical_execution_refs": []
+              }
+            ],
+            "reviews": [],
+            "executions": [],
+            "tests": [],
+            "review_decisions": [],
+            "commits": [],
+            "dispositions": [
+              {
+                "workflow_home": "custom/workflow",
+                "remaining_work": [
+                  "OLD 未执行"
+                ],
+                "gaps": [
+                  "没有业务验证"
+                ],
+                "decision_text": "合成关闭观察",
+                "ref": ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json",
+                "action": "close"
+              }
+            ],
+            "next_route": null,
+            "next_mode": null,
+            "next_action": null,
+            "recommendation_only": true,
+            "origin": null,
+            "dependency": {
+              "state": "not-applicable",
+              "ref": null
+            },
+            "return_entry": null,
+            "return_result": null,
+            "dependencies": [],
+            "waiting_on_task_ids": [],
+            "continuation": null,
+            "legacy_source": null,
+            "legacy_plan_ref": null,
+            "legacy_plan": null,
+            "heads": [
+              ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json"
+            ]
+          }
+        ],
+        "focus": {
+          "task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+          "ref": ".workflow-system/records/events/1791660323182-ff8286b9-30dc-4564-a1f4-a124036a48d8.json",
+          "conflict": null
+        },
+        "next_task_id": "task-a56686a8-0726-4e0f-b785-6d605b500e3e",
+        "next_step_id": "S1",
+        "next_route": "execute-step",
+        "next_mode": null,
+        "next_action": "implement-step",
+        "issues": [],
+        "unassociated_records": [],
+        "health": "consistent",
+        "recovery_options": [
+          "rebuild",
+          "link",
+          "correct",
+          "resolve",
+          "defer",
+          "pause",
+          "close"
+        ],
+        "heads": [
+          ".workflow-system/records/events/1791660323303-7386219f-3496-4331-ac39-60f223c6cbac.json"
+        ],
+        "records_scanned": 5,
+        "view_revision": "cbd721b42f6e9f199a843c628897f765c7363409f79df04385f3441c2e226bc3",
+        "display_revision": "17239b2886088357e9ed90809906b1138d8a194a0690d1e07594122fd564a4e3"
+      },
+      "expectation": "缺关联完整性字段，不能宣布完整快照；按契约降级"
+    }
+  ],
+  "consumer_scenarios": [
+    {
+      "id": "trusted-installed-entry",
+      "provenance": "synthetic-host-registration-scenario",
+      "input": {
+        "root_registered": true,
+        "trusted_source_selected": true,
+        "expected_module_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_module_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modules_complete": true
+      },
+      "expectation": {
+        "start_process": true,
+        "allowed_commands": [
+          "task-status",
+          "read",
+          "context"
+        ],
+        "note": "符号哈希仅演示比较；实际登记须保存可信来源的四个模块真实摘要，非发布／安装证明"
+      }
+    },
+    {
+      "id": "root-registration-only",
+      "provenance": "synthetic-host-registration-scenario",
+      "input": {
+        "root_registered": true,
+        "trusted_source_selected": false,
+        "entry_and_modules_exist": true
+      },
+      "expectation": {
+        "start_process": false,
+        "diagnostic": "runtime-untrusted",
+        "fallback": "existing-file-without-runtime"
+      }
+    },
+    {
+      "id": "runtime-bytes-replaced",
+      "provenance": "synthetic-host-registration-scenario",
+      "input": {
+        "root_registered": true,
+        "trusted_source_selected": true,
+        "expected_module_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_module_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "expectation": {
+        "start_process": false,
+        "diagnostic": "runtime-bytes-changed",
+        "fallback": "file or eligible memory snapshot; do not refresh trust automatically"
+      }
+    },
+    {
+      "id": "runtime-module-missing",
+      "provenance": "synthetic-host-registration-scenario",
+      "input": {
+        "root_registered": true,
+        "trusted_source_selected": true,
+        "modules_complete": false
+      },
+      "expectation": {
+        "start_process": false,
+        "diagnostic": "runtime-incomplete",
+        "fallback": "file or eligible memory snapshot"
+      }
+    },
+    {
+      "id": "snapshot-output-over-budget",
+      "provenance": "synthetic-consumer-input-variant",
+      "input": {
+        "snapshot_ref": "existing-file-without-runtime",
+        "file_bytes_over_configured_budget": true
+      },
+      "expectation": {
+        "use_file_snapshot": false,
+        "reason": "budget-exceeded",
+        "do_not_parse_truncated_prefix": true
+      }
+    },
+    {
+      "id": "snapshot-unreadable-file",
+      "provenance": "synthetic-consumer-input-variant",
+      "input": {
+        "fixed_snapshot_file_read": "failed"
+      },
+      "expectation": {
+        "use_file_snapshot": false,
+        "preserve_read_failure": true,
+        "fallback": "eligible memory or task data unavailable"
+      }
+    },
+    {
+      "id": "partial-memory-batch",
+      "provenance": "synthetic-consumer-input-variant",
+      "input": {
+        "registered_copy": "sample-query-copy-a",
+        "workflow_home": "custom/workflow",
+        "configuration_version": "config-1",
+        "cache_configuration_version": "config-1",
+        "cached_response_refs": [
+          "summary",
+          "task",
+          "step"
+        ],
+        "unread_summary_pages": true,
+        "file_snapshot_available": false
+      },
+      "expectation": {
+        "source": "memory-snapshot",
+        "freshness": "stale-or-unknown",
+        "preserve_pagination": true,
+        "unread_pages": "unavailable",
+        "uncached_details": "unavailable",
+        "keep_original_query_read_at": true,
+        "add_reuse_at": true
+      }
+    },
+    {
+      "id": "snapshot-context-changed",
+      "provenance": "synthetic-consumer-input-variant",
+      "input": {
+        "registered_copy": "sample-query-copy-b",
+        "cached_registered_copy": "sample-query-copy-a",
+        "configuration_version": "config-2",
+        "cache_configuration_version": "config-1"
+      },
+      "expectation": {
+        "reuse_memory": false,
+        "merge_sources": false,
+        "result": "task data unavailable unless a same-context usable file or new query exists"
+      }
+    },
+    {
+      "id": "snapshot-list-live-detail-mixed",
+      "provenance": "synthetic-consumer-input-variant",
+      "input": {
+        "list_source": "file-snapshot",
+        "detail_source": "runtime-query",
+        "list_view_revision": "cbd721b42f6e9f199a843c628897f765c7363409f79df04385f3441c2e226bc3",
+        "detail_view_revision": "different-revision"
+      },
+      "expectation": {
+        "combine": false,
+        "result": "show file task/step only; other detail unavailable or refresh whole batch"
+      }
+    }
+  ]
+}

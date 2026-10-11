@@ -84,7 +84,9 @@ it("follows the explicit plan record to the exact step chapter without reading o
     label: "P4 · 开发库仅重试11份并核对",
     target: { path: planPath, line: 3, section: "P4 开发库定向重试与结果核对" },
   });
-  expect(result.tasks.find((t) => t.current)?.steps[0].link).toEqual(step.link);
+  expect(
+    result.taskObservations!.find((t) => t.current)?.steps[0].link,
+  ).toEqual(step.link);
   expect(result.relations).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ raw: recordPath, state: "resolved" }),
@@ -141,7 +143,9 @@ it("does not guess between duplicate chapter headings", async () => {
 it("reports malformed records without losing current task and step", async () => {
   await file(recordPath, "invalid JSON");
   const result = await snapshot();
-  expect(result.tasks.find((t) => t.current)?.number).toBe("TASK-811");
+  expect(result.taskObservations!.find((t) => t.current)?.number).toBe(
+    "TASK-811",
+  );
   expect(result.statements.find((s) => s.kind === "currentStep")).toMatchObject(
     { text: "P4", link: { target: null, detail: expect.any(String) } },
   );

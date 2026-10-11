@@ -113,7 +113,9 @@ describe("local service acceptance", () => {
       expect(new Set(first.documents.map((d) => d.id)).size).toBe(
         first.documents.length,
       );
-      const task = first.tasks.filter((t) => t.number === "TASK-930");
+      const task = first.taskObservations!.filter(
+        (t) => t.number === "TASK-930",
+      );
       expect(task).toHaveLength(1);
       if (autoDiscover) {
         expect(
@@ -139,9 +141,9 @@ describe("local service acceptance", () => {
         },
       });
       const second = (await refresh(project.id)).snapshot!;
-      expect(second.tasks.find((t) => t.number === "TASK-930")?.id).toBe(
-        task[0].id,
-      );
+      expect(
+        second.taskObservations!.find((t) => t.number === "TASK-930")?.id,
+      ).toBe(task[0].id);
       expect(
         second.documents.find(
           (d) => d.path.toLowerCase() === "docs/design/storage.md",
@@ -177,7 +179,7 @@ describe("local service acceptance", () => {
       },
     });
     const snapshot = (await refresh(project.id)).snapshot!;
-    expect(snapshot.tasks[0].number).toBe("TASK-20261001-009");
+    expect(snapshot.taskObservations![0].number).toBe("TASK-20261001-009");
     const refs = snapshot.relations.filter((r) => r.method === "task-number");
     expect(refs).toHaveLength(2);
     expect(refs.map((r) => r.raw)).toEqual([
@@ -186,11 +188,14 @@ describe("local service acceptance", () => {
     ]);
     expect(
       refs.every(
-        (r) => r.state === "resolved" && r.to === snapshot.tasks[0].id,
+        (r) =>
+          r.state === "resolved" && r.to === snapshot.taskObservations![0].id,
       ),
     ).toBe(true);
     expect(
-      snapshot.relations.some((r) => r.from === snapshot.tasks[0].id),
+      snapshot.relations.some(
+        (r) => r.from === snapshot.taskObservations![0].id,
+      ),
     ).toBe(false);
     await writeFile(
       path.join(root, "duplicate.md"),
@@ -263,12 +268,12 @@ describe("local service acceptance", () => {
     ).toBeNull();
     const viewA = await refresh(a.id);
     const viewB = await refresh(b.id);
-    expect(viewA.snapshot?.tasks.find((t) => t.current)?.number).toBe(
-      "20261001-001",
-    );
-    expect(viewB.snapshot?.tasks.find((t) => t.current)?.number).toBe(
-      "20261002-002",
-    );
+    expect(
+      viewA.snapshot?.taskObservations!.find((t) => t.current)?.number,
+    ).toBe("20261001-001");
+    expect(
+      viewB.snapshot?.taskObservations!.find((t) => t.current)?.number,
+    ).toBe("20261002-002");
     expect(
       viewA.snapshot?.documents
         .map((d) => d.id)
@@ -318,10 +323,11 @@ describe("local service acceptance", () => {
       true,
     );
     expect(
-      snapshot.tasks.filter((t) => t.number === "20261001-001"),
+      snapshot.taskObservations!.filter((t) => t.number === "20261001-001"),
     ).toHaveLength(2);
     expect(
-      snapshot.tasks.find((t) => t.number === "20260920-002")?.statuses[0].text,
+      snapshot.taskObservations!.find((t) => t.number === "20260920-002")
+        ?.statuses[0].text,
     ).toBe("paused");
     const doc = snapshot.documents.find(
       (d) => d.path === "docs/design/storage.md",
@@ -584,7 +590,7 @@ describe("local service acceptance", () => {
       (await request("POST", "/api/discover", { root: directory })).statusCode,
     ).toBe(400);
   });
-  it("coalesces duplicate refreshes and holds start-time configuration when edited during a scan", async () => {
+  it("coalesces duplicate refreshes and discards a result from an edited configuration", async () => {
     const project = await add();
     let release!: () => void;
     let builds = 0;
@@ -607,7 +613,7 @@ describe("local service acceptance", () => {
     release();
     const result = await first;
     expect(builds).toBe(1);
-    expect(result.configChanged).toBe(true);
-    expect(result.snapshot?.config).toEqual(project.config);
+    expect(result.snapshot).toBeNull();
+    expect(result.configChanged).toBe(false);
   });
 });

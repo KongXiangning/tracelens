@@ -132,20 +132,32 @@ function matchTask(
         "引用位置的真实任务 ID 与绑定不一致或自身存在冲突；当前文件焦点变化不会继承旧绑定",
       );
     if (check?.byteState === "changed")
-      return result(
-        "conflict",
-        "任务来源字节与声明摘要不一致，保留原引用但不确认任务导航",
-      );
+      return candidates.some((t) => t.runtimeLifecycle)
+        ? result(
+            "matched",
+            "真实 task_id 已定位；关联来源摘要不同，来源待核对",
+            candidates.filter((t) => t.runtimeLifecycle).map((t) => t.id),
+          )
+        : result(
+            "conflict",
+            "任务来源字节与声明摘要不一致，保留原引用但不确认任务导航",
+          );
     if (
       !check ||
       check.readState !== "read" ||
       check.locationState !== "located" ||
       !check.source
     )
-      return result(
-        "unresolved",
-        "真实任务 ID 已声明，但来源尚未读取或无法唯一定位，不能核对来源约束",
-      );
+      return candidates.some((t) => t.runtimeLifecycle)
+        ? result(
+            "matched",
+            "真实 task_id 已在本副本任务视图定位；关联来源未核对",
+            candidates.filter((t) => t.runtimeLifecycle).map((t) => t.id),
+          )
+        : result(
+            "unresolved",
+            "真实任务 ID 已声明，但来源尚未读取或无法唯一定位，不能核对来源约束",
+          );
     if (
       candidates.some((task) => samePath.includes(task)) &&
       !candidates.some((task) => scoped.includes(task))
@@ -184,6 +196,13 @@ function matchTask(
   const matchingSources = scoped.filter(
     (task) => task.realTaskId === reference.task_id,
   );
+  const runtime = candidates.filter((t) => t.runtimeLifecycle);
+  if (runtime.length === 1)
+    return result(
+      "matched",
+      "真实 task_id 已在本副本任务视图定位；来源核对独立展示",
+      runtime.map((t) => t.id),
+    );
   if (!matchingSources.length && candidates.length > 1)
     return result(
       "conflict",
@@ -204,12 +223,19 @@ function validDirection(
   switch (relation) {
     case "part_of":
       return (
-        ["requirement", "module"].includes(owner.type) &&
-        target.type === "module"
+        (["requirement", "module"].includes(owner.type) &&
+          target.type === "module") ||
+        (owner.version === 3 &&
+          owner.type === target.type &&
+          ["requirement", "goal"].includes(owner.type))
       );
     case "supports":
       return (
-        ["requirement", "module"].includes(owner.type) && target.type === "goal"
+        [
+          "requirement",
+          "module",
+          ...(owner.version === 3 ? ["goal"] : []),
+        ].includes(owner.type) && target.type === "goal"
       );
     case "addresses":
       return owner.type === "design" && target.type === "requirement";
@@ -567,7 +593,7 @@ export function buildProductIndex(
       const requirement = target(
         item,
         m.target || "",
-        ["requirement"],
+        item.version === 3 ? ["requirement", "goal"] : ["requirement"],
         "交付摘要目标",
       );
       if (

@@ -158,7 +158,7 @@ it("separates pending business states and unavailable evidence from readable pro
       planning={() => {}}
     />,
   );
-  expect(html).toContain("需求路线图");
+  expect(html).toContain("需求全景");
   expect(html).toContain("项目需求总纲与完整正文");
   expect(html).toContain("data-overview-card");
   expect(html).not.toContain("已报告交付与待核对");
@@ -166,7 +166,7 @@ it("separates pending business states and unavailable evidence from readable pro
   const page = renderToStaticMarkup(
     <RequirementsPage {...context} configure={() => {}} select={() => {}} />,
   );
-  expect(page).toContain("目标与需求全景");
+  expect(page).toContain("目标与需求图");
   expect(page).not.toContain("含无 scope 条目");
   const goal = product.items.find((item) => item.type === "goal")!;
   const requirement = product.items.find(

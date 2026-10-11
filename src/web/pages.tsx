@@ -27,6 +27,7 @@ import {
 import { DocumentReader } from "./reader";
 import { productTypeLabels } from "./product-labels";
 import type { OpenProduct } from "./product";
+import { RuntimeStatus, RuntimeTaskDetail, lifecycleLabels } from "./runtime";
 const TaskProductLinks = lazy(() =>
   import("./product").then((module) => ({ default: module.TaskProductLinks })),
 );
@@ -282,7 +283,12 @@ export function Overview({
         </span>
         <span>
           <ListTodo size={17} />
-          <strong>{snapshot.tasks.length}</strong>个任务记录
+          <strong>
+            {snapshot.runtime?.source === "unavailable"
+              ? "未知"
+              : `${snapshot.tasks.length}/${snapshot.runtime?.total ?? snapshot.tasks.length}`}
+          </strong>
+          个任务记录
         </span>
         <span>
           <Network size={17} />
@@ -319,7 +325,9 @@ export function Overview({
                 ))}
               </div>
               <EntryList entries={task.goals} open={open} />
-              <SourceButton source={task.source} open={open} />
+              {!task.runtimeLifecycle && (
+                <SourceButton source={task.source} open={open} />
+              )}
             </div>
           ))
         ) : (
@@ -444,8 +452,14 @@ export function TasksPage({
       <div className="browser-list">
         <div className="list-header">
           <h2>
-            任务 <small>{snapshot.tasks.length}</small>
+            任务{" "}
+            <small>
+              {snapshot.runtime?.source === "unavailable"
+                ? "暂不可用"
+                : snapshot.tasks.length}
+            </small>
           </h2>
+          <RuntimeStatus view={snapshot.runtime} />
           <div className="search">
             <Search size={15} />
             <input
@@ -483,7 +497,13 @@ export function TasksPage({
                 {t.current && <span className="tiny-label">当前</span>}
               </div>
               <strong>{t.title}</strong>
-              <Status text={t.statuses[0]?.text || null} />
+              {t.runtimeLifecycle ? (
+                <span className="status">
+                  {lifecycleLabels[t.runtimeLifecycle]}
+                </span>
+              ) : (
+                <Status text={t.statuses[0]?.text || null} />
+              )}
               <small title={t.source.path}>{t.source.path}</small>
             </button>
           ))}
@@ -491,7 +511,9 @@ export function TasksPage({
             <p className="list-empty">
               {snapshot.tasks.length
                 ? "无匹配任务"
-                : "未识别到任务记录，可在文档中查看原文"}
+                : snapshot.runtime?.source === "unavailable"
+                  ? "任务数据暂不可用，产品及文档继续可读"
+                  : "当前已读列表没有任务记录"}
             </p>
           )}
         </div>
@@ -511,45 +533,55 @@ export function TasksPage({
                 关联
               </button>
             </div>
-            <SourceButton source={task.source} open={open} />
-            <section>
-              <h3>文档声明的状态</h3>
-              {task.statuses.length ? (
-                <ul className="status-declarations">
-                  {task.statuses.map((s, i) => (
-                    <li key={i}>
-                      <Status text={s.text} />
-                      <SourceButton source={s.source} open={open} />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted">未记录</p>
-              )}
-            </section>
-            {(
-              [
-                { key: "goals", label: "目标" },
-                { key: "steps", label: "实施步骤" },
-                { key: "checks", label: "验收清单" },
-                { key: "issues", label: "问题与待确认项" },
-              ] as const
-            ).map((group) => (
-              <section key={group.key}>
-                <div className="section-heading">
-                  <h3>{group.label}</h3>
-                  {group.key === "checks" &&
-                    task.checks.some((c) => c.checked !== null) && (
-                      <span className="muted">
-                        已勾选 {task.checks.filter((c) => c.checked).length}/
-                        {task.checks.filter((c) => c.checked !== null).length}{" "}
-                        项
-                      </span>
-                    )}
-                </div>
-                <EntryList entries={task[group.key]} open={open} />
+            {task.runtimeLifecycle ? (
+              <RuntimeTaskDetail
+                snapshot={snapshot}
+                taskId={task.realTaskId!}
+              />
+            ) : (
+              <SourceButton source={task.source} open={open} />
+            )}
+            {!task.runtimeLifecycle && (
+              <section>
+                <h3>文档声明的状态</h3>
+                {task.statuses.length ? (
+                  <ul className="status-declarations">
+                    {task.statuses.map((s, i) => (
+                      <li key={i}>
+                        <Status text={s.text} />
+                        <SourceButton source={s.source} open={open} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">未记录</p>
+                )}
               </section>
-            ))}
+            )}
+            {!task.runtimeLifecycle &&
+              (
+                [
+                  { key: "goals", label: "目标" },
+                  { key: "steps", label: "实施步骤" },
+                  { key: "checks", label: "验收清单" },
+                  { key: "issues", label: "问题与待确认项" },
+                ] as const
+              ).map((group) => (
+                <section key={group.key}>
+                  <div className="section-heading">
+                    <h3>{group.label}</h3>
+                    {group.key === "checks" &&
+                      task.checks.some((c) => c.checked !== null) && (
+                        <span className="muted">
+                          已勾选 {task.checks.filter((c) => c.checked).length}/
+                          {task.checks.filter((c) => c.checked !== null).length}{" "}
+                          项
+                        </span>
+                      )}
+                  </div>
+                  <EntryList entries={task[group.key]} open={open} />
+                </section>
+              ))}
             <Suspense fallback={<p className="muted">正在读取产品关联…</p>}>
               <TaskProductLinks
                 task={task}

@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import { z } from "zod";
 import type { Project } from "../shared/types.js";
+import {
+  trustSchema,
+  runtimeHashes,
+  normalizedHome,
+} from "./runtime-reader.js";
 import { normalizeReadConfig } from "../shared/scan-config.js";
 import {
   AppError,
@@ -20,6 +25,7 @@ const persisted = z
     inputSchema.extend({
       id: z.string().uuid(),
       configVersion: z.number().int().positive(),
+      runtimeTrust: trustSchema.optional(),
     }),
   )
   .max(100);
@@ -152,6 +158,36 @@ export class ProjectRegistry {
     return this.mutate(async () => {
       this.get(id);
       await this.save(this.projects.filter((p) => p.id !== id));
+    });
+  }
+  selectRuntime(id: string, body: unknown): Promise<Project> {
+    return this.mutate(async () => {
+      const input = validate(
+        z.object({
+          sourceDirectory: z.string().min(1),
+          workflowHome: z.string().min(1),
+          moduleHashes: trustSchema.shape.moduleHashes,
+          accept: z.literal(true),
+        }),
+        body,
+      );
+      const previous = this.get(id);
+      const hashes = await runtimeHashes(input.sourceDirectory);
+      if (JSON.stringify(hashes) !== JSON.stringify(input.moduleHashes))
+        throw new AppError("可信来源预览后发生变化，请重新核对", 409);
+      const runtimeTrust = {
+        sourceDirectory: input.sourceDirectory,
+        moduleHashes: hashes,
+        selectedAt: new Date().toISOString(),
+        workflowHome: normalizedHome(previous.root, input.workflowHome),
+      };
+      const project = {
+        ...previous,
+        runtimeTrust,
+        configVersion: previous.configVersion + 1,
+      };
+      await this.save(this.projects.map((p) => (p.id === id ? project : p)));
+      return project;
     });
   }
 }

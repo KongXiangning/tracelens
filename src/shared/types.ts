@@ -1,4 +1,5 @@
 import type { ProductPreview, ProductSnapshot } from "./product-types.js";
+import type { RuntimeTrust, RuntimeView, Lifecycle } from "./runtime-types.js";
 export const kinds = [
   "management",
   "requirements",
@@ -25,6 +26,7 @@ export interface ScanConfig {
   product?: { enabled: boolean; manifestPath: string };
 }
 export interface Project {
+  runtimeTrust?: RuntimeTrust;
   id: string;
   name: string;
   root: string;
@@ -63,6 +65,8 @@ export interface Statement extends Entry {
   taskNumber: string | null;
 }
 export interface Task {
+  runtimeLifecycle?: Lifecycle;
+  runtimeBatchId?: string;
   id: string;
   realTaskId?: string | null;
   identitySources?: SourceRef[];
@@ -129,6 +133,7 @@ export interface ScanFile {
   detail?: string;
 }
 export interface Snapshot {
+  runtime?: RuntimeView;
   id: string;
   projectId: string;
   configVersion: number;
@@ -138,6 +143,8 @@ export interface Snapshot {
   outcome: "success" | "partial";
   documents: Document[];
   tasks: Task[];
+  /** Captured document statements; these are never the Runtime lifecycle view. */
+  taskObservations?: Task[];
   statements: Statement[];
   relations: Relation[];
   files: ScanFile[];

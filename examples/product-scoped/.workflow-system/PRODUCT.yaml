@@ -1,0 +1,12 @@
+schema: vnext-product-manifest/v2
+project_id: sample-scoped-import
+entry: docs/product/PROJECT.md
+managed_paths:
+  - docs/product/PROJECT.md
+  - docs/product/ASSESSMENTS.md
+source_paths:
+  - docs/product/PROJECT.md
+  - docs/evidence/import.md
+capture_paths: []
+exclude_paths: []
+maintenance: enabled

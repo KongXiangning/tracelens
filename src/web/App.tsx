@@ -22,6 +22,7 @@ import {
   BookOpenCheck,
   Target,
   Route,
+  Search,
 } from "lucide-react";
 import { api, session } from "./api";
 import { Empty, IconButton, Modal, ProjectForm } from "./components";
@@ -71,6 +72,14 @@ const pages = [
   { id: "tasks", name: "任务", icon: ListTodo },
   { id: "documents", name: "文档", icon: BookOpen },
   { id: "relations", name: "关联", icon: Network },
+  { id: "guide", name: "vNext 使用说明", icon: BookOpenCheck },
+] as const;
+const overviewPages = [
+  { id: "overview", name: "项目总览", icon: LayoutDashboard },
+  { id: "requirements", name: "需求视图", icon: Network },
+  { id: "tasks", name: "Task 视图", icon: ListTodo },
+  { id: "documents", name: "文档来源", icon: BookOpen },
+  { id: "relations", name: "搜索", icon: Search },
   { id: "guide", name: "vNext 使用说明", icon: BookOpenCheck },
 ] as const;
 export const time = (value?: string) =>
@@ -512,25 +521,46 @@ export function App() {
   if (page === "guide") subtitle = "业务场景 · Skill 指令 · 使用边界";
   else if (page === "overview")
     subtitle = "从项目文档中解析目标、需求、Task 与状态";
+  const overviewVisual = page === "overview" && Boolean(project);
+  const navPages = overviewVisual ? overviewPages : pages;
   return (
     <div
-      className={`app-shell modern-shell${page === "overview" ? " overview-theme" : ""}`}
+      className={`app-shell modern-shell${overviewVisual ? " overview-theme" : ""}`}
     >
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-icon">
-            <LayoutDashboard size={25} />
-          </span>
+        <div className={`brand${overviewVisual ? " overview-brand" : ""}`}>
+          {overviewVisual ? (
+            <span className="overview-brand-mark" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+          ) : (
+            <span className="brand-icon">
+              <LayoutDashboard size={25} />
+            </span>
+          )}
           <span>
-            TraceLens<small>本地文档工作台</small>
+            {overviewVisual ? (
+              <span className="overview-brand-name">TraceLens</span>
+            ) : (
+              <>
+                TraceLens<small>本地文档工作台</small>
+              </>
+            )}
           </span>
         </div>
-        <div className="sidebar-label">
-          <span>项目</span>
-          <IconButton label="添加项目" onClick={() => setForm("add")}>
-            <Plus size={17} />
-          </IconButton>
-        </div>
+        {overviewVisual ? (
+          <div className="overview-sidebar-caption">WORKSPACE</div>
+        ) : (
+          <div className="sidebar-label">
+            <span>项目</span>
+            <IconButton label="添加项目" onClick={() => setForm("add")}>
+              <Plus size={17} />
+            </IconButton>
+          </div>
+        )}
         <div className="project-list">
           {projects.map((p) => (
             <button
@@ -551,12 +581,12 @@ export function App() {
           {!projects.length && <p className="sidebar-empty">尚无项目</p>}
         </div>
         <nav aria-label="主导航">
-          {pages.map((p) => (
+          {navPages.map((p) => (
             <button
               key={p.id}
-              aria-label={p.name}
-              className={page === p.id ? "active" : ""}
-              onClick={() => setPage(p.id)}
+              aria-label={p.id === "overview" ? "概览" : p.name}
+              className={`${page === p.id ? "active" : ""}${overviewVisual && p.id === "guide" ? " overview-guide-link" : ""}`}
+              onClick={() => setPage(p.id as Page)}
             >
               <p.icon size={18} />
               <span className={p.id === "guide" ? "nav-label-full" : undefined}>
@@ -571,67 +601,98 @@ export function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          <span className="online-dot" />
-          本机 · 只读<small title={dataDir}>登记保存在本机</small>
-        </div>
+        {overviewVisual ? (
+          <div className="sidebar-footer overview-sidebar-footer">
+            <div className="overview-sidebar-caption">CURRENT PROJECT</div>
+            <label className="overview-sidebar-project">
+              <select
+                aria-label="当前项目"
+                value={active}
+                onChange={(event) => {
+                  setActive(event.target.value);
+                  setPage("overview");
+                  setSelection({});
+                  setError("");
+                }}
+              >
+                {projects.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <small>只读呈现 · 文档驱动</small>
+          </div>
+        ) : (
+          <div className="sidebar-footer">
+            <span className="online-dot" />
+            本机 · 只读<small title={dataDir}>登记保存在本机</small>
+          </div>
+        )}
       </aside>
       <main className="workspace">
-        <header className="topbar">
-          <div className="project-heading">
-            {page === "overview" && (
-              <div className="overview-page-title">项目需求总览</div>
-            )}
-            <h1>
-              {page === "guide"
-                ? "vNext 场景指南"
-                : project?.name || "TraceLens"}
-            </h1>
-            <p title={page === "guide" ? undefined : project?.root}>
-              {subtitle}
-            </p>
-          </div>
-          {project && page !== "guide" && (
-            <div className="toolbar">
-              {page === "overview" && (
-                <select
-                  className="overview-project-select"
-                  aria-label="概览项目"
-                  value={active}
-                  onChange={(event) => {
-                    setActive(event.target.value);
-                    setSelection({});
-                    setError("");
-                  }}
-                >
-                  {projects.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      项目：{item.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <IconButton label="项目设置" onClick={() => setForm("edit")}>
-                <Settings2 size={18} />
-              </IconButton>
-              <IconButton
-                label="移除项目"
-                onClick={() => setRemove(true)}
-                disabled={scanning}
-              >
-                <Trash2 size={17} />
-              </IconButton>
+        {overviewVisual ? (
+          <header className="topbar overview-topbar">
+            <div className="overview-breadcrumb">
+              <strong>TRACELENS</strong>
+              <span>/</span>
+              <h1 className="overview-breadcrumb-project">
+                {project?.name || "当前项目"}
+              </h1>
+              <span>/</span>
+              <span>需求总览</span>
+            </div>
+            <div className="overview-top-actions">
+              <span>从项目文档读取</span>
               <button
-                className="primary"
-                disabled={scanning}
-                onClick={() => void refresh()}
+                type="button"
+                onClick={() => {
+                  const source = snapshot?.product?.manifestSource;
+                  if (source) openSource(source);
+                  else setPage("documents");
+                }}
               >
-                <RefreshCw size={16} className={scanning ? "spin" : ""} />
-                {scanning ? "扫描中" : "刷新"}
+                源文档 ↗
               </button>
             </div>
-          )}
-        </header>
+          </header>
+        ) : (
+          <header className="topbar">
+            <div className="project-heading">
+              <h1>
+                {page === "guide"
+                  ? "vNext 场景指南"
+                  : project?.name || "TraceLens"}
+              </h1>
+              <p title={page === "guide" ? undefined : project?.root}>
+                {subtitle}
+              </p>
+            </div>
+            {project && page !== "guide" && (
+              <div className="toolbar">
+                <IconButton label="项目设置" onClick={() => setForm("edit")}>
+                  <Settings2 size={18} />
+                </IconButton>
+                <IconButton
+                  label="移除项目"
+                  onClick={() => setRemove(true)}
+                  disabled={scanning}
+                >
+                  <Trash2 size={17} />
+                </IconButton>
+                <button
+                  className="primary"
+                  disabled={scanning}
+                  onClick={() => void refresh()}
+                >
+                  <RefreshCw size={16} className={scanning ? "spin" : ""} />
+                  {scanning ? "扫描中" : "刷新"}
+                </button>
+              </div>
+            )}
+          </header>
+        )}
         {error && (
           <div className="banner error" role="alert">
             <AlertTriangle size={17} />
@@ -641,7 +702,7 @@ export function App() {
             </IconButton>
           </div>
         )}
-        {project && page !== "guide" && (
+        {project && page !== "guide" && !overviewVisual && (
           <div className="scan-strip" role="status">
             <span className={`scan-indicator ${scan.tone}`} />
             <span>{scan.label}</span>
@@ -675,7 +736,7 @@ export function App() {
               返回上一视图
             </button>
           )}
-          {project && page !== "guide" && (
+          {project && page !== "guide" && !overviewVisual && (
             <RuntimeTrustPanel
               key={`runtime-trust:${project.id}`}
               project={project}
@@ -685,45 +746,48 @@ export function App() {
               }}
             />
           )}
-          {snapshot && page !== "guide" && page !== "tasks" && (
-            <RuntimeStatus view={snapshot.runtime} />
-          )}
-          {snapshot?.runtime?.nextRequest && page !== "guide" && (
-            <button
-              className="secondary"
-              disabled={paging || scanning || configChanged}
-              onClick={async () => {
-                const id = snapshot.projectId;
-                const generation = refreshGenerations.current[id] || 0;
-                const isCurrent = () =>
-                  mounted.current &&
-                  (refreshGenerations.current[id] || 0) === generation;
-                setPaging(true);
-                try {
-                  const next = await api<SnapshotView>(
-                    `/projects/${id}/task-page`,
-                    { snapshotId: snapshot.id },
-                    "POST",
-                  );
-                  if (mounted.current)
-                    setViews((v) =>
-                      isCurrent() && v[id]?.snapshot?.id === snapshot.id
-                        ? { ...v, [id]: next }
-                        : v,
+          {snapshot &&
+            page !== "guide" &&
+            page !== "tasks" &&
+            !overviewVisual && <RuntimeStatus view={snapshot.runtime} />}
+          {snapshot?.runtime?.nextRequest &&
+            page !== "guide" &&
+            !overviewVisual && (
+              <button
+                className="secondary"
+                disabled={paging || scanning || configChanged}
+                onClick={async () => {
+                  const id = snapshot.projectId;
+                  const generation = refreshGenerations.current[id] || 0;
+                  const isCurrent = () =>
+                    mounted.current &&
+                    (refreshGenerations.current[id] || 0) === generation;
+                  setPaging(true);
+                  try {
+                    const next = await api<SnapshotView>(
+                      `/projects/${id}/task-page`,
+                      { snapshotId: snapshot.id },
+                      "POST",
                     );
-                } catch (e) {
-                  if (isCurrent()) setError(String(e));
-                } finally {
-                  setPaging(false);
-                }
-              }}
-            >
-              {" "}
-              {paging
-                ? "续读中…"
-                : `读取下一页 Task（已读 ${snapshot.tasks.length}/${snapshot.runtime.total}）`}
-            </button>
-          )}
+                    if (mounted.current)
+                      setViews((v) =>
+                        isCurrent() && v[id]?.snapshot?.id === snapshot.id
+                          ? { ...v, [id]: next }
+                          : v,
+                      );
+                  } catch (e) {
+                    if (isCurrent()) setError(String(e));
+                  } finally {
+                    setPaging(false);
+                  }
+                }}
+              >
+                {" "}
+                {paging
+                  ? "续读中…"
+                  : `读取下一页 Task（已读 ${snapshot.tasks.length}/${snapshot.runtime.total}）`}
+              </button>
+            )}
           {renderContent()}
           {loading === false && error && !projects.length && (
             <button className="secondary retry" onClick={() => void load()}>

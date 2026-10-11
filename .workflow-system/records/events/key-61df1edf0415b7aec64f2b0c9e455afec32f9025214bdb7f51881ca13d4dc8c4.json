@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "kind": "workflow-observation",
+  "recorded_at": "2026-10-11T16:08:16.709Z",
+  "payload_sha256": "3348572c6f0d09debbb21fde91fea68fde01e08d1fa67f2e85422c29d908c32d",
+  "assurance": "caller-reported",
+  "payload": {
+    "kind": "task-event",
+    "idempotency_key": "task:full-scope-20261011-tracelens",
+    "request": {
+      "action": "prepare",
+      "idempotency_key": "full-scope-20261011-tracelens",
+      "plan": {
+        "title": "完整当前需求规划与展示收敛",
+        "goal": "复用已有 v3 契约，明确完整当前需求规划并改善 TraceLens 层级与范围证据展示",
+        "scope": [
+          "仅云端两个独立工作分支",
+          "用户授权 A/B/C/D；单宿主有限合成场景"
+        ],
+        "acceptance": [
+          "原始材料由实际宿主阅读后通过真实 helper 保存与回读",
+          "DAG 与任务身份不丢失，报告不递归失效",
+          "聚焦回归、源码生成安装一致性和真实浏览器证据",
+          "交接完整源文件与差异供父线程独立审查"
+        ],
+        "exclusions": [
+          "K-PC、真实 LawAgent/TermLink、发布升级",
+          "提交推送",
+          "新增 schema/完成率/门禁/自动递归评估"
+        ],
+        "steps": [
+          {
+            "id": "C",
+            "title": "层级、任务汇总与报告展示",
+            "environment": [
+              "云端独立分支",
+              "有限合成项目"
+            ],
+            "validation": [
+              "实际证据记录；未执行明确标记"
+            ]
+          },
+          {
+            "id": "D",
+            "title": "聚焦回归与真实浏览器",
+            "environment": [
+              "云端独立分支",
+              "有限合成项目"
+            ],
+            "validation": [
+              "实际证据记录；未执行明确标记"
+            ]
+          }
+        ]
+      }
+    },
+    "task_event": {
+      "version": 2,
+      "action": "prepare",
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "parents": [],
+      "data": {
+        "plan": null,
+        "create": true,
+        "display_id": "TASK-001"
+      },
+      "data_encoding": {
+        "version": 1,
+        "kind": "request-json-pointers",
+        "request_sha256": "89190b4ce8a68949259a930e8470ea11345b13cdf997e1d31c78fd4ee91c04e2",
+        "references": [
+          {
+            "data_pointer": "/plan",
+            "request_pointer": "/plan"
+          }
+        ]
+      }
+    }
+  },
+  "issues": []
+}

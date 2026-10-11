@@ -44,7 +44,7 @@
 | SnapshotStore | 按项目保存最近快照及刷新结果；刷新成功后整体替换，避免页面读到半成品。 |
 | Web UI | 查询并展示快照；不直接访问文件系统，也不理解 vNext 内部存储。 |
 
-当前任务与当前步骤只取 Profile 的 `workflow_home/CURRENT_TASK.md`（无有效 Profile 时使用默认入口）。历史归档仍可阅读，但不会作为概览的当前来源。生成的 `vnext-task-view` 从 `Current work` 提取 Task 和 Step，不从 Tasks 表推断执行焦点；未明确焦点或入口缺失时保留空状态。这里展示的是文档快照，不查询 Runtime 的实时状态。
+可信 Runtime 启用时，当前 Task／Step 来自本批只读 task-status；失败保留不可用说明，不由旧展示覆盖。兼容文档通路从 Profile 的 `workflow_home/CURRENT_TASK.md`（无有效 Profile 时使用默认入口）取明确焦点，生成的 `vnext-task-view` 只读 `Current work`，不从 Tasks 表或历史归档猜焦点。两种来源明确区分，不合成实时状态。
 
 当前视图中的 `Adopted plan` 可触发一次有界的显式计划记录读取，再跟随记录中的 `document_ref` 纳入计划文档。该读取允许当前视图直接引用的 records JSON，不遍历历史 records、不执行 Runtime，也不改变扫描配置；用户显式排除规则和路径、文件、字节上限仍生效。步骤编号在已采用计划中必须唯一，点击编号与标题可定位计划文档的同编号章节；章节缺失或有歧义时定位计划记录中的步骤定义并说明原因，引用不可读取时显示诊断。
 
@@ -172,6 +172,8 @@ Markdown 禁用原始 HTML 和 MDX 执行，过滤危险链接协议，不自动
 可创建专用合成项目验证刷新及安装后的公开只读接口，不得修改真实被观察项目来迁就解析器。涉及样例不支持的格式时，优先保证原文可读并记录覆盖限制；不得靠缩减需求能力通过验收。本轮验收依跨仓库 TL-01～TL-05／INT-01 计划，记录见 docs/ops/tl-implementation-validation.md；后面的旧 v1/v2 设计细节保留其历史阶段背景。
 
 ## 9. PRODUCT 标准产品通路
+
+当前 v3 展示复用 product-view 的范围选择和有效关系，product-hierarchy 只派生当前组成 DAG 与后代关联；不持久化或传播绑定、不递归评估。product-excerpts 按 Markdown AST 取得已知章节的原文片段与绝对来源行，不新增 AI 摘要或定义完整度状态。下列 v1/v2 细节保留历史阶段背景，v3 不限制 requirement 到 requirement 的有效 part_of。
 
 与通用 Profile/navigation 并行，`product-reader.ts` 只枚举启用入口的 managed_paths（默认 vNext 模式自动启用标准入口），按固定契约的大小写敏感 `*`／`**`／`?` 路径语义，不使用通用花括号扩展。无旧范围恢复，来源不反向扩张通用导航。启用中的有效 PRODUCT manifest 在通用导航前读取；其 exclude_paths 使用契约专用匹配器，统一约束通用导航、手动范围、候选盘点、PRODUCT 来源、adopted-plan 及缓存命中，不并入通用 minimatch 规则。禁用、撤回或入口损坏不沿用上次 PRODUCT 定义或排除策略；普通配置仍只保有其原来明确授权的范围。`ScanReadSession` 在单次刷新共享成功和失败读取缓存以及 1000 文件／20 MiB 全局预算；vNext 导航为 1000 次／10 MiB／24 层／2000 路径，自定义模式仍为 120 次／三层／500 路径；PRODUCT 受全局预算而不受该三层上限。文件无链接、真实路径、UTF-8、二进制和读取期间变更检查继续适用。读取前核对文件大小与剩余字节额度，每个实际读取块立即计费；解码、二进制或后置变化检查失败不退回消耗。物理读取串行，重复请求复用同一结果，导航的独立字节预算也按实际 I/O 计费。仅局部导航额度导致且实际读取零字节的预检拒绝不作为全局文件失败缓存：更宽但仍受全局额度与排除约束的 PRODUCT 通路可以首次读取；真实 I/O／解码失败、部分读取、全局预算耗尽及文件数限制不能借此重试绕过。
 

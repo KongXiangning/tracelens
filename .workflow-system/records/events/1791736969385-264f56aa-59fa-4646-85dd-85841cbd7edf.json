@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "kind": "workflow-observation",
+  "recorded_at": "2026-10-11T16:42:49.386Z",
+  "payload_sha256": "b80c055b4a997404ef68c1c4638fc64c571c96349ec75e8b56181d1f783818fc",
+  "assurance": "caller-reported",
+  "payload": {
+    "kind": "task-event",
+    "request": {
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+      "action": "step",
+      "step_id": "D",
+      "state": "in-progress",
+      "remaining_work": [
+        "父线程独立源码审查",
+        "旧scoped额外浏览器回归的最终收据"
+      ],
+      "decision_source": "本次云端验收进度",
+      "decision_text": "主要证据已取得，保留剩余范围，不关闭整体 Task。"
+    },
+    "task_event": {
+      "version": 1,
+      "action": "step",
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "parents": [
+        ".workflow-system/records/events/1791736969309-3f964b43-53a6-4139-898c-df91e014eab8.json"
+      ],
+      "data": {
+        "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+        "step_id": "D",
+        "state": "in-progress",
+        "remaining_work": [
+          "父线程独立源码审查",
+          "旧scoped额外浏览器回归的最终收据"
+        ],
+        "decision_source": "本次云端验收进度",
+        "decision_text": "主要证据已取得，保留剩余范围，不关闭整体 Task。"
+      }
+    }
+  },
+  "issues": []
+}

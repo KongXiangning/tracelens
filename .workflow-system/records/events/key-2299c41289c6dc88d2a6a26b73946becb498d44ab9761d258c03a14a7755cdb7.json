@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "kind": "workflow-observation",
+  "recorded_at": "2026-10-11T16:08:16.780Z",
+  "payload_sha256": "6ac5657927dc75f6f8ce2d0f941a48780f33acf18f37953d4ed121cef74aca54",
+  "assurance": "caller-reported",
+  "payload": {
+    "kind": "task-event",
+    "idempotency_key": "task:adopt-full-scope-20261011-tracelens",
+    "request": {
+      "action": "adopt",
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+      "focus": true,
+      "idempotency_key": "adopt-full-scope-20261011-tracelens",
+      "decision_source": "父线程 Sentinel bfe7e4439d348191b899747bc5bfc6b3；云端实施委托",
+      "decision_text": "按你建议来；授权 A/B/C/D 云端实施，不提交推送，不操作真实项目。"
+    },
+    "task_event": {
+      "version": 1,
+      "action": "adopt",
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "parents": [
+        ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json"
+      ],
+      "data": {
+        "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+        "focus": true,
+        "decision_source": "父线程 Sentinel bfe7e4439d348191b899747bc5bfc6b3；云端实施委托",
+        "decision_text": "按你建议来；授权 A/B/C/D 云端实施，不提交推送，不操作真实项目。",
+        "activate": true
+      }
+    }
+  },
+  "issues": []
+}

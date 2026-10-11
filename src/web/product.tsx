@@ -21,6 +21,7 @@ import {
 import { scopeGroups } from "../shared/product-scope";
 import { OverviewDashboard } from "./overview-dashboard";
 import { lifecycleLabels } from "./runtime";
+import { requirementBindings } from "../shared/product-hierarchy";
 
 import {
   productLabels,
@@ -1055,6 +1056,8 @@ export function ProductDetail({
   const bindings = product.bindings.filter(
     (binding) => binding.ownerKey === item.key,
   );
+  const currentBindings =
+    item.version === 3 ? requirementBindings(product, item) : bindings;
   const sources = product.sources.filter(
     (source) => source.ownerKey === item.key,
   );
@@ -1197,10 +1200,15 @@ export function ProductDetail({
           <ProductRelations item={item} context={context} />
           {(item.type === "goal" || item.type === "requirement") && (
             <section>
-              <h3>关联任务与范围 · {bindings.length}</h3>
-              {bindings.length ? (
+              <h3>关联任务与范围 · {currentBindings.length}</h3>
+              {item.version === 3 && item.type === "requirement" && (
+                <p className="muted">
+                  自身及当前组成子需求的有效关联；来源与角色分别保留，不表示父需求已交付。
+                </p>
+              )}
+              {currentBindings.length ? (
                 item.version === 3 ? (
-                  <CompactTasks bindings={bindings} context={context} />
+                  <CompactTasks bindings={currentBindings} context={context} />
                 ) : (
                   bindings.map((binding) => (
                     <BindingCard
@@ -1215,6 +1223,17 @@ export function ProductDetail({
                   未记录任务关联；不表示该业务范围未实现。
                 </p>
               )}
+              {item.version === 3 &&
+                bindings.some((b) => b.binding.state === "dismissed") && (
+                  <details>
+                    <summary>自身已否定关联</summary>
+                    {bindings
+                      .filter((b) => b.binding.state === "dismissed")
+                      .map((b) => (
+                        <BindingCard key={b.key} view={b} context={context} />
+                      ))}
+                  </details>
+                )}
             </section>
           )}
           {item.type === "plan" && includeWork && (
@@ -1253,7 +1272,7 @@ export function ProductDetail({
     </article>
   );
 }
-function CompactTasks({
+export function CompactTasks({
   bindings,
   context,
 }: {
@@ -1262,7 +1281,11 @@ function CompactTasks({
 }) {
   const groups = new Map<string, ProductBindingView[]>();
   for (const binding of bindings) {
-    const id = binding.binding.task.task_id || binding.key;
+    const id = JSON.stringify(
+      binding.binding.task.task_id === null
+        ? ["unconfirmed", binding.key]
+        : ["task", binding.binding.task.task_id],
+    );
     groups.set(id, [...(groups.get(id) || []), binding]);
   }
   return (
@@ -1276,10 +1299,16 @@ function CompactTasks({
         );
         return (
           <li key={id}>
-            <strong>{task?.title || id}</strong> ·{" "}
+            <strong>
+              {task?.title || rows[0].binding.task.task_id || "身份未确认"}
+            </strong>{" "}
+            ·{" "}
             {task?.runtimeLifecycle
               ? lifecycleLabels[task.runtimeLifecycle]
               : "身份或任务数据待核对"}
+            {rows.some((r) => r.match.state !== "matched") && (
+              <span className="status amber">关联待核对</span>
+            )}
             {task && (
               <button
                 className="text-link"
@@ -1294,7 +1323,15 @@ function CompactTasks({
             <details>
               <summary>关联范围与来源 · {rows.length}</summary>
               {rows.map((r) => (
-                <BindingCard key={r.key} view={r} context={context} />
+                <div key={r.key}>
+                  <p>
+                    来源需求：
+                    {context.snapshot.product?.items.find(
+                      (i) => i.key === r.ownerKey,
+                    )?.id || r.ownerKey}
+                  </p>
+                  <BindingCard view={r} context={context} />
+                </div>
               ))}
             </details>
           </li>

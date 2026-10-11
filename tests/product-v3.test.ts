@@ -86,7 +86,10 @@ it.each(["kind", "value", "revision", "limitations"])(
       }),
     );
     expect(html).toContain("需求全景");
-    expect(html).toContain("R-IMPORT");
+    // The composed child is folded; malformed reports must retain the parent
+    // and its expansion entry. Browser checks cover reaching the child.
+    expect(html).toContain('data-overview-card="R-PIPELINE"');
+    expect(html).toContain("展开子需求 · R-PIPELINE");
   },
 );
 it("renders an invalid report's original fields without changing the current undetermined conclusion", async () => {

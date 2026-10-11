@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "kind": "workflow-observation",
+  "recorded_at": "2026-10-11T16:57:35.710Z",
+  "payload_sha256": "4c4836980da21e384e7fb8ace184d9fa4a74e3c20cedbd0c44aaeae622cc80c1",
+  "assurance": "caller-reported",
+  "payload": {
+    "kind": "task-event",
+    "request": {
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+      "action": "step",
+      "step_id": "D",
+      "state": "in-progress",
+      "remaining_work": [
+        "父线程独立核对当前分发/实际安装116项字节补包",
+        "最终两仓交接包与正常Task收口"
+      ],
+      "decision_source": "本次已执行证据及父线程最新审查反馈",
+      "decision_text": "之前待补的scoped18组及额外降级5组已通过；仅保留实际待交接/父审核对，不重开A/B/C。"
+    },
+    "task_event": {
+      "version": 1,
+      "action": "step",
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "parents": [
+        ".workflow-system/records/events/1791737855621-051752b1-989b-4243-991f-9401cd1b3c32.json"
+      ],
+      "data": {
+        "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+        "step_id": "D",
+        "state": "in-progress",
+        "remaining_work": [
+          "父线程独立核对当前分发/实际安装116项字节补包",
+          "最终两仓交接包与正常Task收口"
+        ],
+        "decision_source": "本次已执行证据及父线程最新审查反馈",
+        "decision_text": "之前待补的scoped18组及额外降级5组已通过；仅保留实际待交接/父审核对，不重开A/B/C。"
+      }
+    }
+  },
+  "issues": []
+}

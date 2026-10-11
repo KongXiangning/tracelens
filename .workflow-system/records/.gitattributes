@@ -1,0 +1,3 @@
+# BEGIN vNext checkpoint Git policy
+** -text -filter -ident -working-tree-encoding
+# END vNext checkpoint Git policy

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { mkdir, readFile, readdir, writeFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readlink,
+  readdir,
+  writeFile,
+  rm,
+} from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 const inputFile = process.env.TRACELENS_TEST_INPUT;
@@ -15,7 +22,11 @@ await mkdir(evidence, { recursive: true });
 const results = [],
   requests = [],
   errors = [];
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await chromium.launch({
+  channel: process.env.TRACELENS_BROWSER_EXECUTABLE ? undefined : "msedge",
+  executablePath: process.env.TRACELENS_BROWSER_EXECUTABLE || undefined,
+  headless: true,
+});
 const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("request", (r) => {
@@ -42,6 +53,8 @@ async function tree(root) {
     for (const e of await readdir(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) await walk(p);
+      else if (e.isSymbolicLink())
+        result[path.relative(root, p)] = `symlink:${await readlink(p)}`;
       else
         result[path.relative(root, p)] = createHash("sha256")
           .update(await readFile(p))
@@ -91,6 +104,10 @@ try {
     document.querySelector(".runtime-status")?.textContent.includes("3/3"),
   );
   assert.equal(requests.filter((r) => r.path.endsWith("/task-page")).length, 1);
+  assert.equal(await page.locator("[data-overview-card]").count(), 4);
+  await page
+    .getByRole("button", { name: "展开子需求 · R-PIPELINE", exact: true })
+    .click();
   const cards = await page
     .locator("[data-overview-card]")
     .evaluateAll((es) => es.map((e) => e.dataset.overviewCard));
@@ -400,6 +417,9 @@ try {
     document.querySelector(".runtime-status")?.textContent.includes("暂不可用"),
   );
   await page.getByRole("button", { name: "概览", exact: true }).click();
+  await page
+    .getByRole("button", { name: "展开子需求 · R-PIPELINE", exact: true })
+    .click();
   assert.equal(await page.locator("[data-overview-card]").count(), 5);
   assert.match(
     await page.locator("[data-overview-card=R-IMPORT]").innerText(),

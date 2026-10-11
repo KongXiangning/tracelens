@@ -89,7 +89,8 @@ if (packageDir) {
   );
   if (
     distribution.manifest_digest !==
-    "9a3bc3f567b31ae7ca4ad579c78ce74b7b5035b85230aa1d1ce435b123cfe909"
+    (process.env.TRACELENS_TEST_DISTRIBUTION_DIGEST ||
+      "9a3bc3f567b31ae7ca4ad579c78ce74b7b5035b85230aa1d1ce435b123cfe909")
   )
     throw new Error("wrong VN05 candidate");
   const checks = [];
@@ -257,7 +258,7 @@ await writeFile(
     {
       createdAt: new Date().toISOString(),
       sourceType: packageDir
-        ? "VN05 actual tgz public CLI installation"
+        ? "Explicit distribution directory public CLI installation; digest and all installed bytes checked"
         : "VN03 source helper copy, not formal VN05 installation",
       packageDir,
       distributionManifest: distribution?.manifest_digest,

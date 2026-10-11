@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "kind": "workflow-observation",
+  "recorded_at": "2026-10-11T17:08:26.196Z",
+  "payload_sha256": "a9d84642db3e6cf38bec41eb7fabc5a5e75efd7f57dc0a432ae94b3f1b846d99",
+  "assurance": "caller-reported",
+  "payload": {
+    "kind": "task-event",
+    "idempotency_key": "task:tracelens-finish-D-20261011",
+    "request": {
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+      "action": "step",
+      "step_id": "D",
+      "state": "finished",
+      "remaining_work": [],
+      "decision_source": "父线程最终独立复核与既有用户A/B/C/D授权",
+      "decision_text": "本次选定实施/验收/独立核对已完成，完成D工作处置；保留范围限制和历史展示漂移，不修改原始失败记录。",
+      "idempotency_key": "tracelens-finish-D-20261011"
+    },
+    "task_event": {
+      "version": 1,
+      "action": "step",
+      "task_id": "task-b5d10cc679790f732b2029003c1320ee",
+      "parents": [
+        ".workflow-system/records/events/key-9871cc7dd95d40ea7ae7f374716138c455c0214a5a66d1ce8f0e3a4d1169b4ff.json"
+      ],
+      "data": {
+        "plan_ref": ".workflow-system/records/events/key-61df1edf0415b7aec64f2b0c9e455afec32f9025214bdb7f51881ca13d4dc8c4.json",
+        "step_id": "D",
+        "state": "finished",
+        "remaining_work": [],
+        "decision_source": "父线程最终独立复核与既有用户A/B/C/D授权",
+        "decision_text": "本次选定实施/验收/独立核对已完成，完成D工作处置；保留范围限制和历史展示漂移，不修改原始失败记录。"
+      }
+    }
+  },
+  "issues": []
+}

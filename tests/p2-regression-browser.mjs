@@ -185,6 +185,7 @@ try {
     (process.platform === "win32" ? "msedge" : undefined);
   browser = await chromium.launch({
     channel,
+    executablePath: process.env.TRACELENS_BROWSER_EXECUTABLE || undefined,
     headless: process.env.HEADED !== "1",
   });
   page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
@@ -252,6 +253,12 @@ try {
 
   await page.getByRole("button", { name: "P2 异常报告", exact: true }).click();
   await page.getByRole("heading", { name: "需求全景", exact: true }).waitFor();
+  // Composition is folded by default; malformed reports must still allow
+  // reaching the child without affecting the readable requirement inventory.
+  assert.equal(await page.locator("[data-overview-card]").count(), 4);
+  await page
+    .getByRole("button", { name: "展开子需求 · R-PIPELINE", exact: true })
+    .click();
   assert.equal(await page.locator("[data-overview-card]").count(), 5);
   await page.getByRole("button", { name: "需求", exact: true }).click();
   await page
@@ -272,6 +279,9 @@ try {
   await page
     .getByRole("combobox", { name: "被评估对象", exact: true })
     .selectOption({ label: "working-copy · sample-copy-a @sample-baseline" });
+  await page
+    .getByRole("button", { name: "展开子需求 · R-PIPELINE", exact: true })
+    .click();
   await page.locator("[data-node-id=R-IMPORT]").click();
   await conclusion("partially-satisfied");
   check(

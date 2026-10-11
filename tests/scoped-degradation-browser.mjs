@@ -7,6 +7,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readlink,
   readdir,
   writeFile,
   access,
@@ -80,6 +81,8 @@ async function tree(root) {
     for (const e of await readdir(dir, { withFileTypes: true })) {
       const file = path.join(dir, e.name);
       if (e.isDirectory()) await walk(file);
+      else if (e.isSymbolicLink())
+        output[path.relative(root, file)] = `symlink:${await readlink(file)}`;
       else output[path.relative(root, file)] = hash(await readFile(file));
     }
   }
@@ -156,7 +159,11 @@ const before = {
   old: await tree(old),
   legacy: await tree(legacy),
 };
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await chromium.launch({
+  channel: process.env.TRACELENS_BROWSER_EXECUTABLE ? undefined : "msedge",
+  executablePath: process.env.TRACELENS_BROWSER_EXECUTABLE || undefined,
+  headless: true,
+});
 const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
@@ -291,6 +298,10 @@ try {
     /LEGACY_ASSOCIATION_REQUIRED/,
   );
   await page.getByRole("button", { name: "概览", exact: true }).click();
+  assert.equal(await page.locator("[data-overview-card]").count(), 4);
+  await page
+    .getByRole("button", { name: "展开子需求 · R-PIPELINE", exact: true })
+    .click();
   assert.equal(await page.locator("[data-overview-card]").count(), 5);
   results.push({
     label:

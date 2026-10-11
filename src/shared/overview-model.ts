@@ -141,7 +141,25 @@ export function overviewTaskStates(
               ?.label || `未识别：${entry.text}`,
         ),
     );
-    if (
+    const trusted = snapshot.tasks.filter(
+      (task) =>
+        task.runtimeLifecycle &&
+        task.realTaskId === views[0].binding.task.task_id &&
+        views.some(
+          (view) =>
+            view.match.state === "matched" &&
+            view.match.taskIds.includes(task.id),
+        ),
+    );
+    if (trusted.length === 1) {
+      const declared = taskStates.find((s) =>
+        s.pattern.test(trusted[0].runtimeLifecycle!),
+      );
+      if (declared) {
+        label = declared.label;
+        tone = declared.tone;
+      }
+    } else if (
       views.some((view) => view.match.state === "conflict") ||
       observations.size > 1
     )
@@ -169,6 +187,9 @@ export function overviewTaskStates(
     ).length,
     unconfirmed: bindings.filter((view) => view.binding.task.task_id === null)
       .length,
+    associationPending: [...identities.values()].filter((views) =>
+      views.some((view) => view.match.state !== "matched"),
+    ).length,
     states: [...states.values()],
   };
 }

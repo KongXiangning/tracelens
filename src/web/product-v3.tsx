@@ -8,7 +8,8 @@ import {
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { ProductItem } from "../shared/product-types";
+import type { ProductBindingView, ProductItem } from "../shared/product-types";
+import type { Task } from "../shared/types";
 import {
   conclusionLabels,
   goalRequirements,
@@ -18,7 +19,10 @@ import {
   type Subject,
 } from "../shared/product-view";
 import { overviewTaskStates } from "../shared/overview-model";
-import { requirementHierarchy } from "../shared/product-hierarchy";
+import {
+  requirementBindings,
+  requirementHierarchy,
+} from "../shared/product-hierarchy";
 import { assessmentGoal, productStructure } from "../shared/product-structure";
 import { buildProductGraph, ProductRelationPanel } from "./product-graph";
 import {
@@ -27,6 +31,7 @@ import {
   type ProductContext,
 } from "./product";
 import { SourceButton } from "./components";
+import { lifecycleLabels } from "./runtime";
 
 type ViewState = {
   goal: string;
@@ -36,11 +41,13 @@ type ViewState = {
   scope: Record<string, string>;
   dependencies: boolean;
   expanded: string[];
-  panel: "" | "candidates" | "unlinked";
+  panel: "" | "candidates" | "unlinked" | "status";
   candidateAll: boolean;
   candidateFocus: string;
   unlinkedQuery: string;
   navigationOpen: boolean;
+  tab: "overview" | "tasks" | "evidence";
+  taskFilter: "all" | "active" | "closed";
   scroll: number;
 };
 const stored = new Map<string, ViewState>();
@@ -57,6 +64,8 @@ const initial = (): ViewState => ({
   candidateFocus: "",
   unlinkedQuery: "",
   navigationOpen: false,
+  tab: "overview",
+  taskFilter: "all",
   scroll: 0,
 });
 function SubjectPicker({
@@ -69,14 +78,14 @@ function SubjectPicker({
   set: (v: string) => void;
 }) {
   return (
-    <label>
-      被评估对象
+    <label className="requirements-v3-delivery-picker">
+      <span>交付记录</span>
       <select
         aria-label="被评估对象"
         value={value}
         onChange={(e) => set(e.target.value)}
       >
-        <option value="">明确选择已报告对象</option>
+        <option value="">仅浏览需求</option>
         {reportedSubjects(product).map((s, i) => (
           <option key={i} value={JSON.stringify(s)}>
             {s.kind} · {s.value} {s.revision && `@${s.revision}`}{" "}
@@ -85,6 +94,678 @@ function SubjectPicker({
         ))}
       </select>
     </label>
+  );
+}
+
+export function RequirementsV3({
+  selected,
+  select,
+  configure,
+  ...context
+}: ProductContext & {
+  selected?: string;
+  select: (key: string) => void;
+  configure: () => void;
+}) {
+  const product = context.snapshot.product;
+  const [state, setState] = useState<ViewState>(() => ({
+    ...initial(),
+    ...(stored.get(context.snapshot.projectId) || {}),
+  }));
+  const current = useRef(state);
+  current.current = state;
+  const update = (value: Partial<ViewState>) =>
+    setState((previous) => ({ ...previous, ...value }));
+
+  useEffect(() => {
+    stored.set(context.snapshot.projectId, state);
+  }, [state, context.snapshot.projectId]);
+  useEffect(() => {
+    const container = navigationScrollContainer();
+    if (container) container.scrollTop = current.current.scroll;
+    return () => {
+      stored.set(context.snapshot.projectId, {
+        ...current.current,
+        scroll: container?.scrollTop || 0,
+      });
+    };
+  }, [context.snapshot.projectId]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && selected) select("");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selected, select]);
+
+  if (!product?.items.length)
+    return (
+      <ProductStatusPanel
+        product={product}
+        navigation={context.snapshot.navigation}
+        open={context.open}
+        configure={configure}
+      />
+    );
+
+  const model = productView(product);
+  const goal =
+    product.items.find((item) => item.key === state.goal && item.usable) ||
+    (!state.goal ? model.rootGoal : undefined);
+  let subject: Subject | undefined;
+  if (state.subject) {
+    try {
+      subject = JSON.parse(state.subject) as Subject;
+    } catch {
+      subject = undefined;
+    }
+  }
+  const item = product.items.find((entry) => entry.key === selected);
+  const scopeKey = (target: ProductItem) =>
+    JSON.stringify([target.type === "goal" ? target.id : goal?.id, target.id]);
+  const scopeFor = (target: ProductItem) => state.scope[scopeKey(target)];
+  const chooseScope = (target: ProductItem, scope: string) =>
+    update({ scope: { ...state.scope, [scopeKey(target)]: scope } });
+  const reqs = goalRequirements(product, goal?.key).filter(
+    (entry) => entry.metadata.scope === "current",
+  );
+  const activeFilter = subject ? state.filter : "all";
+  const matches = reqs.filter((entry) => {
+    const matchesText = `${entry.id} ${entry.title} ${entry.body}`
+      .toLowerCase()
+      .includes(state.query.trim().toLowerCase());
+    if (!matchesText) return false;
+    if (activeFilter === "all") return true;
+    const selection = selectionFor(
+      product,
+      entry,
+      goal || undefined,
+      subject,
+      scopeFor(entry),
+    );
+    const conclusion = selection?.conclusion;
+    return activeFilter === "gaps"
+      ? ["not-satisfied", "partially-satisfied"].includes(conclusion || "")
+      : conclusion === "undetermined";
+  });
+  const filtered = Boolean(state.query.trim()) || activeFilter !== "all";
+  const reveal = new Set(filtered ? matches.map((entry) => entry.key) : []);
+  if (item && reqs.some((entry) => entry.key === item.key))
+    reveal.add(item.key);
+  const expanded = new Set(state.expanded || []);
+  const hierarchy = requirementHierarchy(
+    product,
+    reqs,
+    expanded,
+    reveal,
+    filtered,
+  );
+  const keys = new Set(hierarchy.visible.map((entry) => entry.key));
+  if (goal) keys.add(goal.key);
+  if (model.rootGoal) keys.add(model.rootGoal.key);
+  // Keep only ancestors needed for the currently visible branch. A shared
+  // requirement remains one identity even when it has more than one parent.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const relation of model.relations) {
+      if (
+        keys.has(relation.ownerKey) &&
+        relation.targetKey &&
+        ["part_of", "supports"].includes(relation.link.relation) &&
+        !keys.has(relation.targetKey)
+      ) {
+        keys.add(relation.targetKey);
+        changed = true;
+      }
+    }
+  }
+  const selectedDependencies =
+    state.dependencies && item
+      ? model.relations.filter(
+          (relation) =>
+            relation.link.relation === "depends_on" &&
+            (relation.ownerKey === item.key || relation.targetKey === item.key),
+        )
+      : [];
+  selectedDependencies.forEach((relation) => {
+    keys.add(relation.ownerKey);
+    if (relation.targetKey) keys.add(relation.targetKey);
+  });
+  const visible = [
+    ...product.items.filter(
+      (entry) => entry.usable && entry.type === "goal" && keys.has(entry.key),
+    ),
+    ...model.registered,
+    ...model.unordered,
+    ...product.items.filter((entry) => entry.usable && entry.type === "module"),
+  ].filter(
+    (entry, index, array) =>
+      keys.has(entry.key) &&
+      array.findIndex((candidate) => candidate.key === entry.key) === index,
+  );
+  const structure = model.relations.filter(
+    (relation) =>
+      relation.targetKey &&
+      keys.has(relation.ownerKey) &&
+      keys.has(relation.targetKey) &&
+      ["part_of", "supports"].includes(relation.link.relation),
+  );
+  const depth = new Map(
+    visible.map((entry) => [entry.key, entry.type === "goal" ? 0 : 1]),
+  );
+  for (let pass = 0; pass < visible.length; pass++) {
+    let moved = false;
+    for (const relation of structure) {
+      const value = Math.min(
+        visible.length,
+        (depth.get(relation.targetKey!) || 0) + 1,
+      );
+      if ((depth.get(relation.ownerKey) || 0) < value) {
+        depth.set(relation.ownerKey, value);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  const positions = new Map<number, number>();
+  const nodes: Node[] = visible.map((entry) => {
+    const level = depth.get(entry.key) || 0;
+    const column = positions.get(level) || 0;
+    positions.set(level, column + 1);
+    const evaluationGoal = assessmentGoal(entry, goal || undefined);
+    const selection = subject
+      ? selectionFor(
+          product,
+          entry,
+          goal || undefined,
+          subject,
+          scopeFor(entry),
+        )
+      : undefined;
+    const childCount = directChildren(product, entry).length;
+    const status =
+      entry.type === "module"
+        ? "分类节点 · 仅用于归类"
+        : !subject
+          ? childCount
+            ? `${childCount} 项直接子需求`
+            : "查看具体要求"
+          : selection?.reasons.length
+            ? "待核对"
+            : selection
+              ? conclusionLabels[selection.conclusion]
+              : childCount
+                ? `${childCount} 项直接子需求`
+                : "查看具体要求";
+    const conclusion = selection?.conclusion;
+    const isSelected = entry.key === selected;
+    return {
+      id: entry.key,
+      position: { x: column * 285, y: level * 185 },
+      data: {
+        label: (
+          <div>
+            <button
+              className="goal-graph-node"
+              data-node-id={entry.id}
+              data-node-conclusion={
+                entry.type === "module" ? undefined : conclusion
+              }
+              data-node-goal={evaluationGoal?.id}
+              data-node-scope={selection?.scopeId}
+              onClick={() => selectItem(entry.key)}
+            >
+              <small>
+                {entry.type === "goal"
+                  ? "目标"
+                  : entry.type === "module"
+                    ? "模块 / 分类"
+                    : "需求"}{" "}
+                · {entry.id}
+                {!matches.includes(entry) && entry.type === "requirement"
+                  ? " · 上下文"
+                  : ""}
+              </small>
+              <strong>{entry.title}</strong>
+              <span>{status}</span>
+            </button>
+            {!!childCount && (
+              <button
+                className="goal-graph-expand nodrag"
+                aria-label={`${expanded.has(entry.key) ? "收起" : "展开"}子需求 · ${entry.id}`}
+                aria-expanded={expanded.has(entry.key)}
+                onClick={() =>
+                  update({
+                    expanded: expanded.has(entry.key)
+                      ? state.expanded.filter((key) => key !== entry.key)
+                      : [...state.expanded, entry.key],
+                  })
+                }
+              >
+                {expanded.has(entry.key) ? "收起" : "展开"}已登记子要求 ·{" "}
+                {childCount}
+              </button>
+            )}
+          </div>
+        ),
+      },
+      style: {
+        width: 255,
+        border: isSelected ? "2px solid #397365" : "1px solid #cbd8cf",
+        borderRadius: 8,
+        padding: 0,
+        boxShadow: isSelected ? "0 0 0 3px #39736518" : "0 3px 12px #2146320d",
+      },
+    };
+  });
+  const edges: Edge[] = [...structure, ...selectedDependencies].map(
+    (relation) => ({
+      id: relation.key,
+      source: relation.targetKey!,
+      target: relation.ownerKey,
+      label:
+        relation.link.relation === "part_of"
+          ? "组成 / 细化"
+          : relation.link.relation === "supports"
+            ? "支撑"
+            : "依赖",
+      style:
+        relation.link.relation === "depends_on"
+          ? { strokeDasharray: "5 4", stroke: "#b67d3f" }
+          : undefined,
+    }),
+  );
+  const explanation = productStructure(product, goal?.key, item?.key);
+  const candidates = state.candidateAll
+    ? explanation.candidates
+    : explanation.relatedCandidates;
+  const candidateFocus = candidates.some(
+    (relation) => relation.ownerKey === state.candidateFocus,
+  )
+    ? state.candidateFocus
+    : candidates[0]?.ownerKey;
+  const candidateGraph =
+    state.panel === "candidates"
+      ? buildProductGraph(context.snapshot)
+      : undefined;
+  if (candidateGraph) {
+    const candidateKeys = new Set(
+      candidates.map((relation) => `link:${relation.key}`),
+    );
+    candidateGraph.relations = candidateGraph.relations.filter((relation) =>
+      candidateKeys.has(relation.id),
+    );
+  }
+  const selectItem = (key: string) => {
+    if (key && key !== selected) update({ tab: "overview", taskFilter: "all" });
+    select(key);
+  };
+  const runtimeLabel = context.snapshot.runtime
+    ? context.snapshot.runtime.source === "file-snapshot"
+      ? "Task 使用文件快照"
+      : context.snapshot.runtime.source === "runtime-query"
+        ? "Task 使用 Runtime 查询"
+        : "Task 状态待核对"
+    : "Task 状态待核对";
+  const structureIssueCount =
+    explanation.relatedCandidates.length + explanation.currentUnlinked.length;
+  return (
+    <div className="product-page requirements-v3-page">
+      <div className="requirements-v3-page-head">
+        <div>
+          <h2>
+            目标与需求
+            <span className="requirements-v3-visually-hidden">图</span>
+            <span className="requirements-v3-visually-hidden">
+              目标与需求图
+            </span>
+          </h2>
+          <p>看清业务结构，逐层查看具体要求与已有成果。</p>
+        </div>
+        <div className="requirements-v3-structure-actions">
+          <button
+            className="text-link requirements-v3-structure-link"
+            onClick={() =>
+              update({
+                panel:
+                  state.panel === "candidates" || state.panel === "unlinked"
+                    ? ""
+                    : "candidates",
+              })
+            }
+          >
+            候选与未连入事项
+            {structureIssueCount ? ` · ${structureIssueCount}` : ""} ↗
+          </button>
+          <button
+            className="text-link requirements-v3-aux-trigger"
+            aria-expanded={state.panel === "candidates"}
+            onClick={() =>
+              update({
+                panel: state.panel === "candidates" ? "" : "candidates",
+              })
+            }
+          >
+            查看候选关系
+          </button>
+          <button
+            className="text-link requirements-v3-aux-trigger"
+            aria-expanded={state.panel === "unlinked"}
+            onClick={() =>
+              update({ panel: state.panel === "unlinked" ? "" : "unlinked" })
+            }
+          >
+            查看未连入需求
+          </button>
+        </div>
+      </div>
+      {selected && !item && (
+        <p className="requirements-v3-alert" role="status">
+          所选条目已退出本次范围；请在当前图或历史入口重新选择。
+        </p>
+      )}
+      <div className="requirements-v3-toolbar">
+        <label>
+          所选目标
+          <select
+            aria-label="所选目标"
+            value={goal?.key || ""}
+            onChange={(event) => update({ goal: event.target.value })}
+          >
+            {!model.rootGoal && <option value="">总目标未明确</option>}
+            {product.items
+              .filter((entry) => entry.usable && entry.type === "goal")
+              .map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.key === model.rootGoal?.key
+                    ? "项目总目标"
+                    : `${entry.id} · ${entry.title}`}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className="requirements-v3-search-field">
+          <span className="requirements-v3-visually-hidden">
+            搜索需求或功能
+          </span>
+          <input
+            aria-label="搜索需求图"
+            placeholder="搜索需求或功能…"
+            value={state.query}
+            onChange={(event) => update({ query: event.target.value })}
+          />
+        </label>
+        <div
+          className="requirements-v3-filter-group"
+          role="group"
+          aria-label="结论筛选"
+        >
+          {(
+            [
+              ["all", "全部"],
+              ["gaps", "已确认缺口"],
+              ["unknown", "待核对"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={
+                (activeFilter === value ? "active " : "") +
+                (!subject && value !== "all" ? "requires-delivery" : "")
+              }
+              aria-label={
+                value === "all"
+                  ? "全部"
+                  : value === "gaps"
+                    ? "未满足与部分满足"
+                    : "尚未判定"
+              }
+              onClick={() => {
+                if (value !== "all" && !subject) return;
+                update({ filter: value });
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label className="requirements-v3-filter-select">
+          结论筛选
+          <select
+            aria-label="结论筛选"
+            value={activeFilter}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value !== "all" && !subject) return;
+              update({ filter: value });
+            }}
+          >
+            <option value="all">全部</option>
+            <option value="gaps">未满足与部分满足</option>
+            <option value="unknown">尚未判定</option>
+          </select>
+        </label>
+        <SubjectPicker
+          product={product}
+          value={state.subject}
+          set={(value) =>
+            update({ subject: value, filter: value ? state.filter : "all" })
+          }
+        />
+        <button
+          className={`requirements-v3-read-state ${state.panel === "status" ? "active" : ""}`}
+          aria-expanded={state.panel === "status"}
+          onClick={() =>
+            update({ panel: state.panel === "status" ? "" : "status" })
+          }
+        >
+          <span className="requirements-v3-status-dot" /> {runtimeLabel} ·
+          查看读取状态
+        </button>
+      </div>
+      {subject && (
+        <p className="requirements-v3-version-note">
+          当前查看：{subjectText(subject)}。结果仅针对所选对象、目标与范围。
+        </p>
+      )}
+      {model.rootReason && (
+        <p className="requirements-v3-alert" role="status">
+          {model.rootReason} · 可读目标与需求继续保留。
+        </p>
+      )}
+      {state.panel === "status" && (
+        <section className="requirements-v3-status-panel" aria-label="读取状态">
+          <ProductStatusPanel
+            product={product}
+            navigation={context.snapshot.navigation}
+            open={context.open}
+            configure={configure}
+          />
+          <ul>
+            {model.diagnostics.map((diagnostic) => (
+              <li key={diagnostic}>{diagnostic}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {state.panel === "candidates" && (
+        <section
+          className="product-structure-panel requirements-v3-aux-panel"
+          aria-label="候选结构关系"
+        >
+          <h3>已记录候选结构关系 · {candidates.length} 条</h3>
+          <label>
+            <input
+              type="checkbox"
+              checked={state.candidateAll}
+              onChange={(event) =>
+                update({ candidateAll: event.target.checked })
+              }
+            />{" "}
+            查看本次已读取内容中的全部候选
+          </label>
+          <p className="muted">
+            候选不进入正式图、Task 汇集或达成结论；已否定关系保留为依据。
+          </p>
+          {!candidates.length && (
+            <p>本次范围未记录相关候选；可切换全部候选或查看条目来源。</p>
+          )}
+          <ul className="product-structure-list">
+            {candidates.map((relation) => (
+              <li key={relation.key}>
+                <button
+                  className="text-link"
+                  onClick={() => update({ candidateFocus: relation.ownerKey })}
+                >
+                  {
+                    product.items.find(
+                      (entry) => entry.key === relation.ownerKey,
+                    )?.id
+                  }{" "}
+                  → {relation.link.target} · {relation.link.relation}
+                </button>
+                {relation.resolution !== "resolved" &&
+                  ` · 引用 / 方向 / 身份异常（${relation.resolution}），仅查看依据`}
+              </li>
+            ))}
+          </ul>
+          {candidateGraph && candidateFocus && (
+            <ProductRelationPanel
+              snapshot={context.snapshot}
+              model={candidateGraph}
+              focus={candidateFocus}
+              open={context.open}
+              openTask={context.openTask}
+              openProduct={selectItem}
+              hideUnresolved
+            />
+          )}
+        </section>
+      )}
+      {state.panel === "unlinked" && (
+        <section
+          className="product-structure-panel requirements-v3-aux-panel"
+          aria-label="未连入需求"
+        >
+          <h3>
+            未在所选目标声明路径中的可读需求 · {explanation.unlinked.length} 项
+          </h3>
+          <p className="muted">
+            没有声明路径不表示未实现；其他目标、非当前范围和结构未决分别保留。
+          </p>
+          <input
+            aria-label="搜索未连入需求"
+            placeholder="搜索 ID、标题或正文"
+            value={state.unlinkedQuery}
+            onChange={(event) => update({ unlinkedQuery: event.target.value })}
+          />
+          <ul className="product-structure-list">
+            {explanation.unlinked
+              .filter(({ item: entry }) =>
+                `${entry.id} ${entry.title} ${entry.body}`
+                  .toLowerCase()
+                  .includes(state.unlinkedQuery.toLowerCase()),
+              )
+              .map(({ item: entry, reasons, otherGoals }) => (
+                <li key={entry.key} data-unlinked-id={entry.id}>
+                  <button
+                    className="text-link"
+                    onClick={() => selectItem(entry.key)}
+                  >
+                    {entry.id} · {entry.title}
+                  </button>
+                  <p>{reasons.join("；")}</p>
+                  {otherGoals.map((otherGoal) => (
+                    <button
+                      key={otherGoal.key}
+                      className="text-link"
+                      onClick={() => update({ goal: otherGoal.key })}
+                    >
+                      查看目标 · {otherGoal.id}
+                    </button>
+                  ))}
+                  <SourceButton source={entry.source} open={context.open} />
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+      <div className={`requirements-v3-stage ${item ? "has-inspector" : ""}`}>
+        <section className="requirements-v3-canvas-card">
+          <div className="requirements-v3-canvas-head">
+            <span>
+              <strong>当前结构</strong> · 实线表示已声明关系
+            </span>
+            <span className="requirements-v3-meta">
+              层级展开不改变文档登记顺序
+            </span>
+          </div>
+          <div className="goal-requirement-graph requirements-v3-graph">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              edgesReconnectable={false}
+              fitView
+              minZoom={0.25}
+            >
+              <Background color="#d6dfd8" gap={19} size={1} />
+              <Controls showInteractive={false} />
+            </ReactFlow>
+          </div>
+          <div className="requirements-v3-canvas-footer">
+            <span>
+              显示 {hierarchy.visible.length} 项需求 · 仅统计当前可见层级
+            </span>
+            <span>拖动画布 · 点击节点查看详情</span>
+          </div>
+        </section>
+        {item && (
+          <RequirementsInspector
+            item={item}
+            goal={goal || undefined}
+            subject={subject}
+            scopeId={scopeFor(item)}
+            context={context}
+            select={selectItem}
+            chooseScope={(scope) => chooseScope(item, scope)}
+            scopeFor={scopeFor}
+            tab={state.tab || "overview"}
+            setTab={(tab) => update({ tab })}
+            taskFilter={state.taskFilter || "all"}
+            setTaskFilter={(taskFilter) => update({ taskFilter })}
+          />
+        )}
+      </div>
+      <p className="requirements-v3-graph-summary">
+        所选目标声明路径内 {reqs.length} 个当前需求；筛选命中 {matches.length}{" "}
+        个；展开与筛选保留必要祖先。
+      </p>
+      <details
+        className="requirements-v3-navigation"
+        open={state.navigationOpen}
+        onToggle={(event) => {
+          if (event.currentTarget.open !== state.navigationOpen)
+            update({ navigationOpen: event.currentTarget.open });
+        }}
+      >
+        <summary>搜索与条目导航（含历史/旧格式）</summary>
+        <div className="requirements-v3-navigation-list">
+          {product.items.map((entry) => (
+            <button
+              key={entry.key}
+              className="text-link"
+              onClick={() => selectItem(entry.key)}
+            >
+              {entry.id} · {entry.title}
+              {entry.metadata.scope === "retired" ? " · 历史" : ""}
+            </button>
+          ))}
+        </div>
+      </details>
+    </div>
   );
 }
 function OriginalAssessment({ report }: { report: ProductItem }) {
@@ -130,6 +811,222 @@ function requirementDescription(item: ProductItem) {
   return compact + (compact.length < firstSentence.length ? "…" : "");
 }
 
+type ReadingSection = { heading: string; text: string; lines: string[] };
+
+function readingSections(item: ProductItem): ReadingSection[] {
+  const body = item.body
+    .replace(
+      /^(?:\uFEFF)?---[ \t]*(?:\r\n|\n|\r)[\s\S]*?(?:\r\n|\n|\r)---[ \t]*(?=\r\n|\n|\r|$)/,
+      "",
+    )
+    .replace(/\r\n|\r/g, "\n");
+  const sections: ReadingSection[] = [];
+  let current: ReadingSection | undefined;
+  const push = () => {
+    if (!current) return;
+    current.text = current.lines.join("\n").trim();
+    sections.push(current);
+  };
+  for (const line of body.split("\n")) {
+    const match = line.match(/^#{2,6}\s+(.+?)\s*$/);
+    if (match) {
+      push();
+      current = { heading: match[1], text: "", lines: [] };
+    } else if (current) {
+      current.lines.push(line);
+    }
+  }
+  push();
+  return sections;
+}
+
+function plainMarkdown(text: string) {
+  return text
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+[.)]\s+/gm, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[`*_>#]/g, "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sectionText(item: ProductItem, pattern: RegExp) {
+  return (
+    readingSections(item).find((section) => pattern.test(section.heading))
+      ?.text || ""
+  );
+}
+
+function compactReadingText(text: string, limit = 190) {
+  const value = plainMarkdown(text);
+  if (!value) return "";
+  return value.length > limit ? `${value.slice(0, limit).trim()}…` : value;
+}
+
+function businessSummary(item: ProductItem) {
+  const text = sectionText(
+    item,
+    item.type === "goal"
+      ? /目标说明|目标内容|项目定位/i
+      : item.type === "module"
+        ? /业务能力|模块说明|分类/i
+        : /需求内容|业务能力|功能说明|能力说明/i,
+  );
+  return compactReadingText(text || item.body) || "完整业务范围见原文";
+}
+
+function boundarySummary(item: ProductItem) {
+  const text = sectionText(item, /范围|边界|约束|限制|取舍/i);
+  return (
+    compactReadingText(text, 260) ||
+    "未在当前条目中提取到单独的范围边界；请查看原文。"
+  );
+}
+
+function acceptancePoints(item: ProductItem) {
+  const section = readingSections(item).find((entry) =>
+    /验收|具体要求|行为条件|业务规则/i.test(entry.heading),
+  );
+  if (!section) return [];
+  const points = section.lines
+    .filter((line) => /^\s*(?:[-*+]|\d+[.)])\s+/.test(line))
+    .map((line) =>
+      compactReadingText(line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ""), 220),
+    )
+    .filter(Boolean);
+  return points.length
+    ? points
+    : [compactReadingText(section.text, 260)].filter(Boolean);
+}
+
+function reportExcerpt(report: ProductItem) {
+  return readingSections(report)
+    .filter((section) =>
+      /覆盖范围|交付与验证依据|剩余与待核对/i.test(section.heading),
+    )
+    .map((section) => ({
+      heading: section.heading,
+      text: compactReadingText(section.text, 280),
+    }))
+    .filter((section) => section.text);
+}
+
+const assessmentReasonLabels: Record<string, string> = {
+  "scope-unavailable": "所选目标下尚未记录本需求的评估范围。",
+  "scope-selection-required":
+    "本需求声明了多个评估范围，请在当前条目内选择一个。",
+  "scope-not-current": "所选范围已不在当前需求声明中；历史材料仍可查看。",
+  "subject-selection-required": "尚未选择交付记录；仍可继续浏览需求定义。",
+  "no-applicable-report": "这份交付记录与范围下暂无适用报告。",
+  conflict: "存在未核对的报告或定位冲突，暂不选择单一结论。",
+  "metadata-incomplete": "报告字段不完整，保留原记录供核对。",
+  "scope-definition-changed":
+    "报告记录的范围定义与当前声明不同，需要按当前要求核对。",
+  "definition-algorithm-changed": "需求定义算法发生变化，需要按当前要求核对。",
+  "definition-changed": "需求定义已变化，历史成果不能直接作为当前结论。",
+  "goal-definition-changed": "目标定义已变化，历史成果不能直接作为当前结论。",
+  "target-definition-unverified": "需求定义依据尚未完成来源核对。",
+  "goal-definition-unverified": "目标定义依据尚未完成来源核对。",
+  "pending-evidence": "有新材料待对账；原报告结论与限制同时保留。",
+  "multiple-reports": "存在多份未替代报告，暂不自动挑选其中一份。",
+};
+
+function assessmentReason(reason: string) {
+  return assessmentReasonLabels[reason] || reason;
+}
+
+function conclusionClass(conclusion: keyof typeof conclusionLabels) {
+  return {
+    satisfied: "requirements-v3-ok",
+    "partially-satisfied": "requirements-v3-gap",
+    "not-satisfied": "requirements-v3-bad",
+    undetermined: "requirements-v3-unknown",
+  }[conclusion];
+}
+
+function subjectText(subject?: Subject) {
+  if (!subject) return "仅浏览需求";
+  const kind =
+    (
+      {
+        "working-copy": "工作副本",
+        commit: "提交",
+        release: "发布版本",
+      } as Record<string, string>
+    )[subject.kind] || subject.kind;
+  return `${kind} · ${subject.value || "未记录"}${subject.revision ? ` @${subject.revision}` : ""}`;
+}
+
+function directChildren(
+  product: NonNullable<ProductContext["snapshot"]["product"]>,
+  item: ProductItem,
+) {
+  const model = productView(product);
+  const keys = new Set(
+    model.relations
+      .filter(
+        (relation) =>
+          relation.targetKey === item.key &&
+          relation.link.relation === "part_of" &&
+          relation.link.state === "active" &&
+          relation.resolution === "resolved",
+      )
+      .map((relation) => relation.ownerKey),
+  );
+  return product.items.filter(
+    (candidate) => candidate.usable && keys.has(candidate.key),
+  );
+}
+
+function itemPath(
+  product: NonNullable<ProductContext["snapshot"]["product"]>,
+  item: ProductItem,
+) {
+  const model = productView(product);
+  const path = [item];
+  const seen = new Set([item.key]);
+  let current = item;
+  while (path.length < 8) {
+    const relation = model.relations.find(
+      (entry) =>
+        entry.ownerKey === current.key &&
+        entry.targetKey &&
+        entry.link.relation === "part_of" &&
+        !seen.has(entry.targetKey),
+    );
+    if (!relation?.targetKey) break;
+    const parent = product.items.find(
+      (candidate) => candidate.key === relation.targetKey,
+    );
+    if (!parent) break;
+    seen.add(parent.key);
+    path.push(parent);
+    current = parent;
+  }
+  return path.reverse();
+}
+
+function selectionFor(
+  product: NonNullable<ProductContext["snapshot"]["product"]>,
+  item: ProductItem,
+  goal: ProductItem | undefined,
+  subject: Subject | undefined,
+  scopeId?: string,
+) {
+  if (!goal || !["goal", "requirement"].includes(item.type)) return undefined;
+  const evaluationGoal = assessmentGoal(item, goal);
+  return evaluationGoal
+    ? selectAssessment(product, item.id, evaluationGoal.id, subject, scopeId)
+    : undefined;
+}
+
 export function ScopedConclusion({
   item,
   goal,
@@ -145,7 +1042,13 @@ export function ScopedConclusion({
   context: ProductContext;
   chooseScope?: (s: string) => void;
 }) {
-  if (!goal) return <p>尚未判定 · 未明确所选目标</p>;
+  if (!goal)
+    return (
+      <section className="scoped-conclusion" data-conclusion="undetermined">
+        <h3>尚未选择评估目标</h3>
+        <p>仍可浏览当前需求；选择目标和交付记录后再查看范围化结果。</p>
+      </section>
+    );
   const selection = selectAssessment(
     context.snapshot.product!,
     item.id,
@@ -155,20 +1058,34 @@ export function ScopedConclusion({
   );
   const scopes =
     goal.metadata.assessment_scopes?.filter((s) => s.target === item.id) || [];
+  const statusTitle = subject
+    ? selection.reasons.length
+      ? selection.conclusion === "undetermined"
+        ? "尚未判定"
+        : "结果待核对"
+      : conclusionLabels[selection.conclusion]
+    : "尚未选择交付记录";
   return (
     <section
       className="scoped-conclusion"
       data-conclusion={selection.conclusion}
     >
-      <h3>{conclusionLabels[selection.conclusion]}</h3>
-      <p>
+      <div className="requirements-v3-section-heading">
+        <h3>{statusTitle}</h3>
+        {selection.reports.length > 0 && (
+          <span
+            className={`requirements-v3-pill ${conclusionClass(selection.conclusion)}`}
+          >
+            {conclusionLabels[selection.conclusion]}
+          </span>
+        )}
+      </div>
+      <p className="requirements-v3-meta">
         目标：{goal.id} · 范围：{selection.scopeId || "未选择"} · 对象：
-        {subject
-          ? `${subject.kind} ${subject.value} ${subject.revision || "（未固定版本）"}`
-          : "未选择"}
+        {subjectText(subject)}
       </p>
       {scopes.length > 1 && chooseScope && (
-        <label>
+        <label className="requirements-v3-inline-field">
           适用范围
           <select
             aria-label="适用范围"
@@ -185,13 +1102,46 @@ export function ScopedConclusion({
         </label>
       )}
       {scopes.find((s) => s.scope_id === selection.scopeId)?.coverage && (
-        <p>{scopes.find((s) => s.scope_id === selection.scopeId)!.coverage}</p>
+        <p className="requirements-v3-meta">
+          {scopes.find((s) => s.scope_id === selection.scopeId)!.coverage}
+        </p>
       )}
       {selection.reasons.length > 0 && (
-        <p className="muted">待核对：{selection.reasons.join("、")}</p>
+        <div className="requirements-v3-reason-list">
+          {selection.reasons.map((reason) => (
+            <p key={reason}>{assessmentReason(reason)}</p>
+          ))}
+        </div>
+      )}
+      {selection.reasons.length > 0 && (
+        <details className="requirements-v3-fold">
+          <summary>技术诊断与原始状态码</summary>
+          <code>{selection.reasons.join("、")}</code>
+        </details>
       )}
       {selection.reports.map((report) => (
-        <div key={report.key}>
+        <div
+          key={report.key}
+          className="requirements-v3-report-excerpt"
+          data-report-excerpts={report.id}
+        >
+          <div className="requirements-v3-section-heading">
+            <strong>当前适用报告</strong>
+            <span className="requirements-v3-pill">{report.id}</span>
+          </div>
+          {reportExcerpt(report).map((excerpt) => (
+            <p key={excerpt.heading}>
+              <span className="requirements-v3-report-label">
+                {excerpt.heading}
+              </span>
+              {excerpt.text}
+            </p>
+          ))}
+          {!reportExcerpt(report).length && (
+            <p className="requirements-v3-meta">
+              原文片段未能提取，保留报告原文供核对。
+            </p>
+          )}
           <button
             className="text-link"
             onClick={() => context.openProduct(report.key)}
@@ -202,35 +1152,28 @@ export function ScopedConclusion({
           <SourceButton source={report.source} open={context.open} />
         </div>
       ))}
-      {!!selection.pending.length && (
-        <details>
+      {!!selection.historical.length && (
+        <details className="requirements-v3-fold">
           <summary>
-            未明确定位的历史/不完整报告 · {selection.pending.length}
+            历史记录 · {selection.historical.length}（本次尚不能采用）
           </summary>
-          {selection.pending.map((i) => (
-            <button
-              className="text-link"
-              key={i.key}
-              onClick={() => context.openProduct(i.key)}
-            >
-              {i.id}
-            </button>
+          {selection.historical.map((i) => (
+            <div key={i.key} className="requirements-v3-history-row">
+              <button
+                className="text-link"
+                onClick={() => context.openProduct(i.key)}
+              >
+                {i.id} · {i.title}
+              </button>
+              <OriginalAssessment report={i} />
+            </div>
           ))}
         </details>
       )}
-      {!!selection.historical.length && (
-        <details>
-          <summary>已替代报告 · {selection.historical.length}</summary>
-          {selection.historical.map((i) => (
-            <button
-              className="text-link"
-              key={i.key}
-              onClick={() => context.openProduct(i.key)}
-            >
-              {i.id}
-            </button>
-          ))}
-        </details>
+      {!subject && (
+        <p className="requirements-v3-meta">
+          选择“交付记录”后，当前条目的范围化报告会在这里显示；不会自动采用最新报告。
+        </p>
       )}
     </section>
   );
@@ -302,6 +1245,13 @@ export function OverviewV3({
       )
       .map((relation) => relation.link.target)
       .filter((value, position, values) => values.indexOf(value) === position);
+    const childCount = product.relations.filter(
+      (relation) =>
+        relation.targetKey === item.key &&
+        relation.link.relation === "part_of" &&
+        relation.link.state === "active" &&
+        relation.resolution === "resolved",
+    ).length;
     const percentages = total
       ? {
           completed: (counts.completed / total) * 100,
@@ -374,6 +1324,16 @@ export function OverviewV3({
             <span>查看关联 Task</span>
             <span aria-hidden="true">↗</span>
           </button>
+          {childCount > 0 && (
+            <button
+              className="overview-route-link"
+              aria-label={`展开子需求 · ${item.id}`}
+              onClick={() => context.openProduct(item.key)}
+            >
+              <span>展开子需求</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+          )}
         </div>
       </article>
     );
@@ -502,561 +1462,792 @@ export function OverviewV3({
     </div>
   );
 }
-export function RequirementsV3({
-  selected,
-  select,
-  configure,
-  ...context
-}: ProductContext & {
-  selected?: string;
-  select: (key: string) => void;
-  configure: () => void;
-}) {
-  const product = context.snapshot.product;
-  const [state, setState] = useState<ViewState>(
-    () => stored.get(context.snapshot.projectId) || initial(),
-  );
-  const current = useRef(state);
-  current.current = state;
-  const update = (value: Partial<ViewState>) =>
-    setState((s) => ({ ...s, ...value }));
-  useEffect(() => {
-    stored.set(context.snapshot.projectId, state);
-  }, [state, context.snapshot.projectId]);
-  useEffect(() => {
-    const container = navigationScrollContainer();
-    if (container) container.scrollTop = current.current.scroll;
-    return () => {
-      stored.set(context.snapshot.projectId, {
-        ...current.current,
-        scroll: container?.scrollTop || 0,
-      });
-    };
-  }, [context.snapshot.projectId]);
-  if (!product?.items.length)
-    return (
-      <ProductStatusPanel
-        product={product}
-        navigation={context.snapshot.navigation}
-        open={context.open}
-        configure={configure}
-      />
-    );
-  const model = productView(product);
-  const goal =
-    product.items.find((i) => i.key === state.goal && i.usable) ||
-    (!state.goal ? model.rootGoal : undefined);
-  const subject = state.subject
-    ? (JSON.parse(state.subject) as Subject)
-    : undefined;
-  const item = product.items.find((i) => i.key === selected);
-  const scopeKey = (target: ProductItem) =>
-    JSON.stringify([target.type === "goal" ? target.id : goal?.id, target.id]);
-  const reqs = goalRequirements(product, goal?.key).filter(
-    (i) => i.metadata.scope === "current",
-  );
-  const matches = reqs.filter((i) => {
-    const conclusion = selectAssessment(
-      product,
-      i.id,
-      goal?.id || "",
-      subject,
-      state.scope[scopeKey(i)],
-    ).conclusion;
-    return (
-      `${i.id} ${i.title} ${i.body}`
-        .toLowerCase()
-        .includes(state.query.trim().toLowerCase()) &&
-      (state.filter === "all" ||
-        (state.filter === "gaps"
-          ? ["not-satisfied", "partially-satisfied"].includes(conclusion)
-          : conclusion === "undetermined"))
-    );
-  });
-  const filtered = Boolean(state.query.trim()) || state.filter !== "all";
-  const reveal = new Set(filtered ? matches.map((i) => i.key) : []);
-  if (item && reqs.some((i) => i.key === item.key)) reveal.add(item.key);
-  const hierarchy = requirementHierarchy(
-    product,
-    reqs,
-    new Set(state.expanded),
-    reveal,
-    filtered,
-  );
-  const keys = new Set(hierarchy.visible.map((i) => i.key));
-  if (goal) keys.add(goal.key);
-  if (model.rootGoal) keys.add(model.rootGoal.key);
-  // Add only necessary ancestors. No duplicate requirement identity in a multi-parent graph.
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const r of model.relations)
-      if (
-        keys.has(r.ownerKey) &&
-        r.targetKey &&
-        ["part_of", "supports"].includes(r.link.relation) &&
-        !keys.has(r.targetKey)
-      ) {
-        keys.add(r.targetKey);
-        changed = true;
-      }
+
+type ProductData = NonNullable<ProductContext["snapshot"]["product"]>;
+
+function bindingsForItem(product: ProductData, item: ProductItem) {
+  if (item.type === "requirement") return requirementBindings(product, item);
+  const owners = new Set([item.key]);
+  if (item.type === "goal") {
+    for (const child of goalRequirements(product, item.key))
+      owners.add(child.key);
   }
-  const selectedDependencies =
-    state.dependencies && item
-      ? model.relations.filter(
-          (r) =>
-            r.link.relation === "depends_on" &&
-            (r.ownerKey === item.key || r.targetKey === item.key),
-        )
-      : [];
-  selectedDependencies.forEach((r) => {
-    keys.add(r.ownerKey);
-    if (r.targetKey) keys.add(r.targetKey);
+  const seen = new Set<string>();
+  return product.bindings.filter((binding) => {
+    if (!owners.has(binding.ownerKey) || binding.binding.state !== "active")
+      return false;
+    if (seen.has(binding.key)) return false;
+    seen.add(binding.key);
+    return true;
   });
-  const visible = [
-    ...product.items.filter(
-      (i) => i.usable && i.type === "goal" && keys.has(i.key),
-    ),
-    ...model.registered,
-    ...model.unordered,
-    ...product.items.filter((i) => i.usable && i.type === "module"),
-  ].filter(
-    (i, index, array) =>
-      keys.has(i.key) && array.findIndex((x) => x.key === i.key) === index,
-  );
-  const structure = model.relations.filter(
-    (r) =>
-      r.targetKey &&
-      keys.has(r.ownerKey) &&
-      keys.has(r.targetKey) &&
-      ["part_of", "supports"].includes(r.link.relation),
-  );
-  const depth = new Map(visible.map((i) => [i.key, i.type === "goal" ? 0 : 1]));
-  for (let pass = 0; pass < visible.length; pass++) {
-    let moved = false;
-    for (const r of structure) {
-      const value = Math.min(
-        visible.length,
-        (depth.get(r.targetKey!) || 0) + 1,
-      );
-      if ((depth.get(r.ownerKey) || 0) < value) {
-        depth.set(r.ownerKey, value);
-        moved = true;
+}
+
+type RequirementTaskRow = {
+  key: string;
+  task?: Task;
+  bindings: ProductBindingView[];
+  label: string;
+};
+
+function taskRowsForSnapshot(
+  snapshot: ProductContext["snapshot"],
+  item: ProductItem,
+): RequirementTaskRow[] {
+  const product = snapshot.product!;
+  const rows = new Map<string, RequirementTaskRow>();
+  for (const binding of bindingsForItem(product, item)) {
+    const taskIds = binding.match.taskIds;
+    if (!taskIds.length) {
+      const key = `binding:${binding.key}`;
+      rows.set(key, {
+        key,
+        bindings: [binding],
+        label:
+          binding.match.task.label ||
+          binding.match.task.task_id ||
+          "身份未确认的 Task",
+      });
+      continue;
+    }
+    for (const taskId of taskIds) {
+      const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
+      const key = task
+        ? `task:${task.realTaskId || task.id}`
+        : `binding:${binding.key}:${taskId}`;
+      const row = rows.get(key);
+      if (row) {
+        if (!row.bindings.some((entry) => entry.key === binding.key))
+          row.bindings.push(binding);
+      } else {
+        rows.set(key, {
+          key,
+          task,
+          bindings: [binding],
+          label:
+            task?.title ||
+            task?.number ||
+            binding.match.task.label ||
+            binding.match.task.task_id ||
+            "身份未确认的 Task",
+        });
       }
     }
-    if (!moved) break;
   }
-  const positions = new Map<number, number>();
-  const nodes: Node[] = visible.map((i) => {
-    const d = depth.get(i.key) || 0,
-      column = positions.get(d) || 0;
-    positions.set(d, column + 1);
-    const evaluationGoal = assessmentGoal(i, goal || undefined);
-    const conclusion = evaluationGoal
-      ? selectAssessment(
-          product,
-          i.id,
-          evaluationGoal.id,
-          subject,
-          state.scope[scopeKey(i)],
-        )
-      : undefined;
-    const childCount = hierarchy.children.get(i.key)?.length || 0;
-    const expanded = state.expanded.includes(i.key);
-    return {
-      id: i.key,
-      position: { x: column * 285, y: d * 185 },
-      data: {
-        label: (
-          <div>
-            <button
-              className="goal-graph-node"
-              data-node-id={i.id}
-              data-node-conclusion={
-                i.type === "module"
-                  ? undefined
-                  : conclusion?.conclusion || "undetermined"
-              }
-              data-node-goal={evaluationGoal?.id}
-              data-node-scope={conclusion?.scopeId}
-              onClick={() => select(i.key)}
-            >
-              <small>
-                {i.type === "goal"
-                  ? "目标"
-                  : i.type === "module"
-                    ? "模块 / 分类"
-                    : "需求"}{" "}
-                · {i.id}
-                {!matches.includes(i) && i.type === "requirement"
-                  ? " · 上下文"
-                  : ""}
-              </small>
-              <strong>{i.title}</strong>
-              <span>
-                {i.type === "module"
-                  ? "分类节点 · 不评估达成"
-                  : conclusion
-                    ? conclusionLabels[conclusion.conclusion]
-                    : "尚未判定 · 未明确所选目标"}
-              </span>
-            </button>
-            {!!childCount && (
-              <button
-                className="goal-graph-expand nodrag"
-                aria-label={`${expanded ? "收起" : "展开"}子需求 · ${i.id}`}
-                aria-expanded={expanded}
-                onClick={() =>
-                  update({
-                    expanded: expanded
-                      ? state.expanded.filter((key) => key !== i.key)
-                      : [...state.expanded, i.key],
-                  })
-                }
-              >
-                {expanded ? "收起" : "展开"}已登记子要求 · {childCount}
-              </button>
-            )}
-          </div>
-        ),
-      },
-      style: {
-        width: 255,
-        border: i.key === selected ? "2px solid #d18449" : "1px solid #bbb",
-        padding: 0,
-      },
-    };
-  });
-  const edges: Edge[] = [...structure, ...selectedDependencies].map((r) => ({
-    id: r.key,
-    source: r.targetKey!,
-    target: r.ownerKey,
-    label:
-      r.link.relation === "part_of"
-        ? "组成 / 细化"
-        : r.link.relation === "supports"
-          ? "支撑"
-          : "依赖",
-    style:
-      r.link.relation === "depends_on"
-        ? { strokeDasharray: "5 4", stroke: "#d18449" }
-        : undefined,
-  }));
-  const history = item
-    ? product.items.filter(
-        (i) =>
-          i.type === "change" &&
-          i.metadata.deltas?.some((d) => d.target === item.id),
-      )
-    : [];
-  const explanation = productStructure(product, goal?.key, item?.key);
-  const candidates = state.candidateAll
-    ? explanation.candidates
-    : explanation.relatedCandidates;
-  const candidateFocus = candidates.some(
-    (r) => r.ownerKey === state.candidateFocus,
-  )
-    ? state.candidateFocus
-    : candidates[0]?.ownerKey;
-  const candidateGraph =
-    state.panel === "candidates"
-      ? buildProductGraph(context.snapshot)
-      : undefined;
-  if (candidateGraph) {
-    const candidateKeys = new Set(candidates.map((r) => `link:${r.key}`));
-    candidateGraph.relations = candidateGraph.relations.filter((r) =>
-      candidateKeys.has(r.id),
-    );
-  }
+  return [...rows.values()];
+}
+
+function taskLifecycle(row: RequirementTaskRow) {
+  if (row.task?.runtimeLifecycle)
+    return lifecycleLabels[row.task.runtimeLifecycle];
+  return row.task ? "状态待核对" : "身份待核对";
+}
+
+function taskMatchesFilter(
+  row: RequirementTaskRow,
+  filter: ViewState["taskFilter"],
+) {
+  if (filter === "all") return true;
+  return filter === "active"
+    ? row.task?.runtimeLifecycle === "active"
+    : row.task?.runtimeLifecycle === "closed";
+}
+
+function productItemTitle(product: ProductData, key: string) {
+  return product.items.find((item) => item.key === key)?.title || "";
+}
+
+function TaskReadingPanel({
+  item,
+  context,
+  filter,
+  setFilter,
+}: {
+  item: ProductItem;
+  context: ProductContext;
+  filter: ViewState["taskFilter"];
+  setFilter: (filter: ViewState["taskFilter"]) => void;
+}) {
+  const rows = taskRowsForSnapshot(context.snapshot, item);
+  const visible = rows.filter((row) => taskMatchesFilter(row, filter));
+  const runtime = context.snapshot.runtime;
+  const sourceText = runtime
+    ? runtime.source === "file-snapshot"
+      ? "Task 使用文件快照"
+      : runtime.source === "runtime-query"
+        ? "Task 使用 Runtime 只读查询"
+        : "Task 来源暂不可用"
+    : "Task 来源与新鲜度待核对";
   return (
-    <div className="product-page">
-      <h2>目标与需求图</h2>
-      {selected && !item && (
-        <p role="status">
-          所选条目已退出本次范围；请在当前图或历史入口重新选择。
+    <div className="requirements-v3-panel-content">
+      <section className="requirements-v3-section">
+        <div className="requirements-v3-section-heading">
+          <h3>承接这部分要求的工作</h3>
+          <span className="requirements-v3-meta">{rows.length} 个去重身份</span>
+        </div>
+        <p className="requirements-v3-note">
+          {sourceText}
+          。关联有效与任务正在进行是两件事；未关联也不表示这部分功能尚未实现。
         </p>
-      )}
-      <div className="product-filters">
-        <label>
-          所选目标
-          <select
-            aria-label="所选目标"
-            value={goal?.key || ""}
-            onChange={(e) => update({ goal: e.target.value })}
-          >
-            <option value="">
-              {model.rootGoal ? "项目总目标" : "总目标未明确"}
-            </option>
-            {product.items
-              .filter((i) => i.usable && i.type === "goal")
-              .map((i) => (
-                <option key={i.key} value={i.key}>
-                  {i.id} · {i.title}
-                </option>
-              ))}
-          </select>
-        </label>
-        <SubjectPicker
-          product={product}
-          value={state.subject}
-          set={(s) => update({ subject: s })}
-        />
-        <label>
-          结论筛选
-          <select
-            aria-label="结论筛选"
-            value={state.filter}
-            onChange={(e) => update({ filter: e.target.value })}
-          >
-            <option value="all">全部</option>
-            <option value="gaps">未满足与部分满足</option>
-            <option value="unknown">尚未判定</option>
-          </select>
-        </label>
-        <input
-          aria-label="搜索需求图"
-          placeholder="定位需求"
-          value={state.query}
-          onChange={(e) => update({ query: e.target.value })}
-        />
-      </div>
-      {model.rootReason && (
-        <p role="status">{model.rootReason} · 可读目标与需求继续保留</p>
-      )}
-      <section className="product-structure-note" aria-label="当前结构说明">
-        {(explanation.currentUnlinked.length > 0 ||
-          explanation.relatedCandidates.length > 0 ||
-          explanation.incomplete) && (
-          <p>
-            本次已读取内容{explanation.incomplete ? "（存在未读范围）" : ""}：
-            {goal
-              ? `${explanation.currentUnlinked.length} 个当前需求未通过声明路径连入 ${goal.id}`
-              : "未明确所选目标，暂不判定目标归属"}
-            ； 当前目标 / 选定条目相关候选结构关系{" "}
-            {explanation.relatedCandidates.length} 条。
-          </p>
+        <div
+          className="requirements-v3-segmented"
+          role="group"
+          aria-label="Task 筛选"
+        >
+          {(
+            [
+              ["all", `全部 ${rows.length}`],
+              ["active", "进行中"],
+              ["closed", "已关闭"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={filter === value ? "active" : undefined}
+              onClick={() => setFilter(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {visible.length ? (
+          <div className="requirements-v3-task-list">
+            {visible.map((row) => {
+              const owners = [
+                ...new Set(
+                  row.bindings
+                    .map((binding) =>
+                      productItemTitle(
+                        context.snapshot.product!,
+                        binding.ownerKey,
+                      ),
+                    )
+                    .filter(Boolean),
+                ),
+              ];
+              return (
+                <article className="requirements-v3-task-row" key={row.key}>
+                  <div className="requirements-v3-section-heading">
+                    {row.task ? (
+                      <button
+                        className="text-link"
+                        onClick={() => context.openTask(row.task!.id)}
+                      >
+                        {row.label}
+                      </button>
+                    ) : (
+                      <strong>{row.label}</strong>
+                    )}
+                    <span className="requirements-v3-pill requirements-v3-task-status">
+                      {taskLifecycle(row)}
+                    </span>
+                  </div>
+                  <small className="requirements-v3-meta">
+                    {row.task?.number ||
+                      row.task?.realTaskId ||
+                      "显示身份待核对"}
+                    {owners.length ? ` · 来自 ${owners.join("、")}` : ""}
+                  </small>
+                  <p>
+                    覆盖：
+                    {[
+                      ...new Set(
+                        row.bindings
+                          .map((binding) => binding.binding.coverage)
+                          .filter(Boolean),
+                      ),
+                    ].join("；") ||
+                      row.bindings[0]?.match.detail ||
+                      "覆盖范围待核对"}
+                  </p>
+                  {row.task && (
+                    <SourceButton
+                      source={row.task.source}
+                      open={context.open}
+                    />
+                  )}
+                  <details className="requirements-v3-fold">
+                    <summary>关联范围与来源 · {row.bindings.length}</summary>
+                    {row.bindings.map((binding) => (
+                      <div
+                        key={binding.key}
+                        className="requirements-v3-binding-detail"
+                      >
+                        <p>
+                          {productItemTitle(
+                            context.snapshot.product!,
+                            binding.ownerKey,
+                          ) || binding.ownerKey}
+                          ：{binding.binding.coverage}
+                        </p>
+                        <p className="requirements-v3-meta">
+                          {binding.match.detail}
+                        </p>
+                        <SourceButton
+                          source={
+                            context.snapshot.product!.items.find(
+                              (candidate) => candidate.key === binding.ownerKey,
+                            )?.source ||
+                            row.task?.source ||
+                            item.source
+                          }
+                          open={context.open}
+                        />
+                      </div>
+                    ))}
+                  </details>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="requirements-v3-empty">
+            <strong>{rows.length ? "该筛选下没有 Task" : "未关联 Task"}</strong>
+            <p>不能据此判断这部分功能尚未实现。</p>
+          </div>
         )}
-        <div className="product-inline">
-          <button
-            className="secondary"
-            aria-expanded={state.panel === "candidates"}
-            onClick={() =>
-              update({
-                panel: state.panel === "candidates" ? "" : "candidates",
-              })
-            }
-          >
-            查看候选关系
-          </button>
-          <button
-            className="secondary"
-            aria-expanded={state.panel === "unlinked"}
-            onClick={() =>
-              update({ panel: state.panel === "unlinked" ? "" : "unlinked" })
-            }
-          >
-            查看未连入需求
-          </button>
+      </section>
+    </div>
+  );
+}
+
+function ChildConclusion({
+  item,
+  goal,
+  subject,
+  scopeId,
+  product,
+}: {
+  item: ProductItem;
+  goal?: ProductItem;
+  subject?: Subject;
+  scopeId?: string;
+  product: ProductData;
+}) {
+  const selection = selectionFor(product, item, goal, subject, scopeId);
+  if (!subject || !selection) return null;
+  const label = selection.reasons.length
+    ? "待核对"
+    : conclusionLabels[selection.conclusion];
+  return (
+    <span
+      className={`requirements-v3-pill ${conclusionClass(selection.conclusion)}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function BrowseOnlyNotice() {
+  return (
+    <section className="requirements-v3-browse-note">
+      <strong>尚未选择交付记录</strong>
+      <p>
+        当前仍可浏览需求结构、行为和范围边界。选择一个已有交付记录后，才显示本对象下的范围化结果。
+      </p>
+    </section>
+  );
+}
+
+function RequirementOverviewPanel({
+  item,
+  goal,
+  subject,
+  scopeId,
+  context,
+  select,
+  chooseScope,
+  scopeFor,
+  openTab,
+}: {
+  item: ProductItem;
+  goal?: ProductItem;
+  subject?: Subject;
+  scopeId?: string;
+  context: ProductContext;
+  select: (key: string) => void;
+  chooseScope: (scope: string) => void;
+  scopeFor: (target: ProductItem) => string | undefined;
+  openTab: (tab: ViewState["tab"]) => void;
+}) {
+  const product = context.snapshot.product!;
+  const children = directChildren(product, item);
+  const points = acceptancePoints(item);
+  const isAssessable = ["goal", "requirement"].includes(item.type);
+  const taskCount = taskRowsForSnapshot(context.snapshot, item).length;
+  return (
+    <div className="requirements-v3-panel-content">
+      {isAssessable ? (
+        subject ? (
+          <ScopedConclusion
+            item={item}
+            goal={item.type === "goal" ? item : goal}
+            subject={subject}
+            scopeId={scopeId}
+            chooseScope={chooseScope}
+            context={context}
+          />
+        ) : (
+          <BrowseOnlyNotice />
+        )
+      ) : (
+        <section className="requirements-v3-section">
+          <div className="requirements-v3-section-heading">
+            <h3>分类节点</h3>
+            <span className="requirements-v3-pill">不计算达成</span>
+          </div>
+          <p>
+            该节点用于组织业务归属，不调用需求满足选择，也不为分类计算达成率。
+          </p>
+        </section>
+      )}
+      {children.length ? (
+        <section className="requirements-v3-section">
+          <div className="requirements-v3-section-heading">
+            <h3>包含的{item.type === "goal" ? "需求" : "能力"}</h3>
+            <span className="requirements-v3-meta">
+              {children.length} 项直接子需求
+            </span>
+          </div>
+          <div className="requirements-v3-child-list">
+            {children.map((child) => (
+              <button
+                key={child.key}
+                className="requirements-v3-child-row"
+                onClick={() => select(child.key)}
+              >
+                <span className="requirements-v3-child-copy">
+                  <strong>{child.title}</strong>
+                  <small>{businessSummary(child)}</small>
+                </span>
+                <span className="requirements-v3-child-meta">
+                  <ChildConclusion
+                    item={child}
+                    goal={goal}
+                    subject={subject}
+                    scopeId={scopeFor(child)}
+                    product={product}
+                  />
+                  <span aria-hidden="true">›</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="requirements-v3-section">
+          <div className="requirements-v3-section-heading">
+            <h3>具体要求</h3>
+            <span className="requirements-v3-meta">末级条目</span>
+          </div>
+          {points.length ? (
+            <ul className="requirements-v3-points">
+              {points.map((point, index) => (
+                <li key={index}>{point}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="requirements-v3-meta">
+              具体要求未能从当前章节单独提取，请在依据中查看完整原文。
+            </p>
+          )}
+        </section>
+      )}
+      <section className="requirements-v3-section requirements-v3-boundary">
+        <div className="requirements-v3-section-heading">
+          <h3>范围与重要边界</h3>
+        </div>
+        <p>{boundarySummary(item)}</p>
+      </section>
+      <div className="requirements-v3-tab-cta">
+        <span>关联 {taskCount} 个 Task</span>
+        <button className="text-link" onClick={() => openTab("tasks")}>
+          查看 Task →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EvidencePanel({
+  item,
+  goal,
+  subject,
+  scopeId,
+  context,
+  select,
+}: {
+  item: ProductItem;
+  goal?: ProductItem;
+  subject?: Subject;
+  scopeId?: string;
+  context: ProductContext;
+  select: (key: string) => void;
+}) {
+  const product = context.snapshot.product!;
+  const selection = selectionFor(product, item, goal, subject, scopeId);
+  const relations = product.relations.filter(
+    (relation) =>
+      relation.ownerKey === item.key || relation.targetKey === item.key,
+  );
+  const history = product.items.filter(
+    (candidate) =>
+      candidate.type === "change" &&
+      candidate.metadata.deltas?.some((delta) => delta.target === item.id),
+  );
+  const reportCards = selection?.reports || [];
+  return (
+    <div className="requirements-v3-panel-content">
+      <section className="requirements-v3-section">
+        <div className="requirements-v3-section-heading">
+          <h3>当前需求定义</h3>
+          <span className="requirements-v3-pill">原文</span>
+        </div>
+        <div className="requirements-v3-source-card">
+          <strong>{item.title}</strong>
+          <p>{businessSummary(item)}</p>
+          <p className="requirements-v3-meta">
+            {item.source.path} · 第 {item.source.line} 行起
+          </p>
+          <SourceButton source={item.source} open={context.open} />
         </div>
       </section>
-      {state.panel === "candidates" && (
-        <section className="product-structure-panel" aria-label="候选结构关系">
-          <h3>已记录候选结构关系 · {candidates.length} 条</h3>
-          <label>
-            <input
-              type="checkbox"
-              checked={state.candidateAll}
-              onChange={(e) => update({ candidateAll: e.target.checked })}
-            />{" "}
-            查看本次已读取内容中的全部候选
-          </label>
-          <p className="muted">
-            默认列出当前目标或选定条目相关候选；候选不进入正式图、Task
-            汇集或达成结论。已否定关系保留在条目关联历史。
+      <section className="requirements-v3-section">
+        <div className="requirements-v3-section-heading">
+          <h3>与本需求明确相关的交付记录</h3>
+          <span className="requirements-v3-meta">
+            {reportCards.length} 份当前报告
+          </span>
+        </div>
+        {!subject ? (
+          <div className="requirements-v3-legacy-note">
+            尚未选择交付记录。明确指向本需求的历史材料仍可通过原文与报告入口查看，但不会自动套用为当前结论。
+          </div>
+        ) : selection?.reasons.length && !reportCards.length ? (
+          <div className="requirements-v3-legacy-note">
+            {selection.reasons.map((reason) => (
+              <p key={reason}>{assessmentReason(reason)}</p>
+            ))}
+          </div>
+        ) : reportCards.length ? (
+          <div className="requirements-v3-report-list">
+            {reportCards.map((report) => (
+              <article className="requirements-v3-source-card" key={report.key}>
+                <div className="requirements-v3-section-heading">
+                  <button
+                    className="text-link"
+                    onClick={() => select(report.key)}
+                  >
+                    {report.title}
+                  </button>
+                  <span className="requirements-v3-pill">
+                    {
+                      conclusionLabels[
+                        report.metadata.conclusion || "undetermined"
+                      ]
+                    }
+                  </span>
+                </div>
+                <p>{subjectText(report.metadata.subject)}</p>
+                {reportExcerpt(report).map((excerpt) => (
+                  <p key={excerpt.heading}>
+                    <span className="requirements-v3-report-label">
+                      {excerpt.heading}
+                    </span>
+                    {excerpt.text}
+                  </p>
+                ))}
+                <SourceButton source={report.source} open={context.open} />
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="requirements-v3-meta">
+            当前对象和范围下暂无适用报告；这不等于没有任何历史成果。
           </p>
-          {!candidates.length && (
-            <p>本次范围未记录相关候选；可切换全部候选或查看条目来源。</p>
-          )}
-          <ul className="product-structure-list">
-            {candidates.map((r) => (
-              <li key={r.key}>
+        )}
+        {!!selection?.historical.length && (
+          <details className="requirements-v3-fold">
+            <summary>
+              历史记录 · {selection.historical.length}（本次尚不能采用）
+            </summary>
+            {selection.historical.map((report) => (
+              <div key={report.key} className="requirements-v3-history-row">
                 <button
                   className="text-link"
-                  onClick={() => update({ candidateFocus: r.ownerKey })}
+                  onClick={() => select(report.key)}
                 >
-                  {product.items.find((i) => i.key === r.ownerKey)?.id} →{" "}
-                  {r.link.target} · {r.link.relation}
+                  {report.id} · {report.title}
                 </button>
-                {r.resolution !== "resolved" && (
-                  <span>
-                    {" "}
-                    · 引用 / 方向 / 身份异常（{r.resolution}），仅查看依据
-                  </span>
-                )}
-              </li>
+                <OriginalAssessment report={report} />
+              </div>
             ))}
-          </ul>
-          {candidateGraph && candidateFocus && (
-            <ProductRelationPanel
-              key={candidateFocus}
-              snapshot={context.snapshot}
-              model={candidateGraph}
-              focus={candidateFocus}
-              open={context.open}
-              openTask={context.openTask}
-              openProduct={select}
-              hideUnresolved
-            />
-          )}
-        </section>
-      )}
-      {state.panel === "unlinked" && (
-        <section className="product-structure-panel" aria-label="未连入需求">
-          <h3>
-            未在所选目标声明路径中的可读需求 · {explanation.unlinked.length} 项
-          </h3>
-          <p className="muted">
-            仅针对本次已读取内容；没有声明路径不表示未实现。其他目标、非当前范围与结构未决分别保留。
-          </p>
-          <input
-            aria-label="搜索未连入需求"
-            placeholder="搜索 ID、标题或正文"
-            value={state.unlinkedQuery}
-            onChange={(e) => update({ unlinkedQuery: e.target.value })}
-          />
-          <ul className="product-structure-list">
-            {explanation.unlinked
-              .filter(({ item: i }) =>
-                `${i.id} ${i.title} ${i.body}`
-                  .toLowerCase()
-                  .includes(state.unlinkedQuery.toLowerCase()),
-              )
-              .map(({ item: i, reasons, otherGoals }) => (
-                <li key={i.key} data-unlinked-id={i.id}>
-                  <button className="text-link" onClick={() => select(i.key)}>
-                    {i.id} · {i.title}
-                  </button>
-                  <p>{reasons.join("；")}</p>
-                  {otherGoals.map((g) => (
-                    <button
-                      key={g.key}
-                      className="text-link"
-                      onClick={() => update({ goal: g.key })}
-                    >
-                      查看目标 · {g.id}
-                    </button>
-                  ))}
-                  <SourceButton source={i.source} open={context.open} />
-                </li>
-              ))}
-          </ul>
-        </section>
-      )}
-      <div className="goal-requirement-graph" style={{ height: 510 }}>
-        <ReactFlow
-          key={`${context.snapshot.id}:${state.goal}:${state.filter}:${state.query}:${state.subject}`}
-          nodes={nodes}
-          edges={edges}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          edgesReconnectable={false}
-          fitView
-          minZoom={0.25}
-        >
-          <Background />
-          <Controls showInteractive={false} />
-        </ReactFlow>
-      </div>
-      <p>
-        所选目标声明路径内 {reqs.length} 个当前需求；筛选命中 {matches.length}{" "}
-        个，当前显示 {hierarchy.visible.length}{" "}
-        个；展开与筛选保留必要祖先；未指定顺序入口使用 ID 定位顺序。
-      </p>
-      <details
-        open={state.navigationOpen}
-        onToggle={(event) => {
-          if (event.currentTarget.open !== state.navigationOpen)
-            update({ navigationOpen: event.currentTarget.open });
-        }}
-      >
-        <summary>搜索与条目导航（含历史/旧格式）</summary>
-        {product.items.map((i) => (
+          </details>
+        )}
+        {!!selection?.reasons.length && reportCards.length > 0 && (
+          <div className="requirements-v3-reason-list">
+            {selection.reasons.map((reason) => (
+              <p key={reason}>{assessmentReason(reason)}</p>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="requirements-v3-section">
+        <div className="requirements-v3-section-heading">
+          <h3>结构关系</h3>
           <button
-            key={i.key}
             className="text-link"
-            onClick={() => select(i.key)}
+            onClick={() => context.relations(item.key)}
           >
-            {i.id} · {i.title}
-            {i.metadata.scope === "retired" && " · 历史"}
+            查看局部关系图 →
           </button>
-        ))}
-      </details>
-      {item && (
-        <section className="product-selected-detail">
-          <button className="secondary" onClick={() => select("")}>
-            返回需求图
-          </button>
-          <label>
-            <input
-              type="checkbox"
-              checked={state.dependencies}
-              onChange={(e) => update({ dependencies: e.target.checked })}
-            />
-            展开所选需求局部依赖
-          </label>
-          {["requirement", "goal"].includes(item.type) && (
-            <ScopedConclusion
-              item={item}
-              goal={item.type === "goal" ? item : goal || undefined}
-              subject={subject}
-              scopeId={state.scope[scopeKey(item)]}
-              chooseScope={(s) =>
-                update({ scope: { ...state.scope, [scopeKey(item)]: s } })
-              }
-              context={context}
-            />
-          )}
-          <ProductDetail item={item} context={context} />
-          <details>
-            <summary>演变历史 · {history.length}</summary>
-            {history.map((h) => (
+        </div>
+        <p>
+          当前条目有 {relations.length}{" "}
+          条已读取关系。关系来源、方向和未决状态仅作为依据，不参与 Task
+          汇集或达成推导。
+        </p>
+        {relations.some(
+          (relation) =>
+            relation.resolution !== "resolved" ||
+            relation.link.state !== "active",
+        ) && (
+          <p className="requirements-v3-warning">
+            存在需要核对的关系来源或方向；请打开局部关系图查看具体记录。
+          </p>
+        )}
+      </section>
+      <section className="requirements-v3-section">
+        <div className="requirements-v3-section-heading">
+          <h3>历史变更</h3>
+          <span className="requirements-v3-meta">{history.length} 条记录</span>
+        </div>
+        {history.length ? (
+          <div className="requirements-v3-history-list">
+            {history.map((entry) => (
               <button
-                key={h.key}
+                key={entry.key}
                 className="text-link"
-                onClick={() => select(h.key)}
+                onClick={() => select(entry.key)}
               >
-                {h.id} · {h.title}
+                {entry.id} · {entry.title}
               </button>
             ))}
-            {product.relations
-              .filter(
-                (r) =>
-                  ["replaces", "derived_from"].includes(r.link.relation) &&
-                  (r.ownerKey === item.key || r.targetKey === item.key),
-              )
-              .map((r) => (
-                <p key={r.key}>
-                  {r.link.relation} · {r.link.target}{" "}
-                  <SourceButton source={item.source} open={context.open} />
-                </p>
-              ))}
-          </details>
-        </section>
-      )}
-      <details>
-        <summary>读取与结构诊断</summary>
-        <ProductStatusPanel
-          product={product}
-          navigation={context.snapshot.navigation}
-          open={context.open}
-          configure={configure}
-        />
-        <ul>
-          {model.diagnostics.map((d) => (
-            <li key={d}>{d}</li>
-          ))}
-        </ul>
-      </details>
+          </div>
+        ) : (
+          <p className="requirements-v3-meta">
+            没有读取到直接指向本条目的变化记录。
+          </p>
+        )}
+      </section>
     </div>
+  );
+}
+
+function OtherItemOverview({
+  item,
+  context,
+}: {
+  item: ProductItem;
+  context: ProductContext;
+}) {
+  return (
+    <div className="requirements-v3-panel-content">
+      <section className="requirements-v3-section">
+        <div className="requirements-v3-section-heading">
+          <h3>资料记录</h3>
+          {!item.usable && (
+            <span className="requirements-v3-pill requirements-v3-gap">
+              结构不可用 · 原文保留
+            </span>
+          )}
+        </div>
+        <p>{businessSummary(item)}</p>
+        <p className="requirements-v3-meta">
+          这是可核对的资料条目，不自动改变当前需求的结论。
+        </p>
+        <SourceButton source={item.source} open={context.open} />
+      </section>
+    </div>
+  );
+}
+
+function RequirementsInspector({
+  item,
+  goal,
+  subject,
+  scopeId,
+  context,
+  select,
+  chooseScope,
+  scopeFor,
+  tab,
+  setTab,
+  taskFilter,
+  setTaskFilter,
+}: {
+  item: ProductItem;
+  goal?: ProductItem;
+  subject?: Subject;
+  scopeId?: string;
+  context: ProductContext;
+  select: (key: string) => void;
+  chooseScope: (scope: string) => void;
+  scopeFor: (target: ProductItem) => string | undefined;
+  tab: ViewState["tab"];
+  setTab: (tab: ViewState["tab"]) => void;
+  taskFilter: ViewState["taskFilter"];
+  setTaskFilter: (filter: ViewState["taskFilter"]) => void;
+}) {
+  const product = context.snapshot.product!;
+  const path = itemPath(product, item);
+  const labels = [
+    ["overview", "概况"],
+    ["tasks", "Task"],
+    ["evidence", "依据"],
+  ] as const;
+  const isBusiness = ["goal", "requirement", "module"].includes(item.type);
+  return (
+    <aside
+      className="requirements-v3-inspector"
+      data-product-id={item.id}
+      aria-label="所选需求详情"
+    >
+      <header className="requirements-v3-inspector-head">
+        <div className="requirements-v3-between">
+          <nav className="requirements-v3-path" aria-label="当前需求路径">
+            {path.slice(0, -1).map((ancestor) => (
+              <span key={ancestor.key}>
+                <button
+                  className="text-link"
+                  onClick={() => select(ancestor.key)}
+                >
+                  {ancestor.title}
+                </button>
+                <span aria-hidden="true">›</span>
+              </span>
+            ))}
+            <span>
+              {item.type === "goal"
+                ? "目标"
+                : item.type === "module"
+                  ? "分类"
+                  : "需求"}
+            </span>
+          </nav>
+          <button
+            className="requirements-v3-close"
+            aria-label="关闭详情"
+            onClick={() => select("")}
+          >
+            ×
+          </button>
+        </div>
+        <h2>{item.title}</h2>
+        <div className="requirements-v3-id-line">
+          {item.id} · {item.metadata.scope || "当前范围"}
+          {!item.usable && " · 原文保留"}
+        </div>
+        <p className="requirements-v3-description">{businessSummary(item)}</p>
+      </header>
+      <div
+        className="requirements-v3-tabs"
+        role="tablist"
+        aria-label="需求详情分类"
+      >
+        {labels.map(([value, label], index) => {
+          const active = tab === value;
+          return (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={active}
+              aria-controls="requirements-v3-panel"
+              className={active ? "active" : undefined}
+              tabIndex={active ? 0 : -1}
+              onClick={() => setTab(value)}
+              onKeyDown={(event) => {
+                if (
+                  !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                event.preventDefault();
+                const next =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? labels.length - 1
+                      : (index +
+                          (event.key === "ArrowRight" ? 1 : -1) +
+                          labels.length) %
+                        labels.length;
+                setTab(labels[next][0]);
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <div
+        id="requirements-v3-panel"
+        className="requirements-v3-panel"
+        role="tabpanel"
+      >
+        {tab === "overview" && isBusiness && (
+          <RequirementOverviewPanel
+            item={item}
+            goal={goal}
+            subject={subject}
+            scopeId={scopeId}
+            context={context}
+            select={select}
+            chooseScope={chooseScope}
+            scopeFor={scopeFor}
+            openTab={setTab}
+          />
+        )}
+        {tab === "overview" && !isBusiness && (
+          <OtherItemOverview item={item} context={context} />
+        )}
+        {tab === "tasks" && (
+          <TaskReadingPanel
+            item={item}
+            context={context}
+            filter={taskFilter}
+            setFilter={setTaskFilter}
+          />
+        )}
+        {tab === "evidence" && (
+          <EvidencePanel
+            item={item}
+            goal={goal}
+            subject={subject}
+            scopeId={scopeId}
+            context={context}
+            select={select}
+          />
+        )}
+        <details className="requirements-v3-advanced-detail">
+          <summary>完整原文、关系与原始字段</summary>
+          <ProductDetail item={item} context={context} />
+        </details>
+      </div>
+      <footer className="requirements-v3-inspector-footer">
+        <span>内容来自已读取需求、Task 与报告记录</span>
+        <span className="requirements-v3-footer-actions">
+          <button className="text-link" onClick={() => select("")}>
+            返回需求图
+          </button>
+          <button
+            className="text-link"
+            onClick={() => context.open(item.source)}
+          >
+            查看完整原文 ↗
+          </button>
+        </span>
+      </footer>
+    </aside>
   );
 }

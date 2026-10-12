@@ -587,6 +587,7 @@ export function ProductRelationPanel({
   open,
   openTask,
   openProduct,
+  hideUnresolved = false,
 }: {
   snapshot: Snapshot;
   model: ProductGraphModel;
@@ -594,6 +595,7 @@ export function ProductRelationPanel({
   open: OpenSource;
   openTask: (id: string) => void;
   openProduct: (key: string, workItemId?: string) => void;
+  hideUnresolved?: boolean;
 }) {
   const [showDismissed, setShowDismissed] = useState(false);
   const [highlight, setHighlight] = useState<string>();
@@ -605,11 +607,18 @@ export function ProductRelationPanel({
     (relation) => relation.state === "dismissed",
   ).length;
   const neighborIds = [
-    ...new Set(visible.flatMap((relation) => [relation.from, relation.to])),
+    ...new Set(
+      visible
+        .filter((r) => !hideUnresolved || r.resolution === "resolved")
+        .flatMap((relation) => [relation.from, relation.to]),
+    ),
   ].filter((id) => id !== focus);
   const included = new Set([focus, ...neighborIds.slice(0, 12)]);
   const graphRelations = visible.filter(
-    (relation) => included.has(relation.from) && included.has(relation.to),
+    (relation) =>
+      (!hideUnresolved || relation.resolution === "resolved") &&
+      included.has(relation.from) &&
+      included.has(relation.to),
   );
   function navigate(id: string) {
     const node = model.nodes.get(id);

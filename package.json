@@ -21,7 +21,8 @@
     "test:browser:product": "node tests/product-browser.mjs",
     "test:browser:scoped": "node tests/scoped-browser.mjs && node tests/scoped-degradation-browser.mjs",
     "test:browser:p2": "node tests/p2-regression-browser.mjs",
-    "test:browser:full-scope": "node tests/full-scope-browser.mjs"
+    "test:browser:full-scope": "node tests/full-scope-browser.mjs",
+    "test:browser:structure": "node tests/structure-browser.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.5",

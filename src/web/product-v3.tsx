@@ -18,6 +18,9 @@ import {
   type Subject,
 } from "../shared/product-view";
 import { overviewTaskStates } from "../shared/overview-model";
+import { requirementHierarchy } from "../shared/product-hierarchy";
+import { assessmentGoal, productStructure } from "../shared/product-structure";
+import { buildProductGraph, ProductRelationPanel } from "./product-graph";
 import {
   ProductDetail,
   ProductStatusPanel,
@@ -32,6 +35,12 @@ type ViewState = {
   query: string;
   scope: Record<string, string>;
   dependencies: boolean;
+  expanded: string[];
+  panel: "" | "candidates" | "unlinked";
+  candidateAll: boolean;
+  candidateFocus: string;
+  unlinkedQuery: string;
+  navigationOpen: boolean;
   scroll: number;
 };
 const stored = new Map<string, ViewState>();
@@ -42,6 +51,12 @@ const initial = (): ViewState => ({
   query: "",
   scope: {},
   dependencies: false,
+  expanded: [],
+  panel: "",
+  candidateAll: false,
+  candidateFocus: "",
+  unlinkedQuery: "",
+  navigationOpen: false,
   scroll: 0,
 });
 function SubjectPicker({
@@ -551,14 +566,24 @@ export function RequirementsV3({
     return (
       `${i.id} ${i.title} ${i.body}`
         .toLowerCase()
-        .includes(state.query.toLowerCase()) &&
+        .includes(state.query.trim().toLowerCase()) &&
       (state.filter === "all" ||
         (state.filter === "gaps"
           ? ["not-satisfied", "partially-satisfied"].includes(conclusion)
           : conclusion === "undetermined"))
     );
   });
-  const keys = new Set(matches.map((i) => i.key));
+  const filtered = Boolean(state.query.trim()) || state.filter !== "all";
+  const reveal = new Set(filtered ? matches.map((i) => i.key) : []);
+  if (item && reqs.some((i) => i.key === item.key)) reveal.add(item.key);
+  const hierarchy = requirementHierarchy(
+    product,
+    reqs,
+    new Set(state.expanded),
+    reveal,
+    filtered,
+  );
+  const keys = new Set(hierarchy.visible.map((i) => i.key));
   if (goal) keys.add(goal.key);
   if (model.rootGoal) keys.add(model.rootGoal.key);
   // Add only necessary ancestors. No duplicate requirement identity in a multi-parent graph.
@@ -626,32 +651,73 @@ export function RequirementsV3({
     const d = depth.get(i.key) || 0,
       column = positions.get(d) || 0;
     positions.set(d, column + 1);
-    const conclusion = selectAssessment(
-      product,
-      i.id,
-      goal?.id || "",
-      subject,
-      state.scope[scopeKey(i)],
-    );
+    const evaluationGoal = assessmentGoal(i, goal || undefined);
+    const conclusion = evaluationGoal
+      ? selectAssessment(
+          product,
+          i.id,
+          evaluationGoal.id,
+          subject,
+          state.scope[scopeKey(i)],
+        )
+      : undefined;
+    const childCount = hierarchy.children.get(i.key)?.length || 0;
+    const expanded = state.expanded.includes(i.key);
     return {
       id: i.key,
-      position: { x: column * 285, y: d * 145 },
+      position: { x: column * 285, y: d * 185 },
       data: {
         label: (
-          <button
-            className="goal-graph-node"
-            data-node-id={i.id}
-            onClick={() => select(i.key)}
-          >
-            <small>
-              {i.type === "goal" ? "目标" : "需求"} · {i.id}
-              {!matches.includes(i) && i.type === "requirement"
-                ? " · 上下文"
-                : ""}
-            </small>
-            <strong>{i.title}</strong>
-            <span>{conclusionLabels[conclusion.conclusion]}</span>
-          </button>
+          <div>
+            <button
+              className="goal-graph-node"
+              data-node-id={i.id}
+              data-node-conclusion={
+                i.type === "module"
+                  ? undefined
+                  : conclusion?.conclusion || "undetermined"
+              }
+              data-node-goal={evaluationGoal?.id}
+              data-node-scope={conclusion?.scopeId}
+              onClick={() => select(i.key)}
+            >
+              <small>
+                {i.type === "goal"
+                  ? "目标"
+                  : i.type === "module"
+                    ? "模块 / 分类"
+                    : "需求"}{" "}
+                · {i.id}
+                {!matches.includes(i) && i.type === "requirement"
+                  ? " · 上下文"
+                  : ""}
+              </small>
+              <strong>{i.title}</strong>
+              <span>
+                {i.type === "module"
+                  ? "分类节点 · 不评估达成"
+                  : conclusion
+                    ? conclusionLabels[conclusion.conclusion]
+                    : "尚未判定 · 未明确所选目标"}
+              </span>
+            </button>
+            {!!childCount && (
+              <button
+                className="goal-graph-expand nodrag"
+                aria-label={`${expanded ? "收起" : "展开"}子需求 · ${i.id}`}
+                aria-expanded={expanded}
+                onClick={() =>
+                  update({
+                    expanded: expanded
+                      ? state.expanded.filter((key) => key !== i.key)
+                      : [...state.expanded, i.key],
+                  })
+                }
+              >
+                {expanded ? "收起" : "展开"}已登记子要求 · {childCount}
+              </button>
+            )}
+          </div>
         ),
       },
       style: {
@@ -683,6 +749,25 @@ export function RequirementsV3({
           i.metadata.deltas?.some((d) => d.target === item.id),
       )
     : [];
+  const explanation = productStructure(product, goal?.key, item?.key);
+  const candidates = state.candidateAll
+    ? explanation.candidates
+    : explanation.relatedCandidates;
+  const candidateFocus = candidates.some(
+    (r) => r.ownerKey === state.candidateFocus,
+  )
+    ? state.candidateFocus
+    : candidates[0]?.ownerKey;
+  const candidateGraph =
+    state.panel === "candidates"
+      ? buildProductGraph(context.snapshot)
+      : undefined;
+  if (candidateGraph) {
+    const candidateKeys = new Set(candidates.map((r) => `link:${r.key}`));
+    candidateGraph.relations = candidateGraph.relations.filter((r) =>
+      candidateKeys.has(r.id),
+    );
+  }
   return (
     <div className="product-page">
       <h2>目标与需求图</h2>
@@ -738,6 +823,135 @@ export function RequirementsV3({
       {model.rootReason && (
         <p role="status">{model.rootReason} · 可读目标与需求继续保留</p>
       )}
+      <section className="product-structure-note" aria-label="当前结构说明">
+        {(explanation.currentUnlinked.length > 0 ||
+          explanation.relatedCandidates.length > 0 ||
+          explanation.incomplete) && (
+          <p>
+            本次已读取内容{explanation.incomplete ? "（存在未读范围）" : ""}：
+            {goal
+              ? `${explanation.currentUnlinked.length} 个当前需求未通过声明路径连入 ${goal.id}`
+              : "未明确所选目标，暂不判定目标归属"}
+            ； 当前目标 / 选定条目相关候选结构关系{" "}
+            {explanation.relatedCandidates.length} 条。
+          </p>
+        )}
+        <div className="product-inline">
+          <button
+            className="secondary"
+            aria-expanded={state.panel === "candidates"}
+            onClick={() =>
+              update({
+                panel: state.panel === "candidates" ? "" : "candidates",
+              })
+            }
+          >
+            查看候选关系
+          </button>
+          <button
+            className="secondary"
+            aria-expanded={state.panel === "unlinked"}
+            onClick={() =>
+              update({ panel: state.panel === "unlinked" ? "" : "unlinked" })
+            }
+          >
+            查看未连入需求
+          </button>
+        </div>
+      </section>
+      {state.panel === "candidates" && (
+        <section className="product-structure-panel" aria-label="候选结构关系">
+          <h3>已记录候选结构关系 · {candidates.length} 条</h3>
+          <label>
+            <input
+              type="checkbox"
+              checked={state.candidateAll}
+              onChange={(e) => update({ candidateAll: e.target.checked })}
+            />{" "}
+            查看本次已读取内容中的全部候选
+          </label>
+          <p className="muted">
+            默认列出当前目标或选定条目相关候选；候选不进入正式图、Task
+            汇集或达成结论。已否定关系保留在条目关联历史。
+          </p>
+          {!candidates.length && (
+            <p>本次范围未记录相关候选；可切换全部候选或查看条目来源。</p>
+          )}
+          <ul className="product-structure-list">
+            {candidates.map((r) => (
+              <li key={r.key}>
+                <button
+                  className="text-link"
+                  onClick={() => update({ candidateFocus: r.ownerKey })}
+                >
+                  {product.items.find((i) => i.key === r.ownerKey)?.id} →{" "}
+                  {r.link.target} · {r.link.relation}
+                </button>
+                {r.resolution !== "resolved" && (
+                  <span>
+                    {" "}
+                    · 引用 / 方向 / 身份异常（{r.resolution}），仅查看依据
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {candidateGraph && candidateFocus && (
+            <ProductRelationPanel
+              key={candidateFocus}
+              snapshot={context.snapshot}
+              model={candidateGraph}
+              focus={candidateFocus}
+              open={context.open}
+              openTask={context.openTask}
+              openProduct={select}
+              hideUnresolved
+            />
+          )}
+        </section>
+      )}
+      {state.panel === "unlinked" && (
+        <section className="product-structure-panel" aria-label="未连入需求">
+          <h3>
+            未在所选目标声明路径中的可读需求 · {explanation.unlinked.length} 项
+          </h3>
+          <p className="muted">
+            仅针对本次已读取内容；没有声明路径不表示未实现。其他目标、非当前范围与结构未决分别保留。
+          </p>
+          <input
+            aria-label="搜索未连入需求"
+            placeholder="搜索 ID、标题或正文"
+            value={state.unlinkedQuery}
+            onChange={(e) => update({ unlinkedQuery: e.target.value })}
+          />
+          <ul className="product-structure-list">
+            {explanation.unlinked
+              .filter(({ item: i }) =>
+                `${i.id} ${i.title} ${i.body}`
+                  .toLowerCase()
+                  .includes(state.unlinkedQuery.toLowerCase()),
+              )
+              .map(({ item: i, reasons, otherGoals }) => (
+                <li key={i.key} data-unlinked-id={i.id}>
+                  <button className="text-link" onClick={() => select(i.key)}>
+                    {i.id} · {i.title}
+                  </button>
+                  <p>{reasons.join("；")}</p>
+                  {otherGoals.map((g) => (
+                    <button
+                      key={g.key}
+                      className="text-link"
+                      onClick={() => update({ goal: g.key })}
+                    >
+                      查看目标 · {g.id}
+                    </button>
+                  ))}
+                  <SourceButton source={i.source} open={context.open} />
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
       <div className="goal-requirement-graph" style={{ height: 510 }}>
         <ReactFlow
           key={`${context.snapshot.id}:${state.goal}:${state.filter}:${state.query}:${state.subject}`}
@@ -754,10 +968,17 @@ export function RequirementsV3({
         </ReactFlow>
       </div>
       <p>
-        {matches.length} 个当前需求；图中保留必要祖先；未指定顺序入口使用 ID
-        定位顺序。
+        所选目标声明路径内 {reqs.length} 个当前需求；筛选命中 {matches.length}{" "}
+        个，当前显示 {hierarchy.visible.length}{" "}
+        个；展开与筛选保留必要祖先；未指定顺序入口使用 ID 定位顺序。
       </p>
-      <details>
+      <details
+        open={state.navigationOpen}
+        onToggle={(event) => {
+          if (event.currentTarget.open !== state.navigationOpen)
+            update({ navigationOpen: event.currentTarget.open });
+        }}
+      >
         <summary>搜索与条目导航（含历史/旧格式）</summary>
         {product.items.map((i) => (
           <button

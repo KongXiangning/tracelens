@@ -153,6 +153,10 @@ npm run test:browser
 
 ### 概览页展示
 
+需求页保留正式声明路径，并提供“查看候选关系”和“查看未连入需求”入口。数量只针对本次已读取内容；候选保留理由、来源和局部虚线，不进入正式汇集。当前组成需求默认折叠，搜索及缺口筛选保留必要祖先；模块仅作分类，目标按自身范围选报告，未明确目标的需求仍为尚未判定。
+
+结构页面验证使用 `npm run test:browser:structure`。先正常构建，设置 `TRACELENS_STRUCTURE_INPUTS` 为本机 JSON 文件：数组条目为 `{ "name": "显示名称", "kind": "real-before / real-after / isolated-incremental", "root": "本机绝对路径" }`。输入必须已经保存，脚本不生成定义或 Task。可设置 `TRACELENS_STRUCTURE_OUTPUT` 保存快照、截图、DOM、请求和观察文件前后摘要；Windows 默认 Edge，其他环境可设置 `TRACELENS_BROWSER_EXECUTABLE`。只在输入显式提供 `trustRuntime: true`、核对过的 `runtimeBaseline` 和四模块 `runtimeHashes` 时登记独立 Runtime 信任；否则如实保留任务不可用。真实输入、helper 保存结果和隔离展示夹具的证据分别记录，不用夹具替代宿主维护验收。
+
 概览突出明确登记的总目标及真实子目标，需求在单一区域按项目 requirement_order 显示；未登记需求单独可达。需求主图显示当前分解和支撑，按所选目标范围及明确对象显示四值结论，缺口筛选保留祖先；依赖局部展开、演变历史保留二级入口。Task／Step 及来源按需读取，返回保留需求筛选、对象、选择和滚动。
 
 Runtime 来源在各项目“Runtime 来源信任”面板登记：选择可信源或已核对的分发目录，预览四模块 SHA-256 后显式信任。模块变化或未选择时不执行它们。首次刷新读取首批，点击“读取下一页 Task”才续读；不在项目切换时查询。查询失败降级到可识别的 task-view/v1 或同副本最近成功内存数据，显示读取/文件时间及陈旧性；无数据时显示任务暂不可用，产品文档继续可读。旧文档声明保存在 taskObservations 中，不充当 Runtime 生命周期。

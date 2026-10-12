@@ -2560,6 +2560,34 @@ dialog form {
 .goal-graph-node span {
   font-size: 12px;
 }
+.goal-graph-expand {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid #ddd5c7;
+  background: #f4f0e8;
+  padding: 7px 12px;
+  text-align: left;
+  font-size: 12px;
+}
+.product-structure-note {
+  margin: 12px 0;
+}
+.product-structure-panel {
+  border: 1px solid #ddd5c7;
+  border-radius: 10px;
+  padding: 16px;
+  margin: 12px 0;
+}
+.product-structure-list {
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+.product-structure-list li {
+  margin: 10px 0;
+}
+.product-structure-list p {
+  margin: 4px 0;
+}
 .product-selected-detail {
   margin: 18px 0;
 }

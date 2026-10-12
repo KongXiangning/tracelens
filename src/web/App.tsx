@@ -521,15 +521,20 @@ export function App() {
   if (page === "guide") subtitle = "业务场景 · Skill 指令 · 使用边界";
   else if (page === "overview")
     subtitle = "从项目文档中解析目标、需求、Task 与状态";
-  const overviewVisual = page === "overview" && Boolean(project);
-  const navPages = overviewVisual ? overviewPages : pages;
+  const unifiedNavigation = Boolean(project);
+  const overviewVisual = page === "overview" && unifiedNavigation;
+  const currentPageLabel =
+    overviewPages.find((item) => item.id === page)?.name ||
+    pages.find((item) => item.id === page)?.name ||
+    "当前视图";
+  const navPages = unifiedNavigation ? overviewPages : pages;
   return (
     <div
-      className={`app-shell modern-shell${overviewVisual ? " overview-theme" : ""}`}
+      className={`app-shell modern-shell${unifiedNavigation ? " overview-theme" : ""}`}
     >
       <aside className="sidebar">
-        <div className={`brand${overviewVisual ? " overview-brand" : ""}`}>
-          {overviewVisual ? (
+        <div className={`brand${unifiedNavigation ? " overview-brand" : ""}`}>
+          {unifiedNavigation ? (
             <span className="overview-brand-mark" aria-hidden="true">
               <i />
               <i />
@@ -542,7 +547,7 @@ export function App() {
             </span>
           )}
           <span>
-            {overviewVisual ? (
+            {unifiedNavigation ? (
               <span className="overview-brand-name">TraceLens</span>
             ) : (
               <>
@@ -551,7 +556,7 @@ export function App() {
             )}
           </span>
         </div>
-        {overviewVisual ? (
+        {unifiedNavigation ? (
           <div className="overview-sidebar-caption">WORKSPACE</div>
         ) : (
           <div className="sidebar-label">
@@ -585,7 +590,7 @@ export function App() {
             <button
               key={p.id}
               aria-label={p.id === "overview" ? "概览" : p.name}
-              className={`${page === p.id ? "active" : ""}${overviewVisual && p.id === "guide" ? " overview-guide-link" : ""}`}
+              className={`${page === p.id ? "active" : ""}${unifiedNavigation && p.id === "guide" ? " overview-guide-link" : ""}`}
               onClick={() => setPage(p.id as Page)}
             >
               <p.icon size={18} />
@@ -601,7 +606,7 @@ export function App() {
             </button>
           ))}
         </nav>
-        {overviewVisual ? (
+        {unifiedNavigation ? (
           <div className="sidebar-footer overview-sidebar-footer">
             <div className="overview-sidebar-caption">CURRENT PROJECT</div>
             <label className="overview-sidebar-project">
@@ -632,7 +637,7 @@ export function App() {
         )}
       </aside>
       <main className="workspace">
-        {overviewVisual ? (
+        {unifiedNavigation ? (
           <header className="topbar overview-topbar">
             <div className="overview-breadcrumb">
               <strong>TRACELENS</strong>
@@ -641,7 +646,7 @@ export function App() {
                 {project?.name || "当前项目"}
               </h1>
               <span>/</span>
-              <span>需求总览</span>
+              <span>{overviewVisual ? "需求总览" : currentPageLabel}</span>
             </div>
             <div className="overview-top-actions">
               <span>从项目文档读取</span>
@@ -655,6 +660,29 @@ export function App() {
               >
                 源文档 ↗
               </button>
+              {page !== "guide" && (
+                <>
+                  <button
+                    type="button"
+                    className="overview-refresh"
+                    disabled={scanning}
+                    onClick={() => void refresh()}
+                  >
+                    <RefreshCw size={14} className={scanning ? "spin" : ""} />
+                    {scanning ? "扫描中" : "刷新"}
+                  </button>
+                  <IconButton label="项目设置" onClick={() => setForm("edit")}>
+                    <Settings2 size={16} />
+                  </IconButton>
+                  <IconButton
+                    label="移除项目"
+                    onClick={() => setRemove(true)}
+                    disabled={scanning}
+                  >
+                    <Trash2 size={16} />
+                  </IconButton>
+                </>
+              )}
             </div>
           </header>
         ) : (

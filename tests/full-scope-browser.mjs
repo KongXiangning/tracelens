@@ -168,9 +168,9 @@ try {
   await page
     .getByRole("heading", { name: "Task 生命周期：已暂停", exact: true })
     .waitFor();
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
+  await page.goBack();
   await detail.waitFor();
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
+  await page.goBack();
   assert.equal(
     await page
       .getByRole("button", { name: "收起子需求 · R-IMPORT", exact: true })
@@ -213,11 +213,9 @@ try {
     .getAttribute("title");
   assert.match(sourceTitle, /ASSESSMENTS.md:\d+/);
   await excerpt.locator(".source-link").click();
-  await page
-    .getByRole("button", { name: "返回上一视图", exact: true })
-    .waitFor();
+  await page.locator(".documents-page").waitFor();
   await shot("03-report-source");
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
+  await page.goBack();
   await page.locator('[data-product-id="R-STORE"]').waitFor();
   await page.locator('[data-node-id="R-QUERY"]').click();
   assert.equal(

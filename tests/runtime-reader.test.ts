@@ -410,7 +410,10 @@ describe("VN-02 current contract consumer", () => {
         plan: {
           title: "Same title",
           goal: "Synthetic acceptance",
-          steps: [{ id: "S1", title: "Not executed" }],
+          steps: [
+            { id: "S1", title: "Not executed" },
+            { id: "S2", title: "Second step" },
+          ],
         },
       });
       const taskId = prepared.task_id;
@@ -462,6 +465,10 @@ describe("VN-02 current contract consumer", () => {
         action: "prepare",
         plan: { title: "Second", steps: [] },
       });
+      const retainedStep = await reader.detail(f.project, view, taskId, "S2");
+      expect(retainedStep.status).toBe("available");
+      expect(retainedStep.step?.id).toBe("S2");
+      expect(retainedStep.viewRevision).toBe(view.viewRevision);
       const changed = await reader.detail(
         f.project,
         view,

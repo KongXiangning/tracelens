@@ -16,6 +16,7 @@ import type {
   ProductType,
 } from "../shared/product-types";
 import { SourceButton, type OpenSource } from "./components";
+import { useTemporaryNodePositions } from "./temporary-node-positions";
 
 const typeLabels: Record<ProductType | "unknown", string> = {
   project: "项目",
@@ -693,6 +694,10 @@ export function ProductRelationPanel({
     },
     labelStyle: { fill: "#59635d", fontSize: 10 },
   }));
+  const draggable = useTemporaryNodePositions(
+    nodes,
+    `${snapshot.id}:${focus}:${showDismissed}`,
+  );
   return (
     <section className="product-relations" aria-label="产品语义关联">
       <div className="relation-main">
@@ -716,9 +721,12 @@ export function ProductRelationPanel({
       <div className="graph-container product-graph-container">
         <ReactFlow
           key={`${snapshot.id}:${focus}:${showDismissed}`}
-          nodes={nodes}
+          nodes={draggable.nodes}
+          onNodesChange={draggable.onNodesChange}
           edges={edges}
-          nodesDraggable={false}
+          nodesDraggable
+          nodeDragThreshold={4}
+          nodeClickDistance={4}
           nodesConnectable={false}
           edgesReconnectable={false}
           fitView

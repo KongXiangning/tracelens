@@ -47,21 +47,49 @@ try {
   assert.equal(await tabs.first().getAttribute("aria-pressed"), "true");
   await tabs.nth(1).click();
   await page
-    .getByRole("heading", { name: projects[1].name, exact: true })
+    .locator(
+      `.project-switch-card[data-project-id="${projects[1].id}"][aria-pressed="true"]`,
+    )
     .waitFor();
   assert.equal(await tabs.nth(1).getAttribute("aria-pressed"), "true");
   assert.equal(await tabs.first().getAttribute("aria-pressed"), "false");
+  await page.goBack();
+  await page
+    .locator(
+      `.project-switch-card[data-project-id="${projects[0].id}"][aria-pressed="true"]`,
+    )
+    .waitFor();
+  await page.goForward();
+  await page
+    .locator(
+      `.project-switch-card[data-project-id="${projects[1].id}"][aria-pressed="true"]`,
+    )
+    .waitFor();
+  assert.equal(await page.locator(".overview-breadcrumb").count(), 0);
+  const cardBounds = await tabs.first().boundingBox();
+  const actionBounds = await page
+    .getByRole("button", { name: "刷新", exact: true })
+    .boundingBox();
+  assert.ok(
+    actionBounds.y >= cardBounds.y &&
+      actionBounds.y + actionBounds.height <=
+        cardBounds.y + cardBounds.height + 2,
+  );
   assert.match(await tabs.nth(1).getAttribute("title"), /project-1/);
   await tabs.nth(2).focus();
   await page.keyboard.press("Enter");
   await page
-    .getByRole("heading", { name: projects[2].name, exact: true })
+    .locator(
+      `.project-switch-card[data-project-id="${projects[2].id}"][aria-pressed="true"]`,
+    )
     .waitFor();
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await tabs.last().click();
     await page
-      .getByRole("heading", { name: projects[7].name, exact: true })
+      .locator(
+        `.project-switch-card[data-project-id="${projects[7].id}"][aria-pressed="true"]`,
+      )
       .waitFor();
     assert.equal(
       await page.evaluate(

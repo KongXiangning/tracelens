@@ -13,6 +13,7 @@ import {
   type RuntimeDetail,
 } from "../shared/runtime-types.js";
 import type { Project, Task } from "../shared/types.js";
+import { stepFromTask } from "../shared/runtime-step.js";
 import { stableId } from "./parser.js";
 
 const positive = (name: string, fallback: number, max: number) => {
@@ -890,6 +891,18 @@ export class RuntimeReader {
     ]);
     const cached = this.details.get(cacheKey);
     if (cached) return Promise.resolve(cached);
+    if (stepId) {
+      const taskKey = JSON.stringify([
+        project.id,
+        project.root,
+        project.configVersion,
+        view.batchId,
+        taskId,
+        null,
+      ]);
+      const storedStep = stepFromTask(this.details.get(taskKey), stepId);
+      if (storedStep) return Promise.resolve(storedStep);
+    }
     const running = this.detailRunning.get(cacheKey);
     if (running) return running;
     const operation = this.loadDetail(project, view, taskId, stepId)

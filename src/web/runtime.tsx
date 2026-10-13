@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { api } from "./api";
+import { stepFromTask } from "../shared/runtime-step";
 import type { Project, Snapshot } from "../shared/types";
 import type {
   RuntimeDetail,
@@ -12,6 +13,15 @@ export const lifecycleLabels = {
   paused: "已暂停",
   closed: "已关闭",
   ambiguous: "状态待核对",
+};
+const stepStateLabels: Record<string, string> = {
+  finished: "已完成",
+  "not-started": "未开始",
+  active: "进行中",
+  ready: "待执行",
+  blocked: "受阻",
+  skipped: "已跳过",
+  closed: "已关闭",
 };
 export function RuntimeStatus({ view }: { view?: RuntimeView }) {
   if (!view) return null;
@@ -311,6 +321,11 @@ export function RuntimeTaskDetail({
   useEffect(() => {
     let cancelled = false;
     setStep(undefined);
+    const storedStep = stepId ? stepFromTask(detail, stepId) : undefined;
+    if (storedStep) {
+      setStep(storedStep);
+      return;
+    }
     if (stepId)
       api<RuntimeDetail>(
         `/projects/${snapshot.projectId}/task-detail`,
@@ -332,12 +347,23 @@ export function RuntimeTaskDetail({
     return () => {
       cancelled = true;
     };
-  }, [stepId, snapshot.id, snapshot.projectId, taskId]);
+  }, [stepId, snapshot.id, snapshot.projectId, taskId, detail]);
   if (!detail) return <p role="status">正在读取任务详情…</p>;
   if (detail.status === "unavailable")
-    return <p role="alert">任务详情暂不可用：{detail.error}</p>;
+    return (
+      <p role="alert">
+        {detail.error?.includes("QUERY_VIEW_CHANGED")
+          ? "任务记录已更新，请刷新任务列表后重新查看。"
+          : `任务详情暂不可用：${detail.error}`}
+      </p>
+    );
   const task = detail.task;
   if (!task) return <p>当前选择未定位，未替换为其他任务。</p>;
+  const execution = step?.step?.execution;
+  const executionResult =
+    execution && typeof execution === "object"
+      ? (execution as Record<string, unknown>).result
+      : undefined;
   const refs = new Set<string>();
   const collect = (value: unknown, name = "") => {
     if (typeof value === "string" && (name === "ref" || name.endsWith("_ref")))
@@ -351,16 +377,26 @@ export function RuntimeTaskDetail({
   return (
     <section className="runtime-task-detail">
       <h3>Task 生命周期：{lifecycleLabels[task.lifecycle]}</h3>
-      <code>{task.task_id}</code>
-      <p>
-        视图版本：{detail.viewRevision} · {detail.source}
-      </p>
+      <details className="runtime-task-metadata">
+        <summary>任务身份与数据版本</summary>
+        <code>{task.task_id}</code>
+        <p>
+          视图版本：{detail.viewRevision} · {detail.source}
+        </p>
+      </details>
       <h3>实施步骤</h3>
-      <ul>
+      <ul className="runtime-step-list">
         {task.steps?.map((s) => (
           <li key={s.id}>
-            <button className="text-link" onClick={() => setStepId(s.id)}>
-              {s.id} · {String(s.title || "未提供标题")} · {s.state}
+            <button
+              className={`runtime-step-card${stepId === s.id ? " selected" : ""}`}
+              onClick={() => setStepId(s.id)}
+            >
+              <span className="runtime-step-id">{s.id}</span>
+              <strong>{String(s.title || "未提供标题")}</strong>
+              <span className={`runtime-step-state state-${s.state}`}>
+                {stepStateLabels[s.state] || s.state}
+              </span>
             </button>
           </li>
         ))}
@@ -375,15 +411,35 @@ export function RuntimeTaskDetail({
           {!step ? (
             <p>读取中…</p>
           ) : step.status === "unavailable" ? (
-            <p role="alert">步骤暂不可用：{step.error}</p>
-          ) : (
-            <pre>
-              {JSON.stringify(
-                { step: step.step, review: step.review },
-                null,
-                2,
+            <p role="alert">
+              {step.error?.includes("QUERY_VIEW_CHANGED")
+                ? "任务记录已更新，请刷新任务列表后重新查看。"
+                : `步骤暂不可用：${step.error}`}
+            </p>
+          ) : step.step ? (
+            <>
+              <strong className="runtime-step-detail-title">
+                {String(step.step.title || stepId)}
+              </strong>
+              <p>
+                步骤状态：{stepStateLabels[step.step.state] || step.step.state}
+              </p>
+              {typeof executionResult === "string" && (
+                <p>执行结果：{executionResult}</p>
               )}
-            </pre>
+              <details>
+                <summary>步骤与复核原始记录</summary>
+                <pre>
+                  {JSON.stringify(
+                    { step: step.step, review: step.review },
+                    null,
+                    2,
+                  )}
+                </pre>
+              </details>
+            </>
+          ) : (
+            <p>此步骤未在当前任务版本中定位，请重新选择。</p>
           )}
         </section>
       )}

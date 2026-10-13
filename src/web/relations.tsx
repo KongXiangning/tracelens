@@ -13,6 +13,7 @@ import { Empty, type OpenSource } from "./components";
 import { documentSource, RelationList, relationLabels } from "./pages";
 import type { Snapshot } from "../shared/types";
 import { buildProductGraph, ProductRelationPanel } from "./product-graph";
+import { useTemporaryNodePositions } from "./temporary-node-positions";
 
 export function RelationGraph({
   snapshot,
@@ -134,13 +135,17 @@ export function RelationGraph({
       labelStyle: { fill: "#5b6360", fontSize: 11 },
     };
   });
+  const draggable = useTemporaryNodePositions(nodes, `${snapshot.id}:${focus}`);
   return (
     <div className="graph-container">
       <ReactFlow
         key={`${snapshot.id}:${focus}`}
-        nodes={nodes}
+        nodes={draggable.nodes}
+        onNodesChange={draggable.onNodesChange}
         edges={edges}
-        nodesDraggable={false}
+        nodesDraggable
+        nodeDragThreshold={4}
+        nodeClickDistance={4}
         nodesConnectable={false}
         edgesReconnectable={false}
         fitView

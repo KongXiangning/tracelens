@@ -733,18 +733,14 @@ try {
               { taskId: paused.realTaskId, lifecycle: paused.runtimeLifecycle },
             );
             await shot(`${index}-paused-task`);
-            await page
-              .getByRole("button", { name: "返回上一视图", exact: true })
-              .click();
+            await page.goBack();
             await page
               .locator(".runtime-task-detail h3")
               .filter({ hasText: "Task 生命周期：已关闭" })
               .waitFor();
           }
         }
-        await page
-          .getByRole("button", { name: "返回上一视图", exact: true })
-          .click();
+        await page.goBack();
         await page.locator(`[data-product-id="${detailItem.id}"]`).waitFor();
         assert.equal(
           await page
@@ -783,9 +779,7 @@ try {
       await sourceButton.scrollIntoViewIfNeeded();
       const sourceScroll = await scrollValue();
       await sourceButton.click();
-      await page
-        .getByRole("button", { name: "返回上一视图", exact: true })
-        .click();
+      await page.goBack();
       await page.locator(`[data-product-id="${detailItem.id}"]`).waitFor();
       assert.equal(
         await page

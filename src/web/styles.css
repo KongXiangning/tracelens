@@ -2906,7 +2906,10 @@ dialog form {
 }
 .requirements-v3-graph .requirements-v3-node.is-selected {
   border-color: var(--overview-link);
-  box-shadow: 0 0 0 2px var(--overview-link);
+  background: #e4efdf;
+  box-shadow:
+    0 0 0 3px var(--overview-link),
+    0 8px 22px #27472b26;
 }
 .requirements-v3-graph .goal-graph-node {
   padding: 16px;
@@ -3536,7 +3539,7 @@ dialog form {
   align-items: stretch;
   gap: 10px;
   min-width: 0;
-  padding: 10px 24px 0;
+  padding: 8px 24px 0;
   background: #edf0eb;
   border-bottom: 1px solid #d5ddd4;
 }
@@ -3594,7 +3597,7 @@ dialog form {
 .project-switcher .project-switch-add {
   align-self: center;
   width: auto;
-  margin: 0 0 8px;
+  margin: 0;
   border-color: #c6d3c4;
   color: #355641;
 }
@@ -3610,13 +3613,29 @@ dialog form {
   font-size: 11px;
   line-height: 1.7;
 }
+.overview-theme .project-switcher .overview-top-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-self: center;
+  gap: 6px;
+  padding-bottom: 8px;
+  max-width: 65%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.project-switcher .overview-top-actions button {
+  flex-shrink: 0;
+}
 @media (max-width: 760px) {
   .project-switcher {
     padding: 8px 12px 0;
     gap: 6px;
   }
   .project-switch-card {
-    flex-basis: 185px;
+    flex-basis: 165px;
+  }
+  .overview-theme .project-switcher .overview-top-actions {
+    max-width: 50%;
   }
   .app-shell.overview-theme .sidebar-footer.overview-sidebar-footer {
     display: none;
@@ -3764,6 +3783,80 @@ dialog form {
 .task-card-times time {
   color: #355641;
   font-variant-numeric: tabular-nums;
+}
+.runtime-step-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 12px 0;
+  list-style: none;
+}
+.runtime-step-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #d4e0d3;
+  border-radius: 8px;
+  background: #f8fbf5;
+  text-align: left;
+}
+.runtime-step-card strong {
+  color: #233e2c;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.runtime-step-card:hover,
+.runtime-step-card.selected {
+  border-color: #438262;
+  background: #edf5e7;
+}
+.runtime-step-id {
+  color: #366449;
+  font-weight: 700;
+}
+.runtime-step-detail-title {
+  display: block;
+  margin: 8px 0;
+  color: #233e2c;
+  font-size: 16px;
+  line-height: 1.7;
+}
+.runtime-step-state {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #edf0e8;
+  color: #69755e;
+  font-size: 11px;
+}
+.runtime-step-state.state-finished {
+  background: #dceedd;
+  color: #286241;
+}
+.runtime-task-metadata {
+  margin: 10px 0 18px;
+  color: #687c6f;
+  font-size: 12px;
+}
+.task-requirement-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 10px;
+  border-left: 3px solid #438262;
+  background: #eaf2e4;
+  font-size: 12px;
+}
+.task-product-links .task-requirement-title {
+  color: #234e32;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.7;
+}
+.requirements-v3-panel .product-body {
+  padding: 0;
 }
 .task-card-grid .list-empty {
   grid-column: 1 / -1;

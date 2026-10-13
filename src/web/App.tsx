@@ -34,7 +34,11 @@ import { Empty, IconButton, Modal, ProjectForm } from "./components";
 import { TasksPage, DocumentsPage } from "./pages";
 import { VNextGuide } from "./vnext-guide";
 import { RuntimeStatus } from "./runtime";
-import { navigationScrollContainer } from "./navigation-scroll";
+import {
+  initialNavigation,
+  useNavigationHistory,
+  type NavigationState,
+} from "./navigation-history";
 import type {
   Project,
   ScanConfig,
@@ -42,14 +46,7 @@ import type {
   SourceRef,
 } from "../shared/types";
 
-type Page =
-  | "overview"
-  | "requirements"
-  | "planning"
-  | "tasks"
-  | "documents"
-  | "relations"
-  | "guide";
+type Page = NavigationState["page"];
 const RelationsPage = lazy(() =>
   import("./relations").then((module) => ({ default: module.RelationsPage })),
 );
@@ -113,10 +110,11 @@ function scanState(view?: ProjectView): { label: string; tone: string } {
 }
 
 export function App() {
+  const [initial] = useState(initialNavigation);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [active, setActive] = useState("");
+  const [active, setActive] = useState(initial.active);
   const [views, setViews] = useState<Record<string, ProjectView>>({});
-  const [page, setPage] = useState<Page>("overview");
+  const [page, setPage] = useState<Page>(initial.page);
   const [loading, setLoading] = useState(true);
   const [loadingView, setLoadingView] = useState(false);
   const [error, setError] = useState("");
@@ -124,44 +122,22 @@ export function App() {
   const [form, setForm] = useState<"add" | "edit" | null>(null);
   const [remove, setRemove] = useState(false);
   const [dataDir, setDataDir] = useState("");
-  const [selection, setSelection] = useState<{
-    task?: string;
-    taskRealId?: string | null;
-    doc?: string;
-    line?: number;
-    relation?: string;
-    relationRealId?: string | null;
-    product?: string;
-    plan?: string;
-    work?: string;
-  }>({});
-  const [backStack, setBackStack] = useState<
-    { page: Page; selection: typeof selection; scroll: number }[]
-  >([]);
-  useEffect(() => {
-    setBackStack([]);
-  }, [active]);
-  function remember() {
-    setBackStack((v) => [
-      ...v.slice(-19),
-      {
-        page,
-        selection,
-        scroll: navigationScrollContainer()?.scrollTop || 0,
-      },
-    ]);
-  }
-  function back() {
-    const previous = backStack.at(-1);
-    if (!previous) return;
-    setBackStack((v) => v.slice(0, -1));
-    setSelection(previous.selection);
-    setPage(previous.page);
-    setTimeout(() => {
-      const container = navigationScrollContainer();
-      if (container) container.scrollTop = previous.scroll;
-    }, 100);
-  }
+  const [selection, setSelection] = useState<NavigationState["selection"]>(
+    initial.selection,
+  );
+  useNavigationHistory(
+    { active, page, selection },
+    !loading && projects.some((item) => item.id === active),
+    (route) => {
+      setActive(route.active);
+      setPage(route.page);
+      setSelection(route.selection);
+      setError("");
+      setForm(null);
+      setRemove(false);
+    },
+    !loading && !loadingView,
+  );
   const mounted = useRef(true);
   const projectStrip = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -324,7 +300,7 @@ export function App() {
     };
   }, [active, scanning, representation, page === "guide", fetchView]);
   useEffect(() => {
-    setSelection((s) => ({ ...s, line: 1 }));
+    setSelection((s) => (s.doc ? s : { ...s, line: 1 }));
   }, [snapshot?.id]);
   async function refresh(
     id = active,
@@ -421,15 +397,19 @@ export function App() {
     }
   }
   function openSource(source: SourceRef) {
-    remember();
     setSelection((s) => ({ ...s, doc: source.documentId, line: source.line }));
     setPage("documents");
   }
-  function openTask(id: string) {
-    remember();
+  function openTask(
+    id?: string,
+    requirementKey?: string,
+    reviewAssociations = false,
+  ) {
     setSelection((s) => ({
       ...s,
       task: id,
+      taskRequirement: requirementKey,
+      taskAssociationReview: reviewAssociations,
       taskRealId:
         (fullSnapshot?.tasks || overview?.tasks)?.find((task) => task.id === id)
           ?.realTaskId ?? null,
@@ -448,7 +428,6 @@ export function App() {
     setPage("relations");
   }
   function openProduct(key: string, workItemId?: string) {
-    remember();
     const type =
       fullSnapshot?.product?.items.find((entry) => entry.key === key)?.type ||
       overview?.itemTypes[key];
@@ -470,7 +449,12 @@ export function App() {
   const navigation = useMemo(
     () => ({
       open: (source: SourceRef) => navigationRef.current.openSource(source),
-      openTask: (id: string) => navigationRef.current.openTask(id),
+      openTask: (
+        id?: string,
+        requirementKey?: string,
+        reviewAssociations?: boolean,
+      ) =>
+        navigationRef.current.openTask(id, requirementKey, reviewAssociations),
       openProduct: (key: string, work?: string) =>
         navigationRef.current.openProduct(key, work),
       relations: (id: string) => navigationRef.current.openRelations(id),
@@ -590,7 +574,19 @@ export function App() {
             snapshot={snapshot}
             selected={selection.task}
             selectedRealTaskId={selection.taskRealId}
-            select={openTask}
+            select={(id) => openTask(id, selection.taskRequirement)}
+            requirementKey={selection.taskRequirement}
+            reviewAssociations={selection.taskAssociationReview}
+            showAssociationReview={() =>
+              openTask(undefined, selection.taskRequirement, true)
+            }
+            clearRequirement={() =>
+              setSelection((s) => ({
+                ...s,
+                taskRequirement: undefined,
+                taskAssociationReview: false,
+              }))
+            }
             open={openSource}
             relations={openRelations}
             openProduct={openProduct}
@@ -637,10 +633,6 @@ export function App() {
     }
   }
   const overviewVisual = page === "overview";
-  const currentPageLabel =
-    overviewPages.find((item) => item.id === page)?.name ||
-    (page === "planning" ? "规划" : undefined) ||
-    "当前视图";
   return (
     <div
       className={`app-shell modern-shell overview-theme${page === "requirements" ? " requirements-theme" : ""}${page === "tasks" ? " task-view-shell" : ""}`}
@@ -687,8 +679,12 @@ export function App() {
         </section>
       </aside>
       <main className="workspace">
-        <nav className="project-switcher" aria-label="项目切换">
-          <div className="project-switcher-cards" ref={projectStrip}>
+        <header className="project-switcher" aria-label="项目与操作">
+          <nav
+            className="project-switcher-cards"
+            ref={projectStrip}
+            aria-label="项目切换"
+          >
             {projects.map((item) => (
               <button
                 key={item.id}
@@ -712,28 +708,16 @@ export function App() {
             {!projects.length && (
               <span className="project-switch-empty">尚无项目</span>
             )}
-          </div>
-          <button
-            type="button"
-            className="overview-add-project project-switch-add"
-            onClick={() => setForm("add")}
-          >
-            <Plus size={16} aria-hidden="true" />
-            添加项目
-          </button>
-        </nav>
-        <header className="topbar overview-topbar">
-          <div className="overview-breadcrumb">
-            <strong>TRACELENS</strong>
-            <span>/</span>
-            <h1 className="overview-breadcrumb-project">
-              {project?.name || "本地工作台"}
-            </h1>
-            <span>/</span>
-            <span>{currentPageLabel}</span>
-          </div>
+          </nav>
           <div className="overview-top-actions">
-            <span>从项目文档读取</span>
+            <button
+              type="button"
+              className="overview-add-project project-switch-add"
+              onClick={() => setForm("add")}
+            >
+              <Plus size={16} aria-hidden="true" />
+              添加项目
+            </button>
             <button
               type="button"
               disabled={!project}
@@ -837,11 +821,6 @@ export function App() {
             </div>
           )}
         <div className="page-content" key={active}>
-          {!!backStack.length && (
-            <button className="secondary navigation-back" onClick={back}>
-              返回上一视图
-            </button>
-          )}
           {snapshot &&
             page !== "guide" &&
             page !== "tasks" &&

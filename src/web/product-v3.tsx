@@ -18,10 +18,13 @@ import {
 } from "./overview-card-state";
 import { OverviewFilterBar } from "./overview-filters";
 import { navigationScrollContainer } from "./navigation-scroll";
+import { useTemporaryNodePositions } from "./temporary-node-positions";
 import {
   ReactFlow,
   Background,
   Controls,
+  useReactFlow,
+  useNodesInitialized,
   type Node,
   type Edge,
 } from "@xyflow/react";
@@ -45,6 +48,7 @@ import { assessmentGoal, productStructure } from "../shared/product-structure";
 import { buildProductGraph, ProductRelationPanel } from "./product-graph";
 import {
   ProductDetail,
+  Body as ProductBody,
   ProductStatusPanel,
   type ProductContext,
   type OverviewContext,
@@ -65,7 +69,7 @@ type ViewState = {
   candidateFocus: string;
   unlinkedQuery: string;
   navigationOpen: boolean;
-  tab: "overview" | "tasks" | "evidence";
+  tab: "overview" | "tasks" | "evidence" | "body";
   taskFilter: "all" | "active" | "closed";
   scroll: number;
 };
@@ -116,6 +120,21 @@ function SubjectPicker({
   );
 }
 
+function SelectedRequirementFocus({ selected }: { selected?: string }) {
+  const ready = useNodesInitialized();
+  const { fitView, getNode } = useReactFlow();
+  useEffect(() => {
+    if (!ready || !selected || !getNode(selected)) return;
+    void fitView({
+      nodes: [{ id: selected }],
+      padding: 0.6,
+      maxZoom: 1.15,
+      duration: 180,
+    });
+  }, [ready, selected, fitView, getNode]);
+  return null;
+}
+
 export function RequirementsV3({
   selected,
   select,
@@ -139,6 +158,28 @@ export function RequirementsV3({
   useEffect(() => {
     stored.set(context.snapshot.projectId, state);
   }, [state, context.snapshot.projectId]);
+  useEffect(() => {
+    if (!selected || !product) return;
+    const target = product.items.find((entry) => entry.key === selected);
+    if (target?.type !== "requirement") return;
+    const model = productView(product);
+    const currentGoal = state.goal || model.rootGoal?.key;
+    if (
+      goalRequirements(product, currentGoal).some(
+        (entry) => entry.key === selected,
+      )
+    )
+      return;
+    const goal = product.items.find(
+      (entry) =>
+        entry.usable &&
+        entry.type === "goal" &&
+        goalRequirements(product, entry.key).some(
+          (requirement) => requirement.key === selected,
+        ),
+    );
+    if (goal) setState((previous) => ({ ...previous, goal: goal.key }));
+  }, [selected, product, state.goal]);
   useEffect(() => {
     const container = navigationScrollContainer();
     if (container) container.scrollTop = current.current.scroll;
@@ -392,6 +433,10 @@ export function RequirementsV3({
           ? { strokeDasharray: "5 4", stroke: "var(--overview-amber)" }
           : undefined,
     }),
+  );
+  const draggable = useTemporaryNodePositions(
+    nodes,
+    `${context.snapshot.id}:${goal?.key || "all"}`,
   );
   const explanation = productStructure(product, goal?.key, item?.key);
   const candidates = state.candidateAll
@@ -720,14 +765,18 @@ export function RequirementsV3({
           </div>
           <div className="goal-requirement-graph requirements-v3-graph">
             <ReactFlow
-              nodes={nodes}
+              nodes={draggable.nodes}
+              onNodesChange={draggable.onNodesChange}
               edges={edges}
-              nodesDraggable={false}
+              nodesDraggable
+              nodeDragThreshold={4}
+              nodeClickDistance={4}
               nodesConnectable={false}
               edgesReconnectable={false}
               fitView
               minZoom={0.25}
             >
+              <SelectedRequirementFocus selected={selected} />
               <Background color="var(--overview-rule)" gap={19} size={1} />
               <Controls showInteractive={false} />
             </ReactFlow>
@@ -736,7 +785,7 @@ export function RequirementsV3({
             <span>
               显示 {hierarchy.visible.length} 项需求 · 仅统计当前可见层级
             </span>
-            <span>拖动画布 · 点击节点查看详情</span>
+            <span>拖动节点临时调整 · 拖动画布 · 点击节点查看详情</span>
           </div>
         </section>
         {item && (
@@ -1233,8 +1282,7 @@ export const OverviewV3 = memo(
     );
     const totalTaskCount = data.taskCount;
     const openFirstTask = (item: OverviewRequirement) => {
-      if (item.firstTask) context.openTask(item.firstTask);
-      else context.openProduct(item.key);
+      context.openTask(item.firstTask, item.key);
     };
 
     const card = (item: OverviewRequirement, index: number) => {
@@ -1386,9 +1434,13 @@ export const OverviewV3 = memo(
                 {dependencies.length ? `${dependencies.length} 项` : "无"}
               </strong>
               {taskState.associationPending > 0 && (
-                <span className="overview-association-note">
-                  关联待核对 · {taskState.associationPending}
-                </span>
+                <button
+                  className="overview-association-note text-link"
+                  aria-label={`查看待核对关联 · ${item.id}`}
+                  onClick={() => context.openTask(undefined, item.key, true)}
+                >
+                  关联待核对 · {taskState.associationPending} ↗
+                </button>
               )}
             </div>
             <div className="overview-card-actions">
@@ -1845,7 +1897,7 @@ function TaskReadingPanel({
                     {row.task ? (
                       <button
                         className="text-link"
-                        onClick={() => context.openTask(row.task!.id)}
+                        onClick={() => context.openTask(row.task!.id, item.key)}
                       >
                         {row.label}
                       </button>
@@ -2317,6 +2369,7 @@ function RequirementsInspector({
   const path = itemPath(product, item);
   const labels = [
     ["overview", "概况"],
+    ["body", "完整正文"],
     ["tasks", "Task"],
     ["evidence", "依据"],
   ] as const;
@@ -2425,6 +2478,11 @@ function RequirementsInspector({
         )}
         {tab === "overview" && !isBusiness && (
           <OtherItemOverview item={item} context={context} />
+        )}
+        {tab === "body" && (
+          <div className="requirements-v3-panel-content">
+            <ProductBody item={item} context={context} />
+          </div>
         )}
         {tab === "tasks" && (
           <TaskReadingPanel

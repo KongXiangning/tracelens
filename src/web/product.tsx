@@ -66,7 +66,11 @@ export type ProductContext = {
   snapshot: Snapshot;
   open: OpenSource;
   openProduct: OpenProduct;
-  openTask: (id: string) => void;
+  openTask: (
+    id?: string,
+    requirementKey?: string,
+    reviewAssociations?: boolean,
+  ) => void;
   relations: (key: string) => void;
 };
 
@@ -666,7 +670,10 @@ export function BindingCard({
         </div>
       </div>
       {showOwner && owner && (
-        <button className="text-link" onClick={() => openProduct(owner.key)}>
+        <button
+          className="text-link task-requirement-title"
+          onClick={() => openProduct(owner.key)}
+        >
           {productTypeLabels[owner.type]} · {owner.id} · {owner.title}
           <ArrowRight size={13} />
         </button>
@@ -763,7 +770,7 @@ export function BindingCard({
     </article>
   );
 }
-function Body({
+export function Body({
   item,
   context,
 }: {
@@ -775,7 +782,9 @@ function Body({
         (entry) =>
           entry.id === item.source.documentId &&
           entry.path === item.source.path &&
-          entry.digest === item.source.digest,
+          entry.digest === item.source.digest &&
+          !entry.contentOmitted &&
+          Boolean(entry.raw),
       )
     : undefined;
   // YAML is not item Markdown. Mask its envelope without moving the original

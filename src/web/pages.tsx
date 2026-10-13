@@ -35,6 +35,7 @@ const TaskProductLinks = lazy(() =>
 import { NavigationAudit } from "./navigation-audit";
 import { tasksByDescendingNumber } from "../shared/task-order";
 import { TaskCardTimes } from "./task-card-times";
+import { requirementBindings } from "../shared/product-hierarchy";
 
 const methodLabels = {
   structured: "结构化引用",
@@ -446,6 +447,10 @@ function CollapsibleEntries({
   );
 }
 export function TasksPage({
+  requirementKey,
+  reviewAssociations,
+  showAssociationReview,
+  clearRequirement,
   snapshot,
   selected,
   selectedRealTaskId,
@@ -454,6 +459,10 @@ export function TasksPage({
   relations,
   openProduct,
 }: {
+  requirementKey?: string;
+  reviewAssociations?: boolean;
+  showAssociationReview?: () => void;
+  clearRequirement?: () => void;
   snapshot: Snapshot;
   selected?: string;
   selectedRealTaskId?: string | null;
@@ -465,18 +474,54 @@ export function TasksPage({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const detailPane = useRef<HTMLDivElement>(null);
-  const ordered = tasksByDescendingNumber(snapshot.tasks);
+  const requirement = snapshot.product?.items.find(
+    (item) => item.key === requirementKey,
+  );
+  const bindings =
+    requirement && snapshot.product
+      ? requirementBindings(snapshot.product, requirement)
+      : [];
+  const relatedIds = new Set(
+    bindings.flatMap((binding) => binding.match.taskIds),
+  );
+  const pendingBindings = bindings.filter(
+    (binding) =>
+      !binding.match.taskIds.some((id) =>
+        snapshot.tasks.some((task) => task.id === id),
+      ),
+  );
+  const associationReviews = bindings.filter(
+    (binding) => binding.match.state !== "matched",
+  );
+  const displayedBindings = reviewAssociations
+    ? associationReviews
+    : pendingBindings;
+  const scopedTasks = requirementKey
+    ? snapshot.tasks.filter((task) => relatedIds.has(task.id))
+    : snapshot.tasks;
+  const scopedRealIds = new Set(scopedTasks.map((task) => task.realTaskId));
+  const runtimeStatus =
+    requirementKey && snapshot.runtime
+      ? {
+          ...snapshot.runtime,
+          tasks: snapshot.runtime.tasks.filter((task) =>
+            scopedRealIds.has(task.task_id),
+          ),
+          total: snapshot.runtime.complete ? scopedTasks.length : null,
+        }
+      : snapshot.runtime;
+  const ordered = tasksByDescendingNumber(scopedTasks);
   const candidate =
     selected !== undefined
-      ? snapshot.tasks.find((t) => t.id === selected)
+      ? scopedTasks.find((t) => t.id === selected)
       : ordered[0];
   const identityChanged = Boolean(
     selectedRealTaskId && candidate?.realTaskId !== selectedRealTaskId,
   );
-  const task = identityChanged ? undefined : candidate;
+  const task = identityChanged || reviewAssociations ? undefined : candidate;
   useEffect(() => {
     detailPane.current?.scrollTo({ top: 0 });
-  }, [task?.id]);
+  }, [task?.id, reviewAssociations, requirementKey]);
   const filtered = ordered.filter(
     (t) =>
       `${t.title} ${t.number || ""} ${t.source.path}`
@@ -493,13 +538,39 @@ export function TasksPage({
             <small>
               {snapshot.runtime?.source === "unavailable"
                 ? "暂不可用"
-                : snapshot.tasks.length}
+                : scopedTasks.length}
             </small>
           </h2>
           <p className="task-sort-note">
             按 Task 编号从大到小 · 无编号任务置后
           </p>
-          <RuntimeStatus view={snapshot.runtime} />
+          <RuntimeStatus view={runtimeStatus} />
+          {requirementKey && (
+            <div className="task-requirement-scope" role="status">
+              <strong>
+                {requirement
+                  ? `关联需求：${requirement.id} · ${requirement.title}`
+                  : "所选需求已退出本次快照"}
+              </strong>
+              <button
+                type="button"
+                className="text-link"
+                onClick={clearRequirement}
+              >
+                查看全部任务
+              </button>
+              {associationReviews.length > 0 && (
+                <button
+                  type="button"
+                  className="text-link"
+                  aria-pressed={Boolean(reviewAssociations)}
+                  onClick={showAssociationReview}
+                >
+                  关联待核对 · {associationReviews.length}
+                </button>
+              )}
+            </div>
+          )}
           <div className="search">
             <Search size={15} />
             <input
@@ -570,11 +641,15 @@ export function TasksPage({
           ))}
           {!filtered.length && (
             <p className="list-empty">
-              {snapshot.tasks.length
-                ? "无匹配任务"
-                : snapshot.runtime?.source === "unavailable"
-                  ? "任务数据暂不可用，产品及文档继续可读"
-                  : "当前已读列表没有任务记录"}
+              {requirementKey && !scopedTasks.length
+                ? pendingBindings.length
+                  ? "关联任务尚未定位，请查看右侧待核对记录"
+                  : "该需求暂无关联任务"
+                : snapshot.tasks.length
+                  ? "无匹配任务"
+                  : snapshot.runtime?.source === "unavailable"
+                    ? "任务数据暂不可用，产品及文档继续可读"
+                    : "当前已读列表没有任务记录"}
             </p>
           )}
         </div>
@@ -596,6 +671,7 @@ export function TasksPage({
             </div>
             {task.runtimeLifecycle ? (
               <RuntimeTaskDetail
+                key={`${snapshot.id}:${task.realTaskId}`}
                 snapshot={snapshot}
                 taskId={task.realTaskId!}
               />
@@ -649,7 +725,9 @@ export function TasksPage({
                 context={{
                   snapshot,
                   open,
-                  openTask: select,
+                  openTask: (id) => {
+                    if (id) select(id);
+                  },
                   openProduct,
                   relations,
                 }}
@@ -664,6 +742,61 @@ export function TasksPage({
                 openTask={select}
               />
             </section>
+          </article>
+        ) : reviewAssociations || displayedBindings.length ? (
+          <article className="task-detail task-pending-bindings">
+            <h2>关联任务待核对 · {displayedBindings.length}</h2>
+            <p>
+              {reviewAssociations
+                ? "以下关联的任务身份、匹配或来源约束需要核对；具体原因见每条记录。"
+                : "以下关联尚未定位到当前 Runtime 任务，可能仍有历史文档记录；具体原因见每条记录。"}
+            </p>
+            {!displayedBindings.length && <p>当前需求没有待核对关联。</p>}
+            {displayedBindings.map((binding) => {
+              const source = snapshot.product?.sources.find(
+                (entry) => entry.id === binding.match.sourceCheckId,
+              )?.source;
+              const labels = {
+                "identity-unknown": "身份未确认",
+                conflict: "关联冲突",
+                matched: "当前 Runtime 任务未登记",
+                unresolved: "任务尚未定位",
+              };
+              return (
+                <section key={binding.key} className="task-pending-binding">
+                  <h3>
+                    {binding.binding.task.label ||
+                      binding.binding.task.task_id ||
+                      binding.binding.id}
+                  </h3>
+                  <span className="status">{labels[binding.match.state]}</span>
+                  <p>{binding.match.detail}</p>
+                  <p>覆盖：{binding.binding.coverage}</p>
+                  <p className="muted">
+                    任务 ID：{binding.binding.task.task_id ?? "未登记"} · 关联：
+                    {binding.binding.id}
+                  </p>
+                  {binding.binding.reason && (
+                    <p>关联依据：{binding.binding.reason}</p>
+                  )}
+                  {binding.binding.task.source.kind === "file" && (
+                    <p className="muted">
+                      任务来源：{binding.binding.task.source.path}
+                      {binding.binding.task.source.note
+                        ? ` · ${binding.binding.task.source.note}`
+                        : ""}
+                    </p>
+                  )}
+                  {source && <SourceButton source={source} open={open} />}
+                  <button
+                    className="text-link"
+                    onClick={() => openProduct(binding.ownerKey)}
+                  >
+                    查看需求关联依据 ↗
+                  </button>
+                </section>
+              );
+            })}
           </article>
         ) : (
           <Empty

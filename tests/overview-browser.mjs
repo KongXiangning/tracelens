@@ -41,7 +41,7 @@ async function addProject(page, name) {
   await dialog.getByRole("button", { name: "添加并扫描", exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page
-    .locator(".overview-breadcrumb-project")
+    .locator(".project-switch-card.active")
     .filter({ hasText: name })
     .waitFor();
 }
@@ -222,7 +222,7 @@ try {
     await page.locator(".requirements-v3-page").innerText(),
     /A-DEMO/,
   );
-  await page.getByRole("button", { name: "返回上一视图" }).click();
+  await page.goBack();
   await card.waitFor();
   const beforeDetails = fullReads.length;
   // Deliberately large diagnostic response to verify page bounds and unmounting.

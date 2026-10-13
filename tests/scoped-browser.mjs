@@ -197,8 +197,8 @@ try {
     "A-LIVE partial result and full source readable",
   );
   await shot("05-report-source");
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
+  await page.goBack();
+  await page.goBack();
   assert.equal(
     await page
       .getByRole("combobox", { name: "结论筛选", exact: true })
@@ -237,7 +237,7 @@ try {
     "explicit injected 503; three-task list retained",
   );
   await shot("06a-local-detail-failure");
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
+  await page.goBack();
   await page.locator("html").evaluate((el) => {
     el.scrollTop = Math.min(180, el.scrollHeight - el.clientHeight);
   });
@@ -254,15 +254,14 @@ try {
   await page
     .getByRole("heading", { name: "Task 生命周期：已关闭", exact: true })
     .waitFor();
+  await page.locator(".runtime-task-metadata > summary").click();
   assert.match(
     await page.locator(".runtime-task-detail").innerText(),
     new RegExp(input.closed),
   );
   await page
-    .getByRole("button", {
-      name: "S2 · 恢复尚未执行 · not-started",
-      exact: true,
-    })
+    .locator(".runtime-step-card")
+    .filter({ hasText: "恢复尚未执行" })
     .click();
   await page.waitForFunction(() =>
     [...document.querySelectorAll(".runtime-task-detail > section")]
@@ -304,7 +303,7 @@ try {
     "list and closed lifecycle retained; synthetic source restored byte-for-byte",
   );
   await shot("07-local-source-failure");
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
+  await page.goBack();
   assert.equal(
     await page
       .getByRole("combobox", { name: "结论筛选", exact: true })

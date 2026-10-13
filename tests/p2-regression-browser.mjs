@@ -238,7 +238,7 @@ try {
     .getByRole("button", { name: "查看结论依据 · A-DEMO", exact: true })
     .click();
   await page.locator('[data-product-id="A-DEMO"]').waitFor();
-  await page.getByRole("button", { name: "返回上一视图", exact: true }).click();
+  await page.goBack();
   await conclusion("satisfied");
   assert.equal(
     await page

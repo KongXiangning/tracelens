@@ -81,6 +81,7 @@ export interface Task {
   issues: Entry[];
 }
 export interface Document {
+  contentOmitted?: boolean;
   id: string;
   path: string;
   kind: DocumentKind;
@@ -133,6 +134,15 @@ export interface ScanFile {
   detail?: string;
 }
 export interface Snapshot {
+  treeFingerprint?: string;
+  phase?: "core" | "complete";
+  metrics?: {
+    durationMs: number;
+    filesRead: number;
+    filesReused: number;
+    parsed: number;
+    reusedParses: number;
+  };
   runtime?: RuntimeView;
   id: string;
   projectId: string;
@@ -154,13 +164,18 @@ export interface Snapshot {
   product?: ProductSnapshot;
 }
 export interface RefreshAttempt {
+  phase?: string;
+  completed?: number;
+  total?: number;
   state: "scanning" | "success" | "partial" | "failed";
   startedAt: string;
   completedAt?: string;
   error?: string;
 }
-export interface SnapshotView {
-  snapshot: Snapshot | null;
+export interface SnapshotView<T = Snapshot> {
+  unchanged?: boolean;
+  restored?: boolean;
+  snapshot: T | null;
   attempt: RefreshAttempt | null;
   configChanged: boolean;
 }

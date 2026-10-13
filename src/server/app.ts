@@ -10,7 +10,11 @@ import { ProjectRegistry } from "./registry.js";
 import { discover } from "./scanner.js";
 import { SnapshotStore } from "./snapshot.js";
 import { browseDirectories, codexProjects } from "./project-sources.js";
-import { runtimeHashes, runtimeBudgets } from "./runtime-reader.js";
+import {
+  runtimeHashes,
+  runtimeBudgets,
+  effectiveHome,
+} from "./runtime-reader.js";
 
 export interface AppOptions {
   dataDir?: string;
@@ -107,6 +111,18 @@ export async function createApp(options: AppOptions = {}) {
   app.patch<{ Params: { id: string } }>("/api/projects/:id", async (request) =>
     registry.update(request.params.id, request.body),
   );
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/runtime-trust-defaults",
+    async (request) => {
+      const project = registry.get(request.params.id);
+      return {
+        sourceDirectory:
+          project.runtimeTrust?.sourceDirectory ||
+          path.join(project.root, ".workflow-system/runtime/support"),
+        workflowHome: await effectiveHome(project),
+      };
+    },
+  );
   app.post("/api/runtime-source-preview", async (request) => {
     const input = validate(
       z.object({ sourceDirectory: z.string().min(1).max(2000) }),
@@ -142,6 +158,16 @@ export async function createApp(options: AppOptions = {}) {
     },
   );
   app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/task-times",
+    async (request) => {
+      const input = validate(
+        z.object({ snapshotId: z.string().min(1), taskId: z.string().min(1) }),
+        request.body,
+      );
+      return store.taskTimes(request.params.id, input.snapshotId, input.taskId);
+    },
+  );
+  app.post<{ Params: { id: string } }>(
     "/api/projects/:id/task-page",
     async (request) => {
       const input = validate(
@@ -168,17 +194,49 @@ export async function createApp(options: AppOptions = {}) {
     "/api/projects/:id",
     async (request) => {
       await registry.remove(request.params.id);
-      store.remove(request.params.id);
+      await store.remove(request.params.id);
       return { removed: true };
     },
   );
-  app.get<{ Params: { id: string } }>(
-    "/api/projects/:id/snapshot",
-    async (request) => store.view(request.params.id),
+  app.get<{
+    Params: { id: string };
+    Querystring: {
+      compact?: string;
+      knownSnapshotId?: string;
+      snapshotId?: string;
+    };
+  }>("/api/projects/:id/snapshot", async (request) => {
+    await store.restore(request.params.id);
+    if (
+      request.query.snapshotId &&
+      store.view(request.params.id).snapshot?.id !== request.query.snapshotId
+    )
+      throw new AppError("快照已更新，请刷新当前视图后重试", 409);
+    return request.query.compact === "1"
+      ? store.summary(request.params.id, request.query.knownSnapshotId)
+      : store.view(request.params.id);
+  });
+  app.get<{ Params: { id: string }; Querystring: { knownRevision?: string } }>(
+    "/api/projects/:id/overview",
+    async (request) => {
+      await store.restore(request.params.id);
+      return store.overview(request.params.id, request.query.knownRevision);
+    },
   );
   app.post<{ Params: { id: string } }>(
     "/api/projects/:id/refresh",
-    async (request) => store.refresh(request.params.id),
+    async (request) => {
+      const { background, statusOnly } = z
+        .object({
+          background: z.boolean().optional(),
+          statusOnly: z.boolean().optional(),
+        })
+        .parse(request.body || {});
+      if (!background) return store.refresh(request.params.id);
+      void store.refresh(request.params.id);
+      if (statusOnly) return store.status(request.params.id);
+      return store.summary(request.params.id);
+    },
   );
   app.get<{
     Params: { id: string; documentId: string };
@@ -190,6 +248,18 @@ export async function createApp(options: AppOptions = {}) {
       request.query.snapshotId,
     ),
   );
+  if (options.development && !options.webRoot) {
+    // Development has one UI entry; never serve an older production build.
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith("/api/"))
+        return reply.code(404).send({ error: "未找到资源" });
+      const host = request.headers.host?.startsWith("localhost:")
+        ? "localhost"
+        : "127.0.0.1";
+      return reply.redirect(`http://${host}:5173${request.url}`);
+    });
+    return { app, registry, store };
+  }
   const webRoot =
     options.webRoot || fileURLToPath(new URL("../web", import.meta.url));
   try {

@@ -7,7 +7,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web \"tsx src/server/index.ts\" \"vite\"",
+    "dev": "concurrently -k -n api,web \"tsx watch src/server/index.ts\" \"vite\"",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src tests *.json *.ts index.html",
     "format:check": "prettier --check src tests *.json *.ts index.html",
@@ -22,7 +22,8 @@
     "test:browser:scoped": "node tests/scoped-browser.mjs && node tests/scoped-degradation-browser.mjs",
     "test:browser:p2": "node tests/p2-regression-browser.mjs",
     "test:browser:full-scope": "node tests/full-scope-browser.mjs",
-    "test:browser:structure": "node tests/structure-browser.mjs"
+    "test:browser:structure": "node tests/structure-browser.mjs",
+    "test:browser:overview": "node tests/overview-browser.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.5",

@@ -21,50 +21,106 @@ export function RuntimeStatus({ view }: { view?: RuntimeView }) {
     (view.issues.length > 0 ||
       (view.queryMetadata?.state_completeness != null &&
         view.queryMetadata.state_completeness !== "complete"));
+  const sourceLabel = {
+    "runtime-query": "Runtime 只读查询",
+    "file-snapshot": "文件降级快照",
+    "memory-snapshot": "内存降级快照",
+    unavailable: "任务数据暂不可用",
+  }[view.source];
+  const stale =
+    view.source === "file-snapshot" || view.source === "memory-snapshot";
+  let label = "任务已更新";
+  let tone = "ready";
+  if (view.source === "unavailable") {
+    label = "任务数据暂不可用";
+    tone = "error";
+  } else if (unresolvedEmpty) {
+    label = "任务尚未定位，不能确认零任务";
+    tone = "warning";
+  } else if (stale || view.freshness !== "queried") {
+    label = "正在显示旧任务数据";
+    tone = "warning";
+  } else if (!view.complete) {
+    label = "任务尚未读全";
+    tone = "warning";
+  } else if (
+    view.queryMetadata?.state_completeness != null &&
+    view.queryMetadata.state_completeness !== "complete"
+  ) {
+    label = "任务状态有待核对";
+    tone = "warning";
+  }
+  const readTime = new Date(view.queryReadAt || view.readAt);
+  const timeKnown = Number.isFinite(readTime.getTime());
+  const clock = timeKnown
+    ? readTime.toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : "时间未知";
+  const count =
+    view.total == null
+      ? `已读取 ${view.tasks.length} 个 · 总数未知`
+      : tone === "ready"
+        ? `共 ${view.tasks.length} 个`
+        : `已读取 ${view.tasks.length}/${view.total} 个`;
   return (
-    <section className="runtime-status" role="status">
-      <strong>
-        {view.source === "unavailable"
-          ? "任务数据暂不可用"
-          : {
-              "runtime-query": "Runtime 只读查询",
-              "file-snapshot": "文件降级快照",
-              "memory-snapshot": "内存降级快照",
-            }[view.source]}
-      </strong>
-      <span>
-        {" "}
-        ·{" "}
-        {view.source === "unavailable"
-          ? "产品内容继续可读"
-          : unresolvedEmpty
-            ? "尚未定位 Task；事实关联存在缺口，不能确认零任务"
-            : `${view.tasks.length}/${view.total ?? "未知"} 个任务；${view.complete ? "列表完整" : "列表未读完"}`}
-      </span>
-      <small>
-        读取：{view.queryReadAt || view.readAt}
-        {view.reuseAt && ` · 复用：${view.reuseAt}`}
-        {view.fileMtime && ` · 文件修改：${view.fileMtime}`} ·{" "}
-        {view.freshness === "queried" ? "截至本次读取" : "陈旧性未知"}
-      </small>
+    <section className={`runtime-status runtime-status-${tone}`} role="status">
+      <div className="runtime-status-line">
+        <strong>{label}</strong>
+        {view.source === "unavailable" ? (
+          <span> · 产品文档仍可查看</span>
+        ) : (
+          <>
+            <span> · {count}</span>
+            {!unresolvedEmpty && (
+              <span
+                title={
+                  timeKnown
+                    ? readTime.toLocaleString("zh-CN", { hour12: false })
+                    : undefined
+                }
+              >
+                {stale ? " · 更新时间未知" : ` · ${clock}`}
+              </span>
+            )}
+          </>
+        )}
+      </div>
       <details>
-        <summary>查询来源与诊断</summary>
-        <p>
-          视图版本：{view.viewRevision || "未提供"} · workflow home：
-          {view.workflowHome}
-        </p>
-        {view.source === "file-snapshot" && (
-          <p>生成时间未提供；快照计数不代表当前事实。</p>
-        )}
-        <ul>
-          {view.diagnostics.map((d, i) => (
-            <li key={i}>{d}</li>
-          ))}
-        </ul>
-        <pre>{JSON.stringify(view.issues, null, 2)}</pre>
-        {view.queryMetadata && (
-          <pre>{JSON.stringify(view.queryMetadata, null, 2)}</pre>
-        )}
+        <summary>数据详情</summary>
+        <div className="runtime-status-diagnostics">
+          <p>
+            {sourceLabel} · {view.tasks.length}/{view.total ?? "未知"} 个任务；
+            {view.complete ? "列表完整" : "列表未读完"}
+          </p>
+          <p>
+            读取：
+            {timeKnown
+              ? readTime.toLocaleString("zh-CN", { hour12: false })
+              : "未提供"}
+            {view.reuseAt && ` · 复用：${view.reuseAt}`}
+            {view.fileMtime && ` · 文件修改：${view.fileMtime}`} ·{" "}
+            {view.freshness === "queried" ? "截至本次读取" : "陈旧性未知"}
+          </p>
+          <p>
+            视图版本：{view.viewRevision || "未提供"} · workflow home：
+            {view.workflowHome}
+          </p>
+          {view.source === "file-snapshot" && (
+            <p>生成时间未提供；快照计数不代表当前事实。</p>
+          )}
+          <ul>
+            {view.diagnostics.map((d, i) => (
+              <li key={i}>{d}</li>
+            ))}
+          </ul>
+          <pre>{JSON.stringify(view.issues, null, 2)}</pre>
+          {view.queryMetadata && (
+            <pre>{JSON.stringify(view.queryMetadata, null, 2)}</pre>
+          )}
+        </div>
       </details>
     </section>
   );
@@ -72,9 +128,13 @@ export function RuntimeStatus({ view }: { view?: RuntimeView }) {
 export function RuntimeTrustPanel({
   project,
   saved,
+  disabled = false,
+  onSavingChange,
 }: {
   project: Project;
   saved: (project: Project) => void;
+  disabled?: boolean;
+  onSavingChange?: (saving: boolean) => void;
 }) {
   const [directory, setDirectory] = useState(
     project.runtimeTrust?.sourceDirectory || "",
@@ -82,27 +142,59 @@ export function RuntimeTrustPanel({
   const [home, setHome] = useState(
     project.runtimeTrust?.workflowHome || "docs/workflow",
   );
-  const [preview, setPreview] =
-    useState<Pick<RuntimeTrust, "sourceDirectory" | "moduleHashes">>();
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadFailed(false);
+    setError("");
+    api<Pick<RuntimeTrust, "sourceDirectory" | "workflowHome">>(
+      `/projects/${project.id}/runtime-trust-defaults`,
+    )
+      .then((defaults) => {
+        if (cancelled) return;
+        setDirectory(defaults.sourceDirectory);
+        setHome(defaults.workflowHome);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setLoadFailed(true);
+        setError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project.id,
+    project.root,
+    project.runtimeTrust?.sourceDirectory,
+    project.runtimeTrust?.workflowHome,
+    reload,
+  ]);
+  const unavailable = disabled || loading || saving || loadFailed;
   return (
     <details className="runtime-trust">
       <summary>
         Runtime 来源信任 {project.runtimeTrust ? "· 已登记" : "· 尚未选择"}
       </summary>
       <p>
-        选择你信任的本机 Runtime
-        源目录或分发目录，核对四模块摘要后，允许此副本执行只读任务查询与来源读取。
+        默认使用当前项目的 Runtime 和工作流目录，也可手动修改。
+        确认信任后，将登记四个模块的指纹，允许此副本执行只读任务查询与来源读取。
       </p>
       <label>
         可信模块目录
         <input
           aria-label="可信 Runtime 目录"
           value={directory}
-          onChange={(e) => {
-            setDirectory(e.target.value);
-            setPreview(undefined);
-          }}
+          disabled={unavailable}
+          onChange={(e) => setDirectory(e.target.value)}
         />
       </label>
       <label>
@@ -110,50 +202,63 @@ export function RuntimeTrustPanel({
         <input
           aria-label="Runtime workflow home"
           value={home}
+          disabled={unavailable}
           onChange={(e) => setHome(e.target.value)}
         />
       </label>
       <button
-        className="secondary"
+        type="button"
+        className="primary"
+        disabled={unavailable || !directory.trim() || !home.trim()}
         onClick={async () => {
+          setSaving(true);
+          onSavingChange?.(true);
           try {
             setError("");
-            setPreview(
-              await api(
-                "/runtime-source-preview",
-                { sourceDirectory: directory },
-                "POST",
-              ),
+            const preview = await api<
+              Pick<RuntimeTrust, "sourceDirectory" | "moduleHashes">
+            >(
+              "/runtime-source-preview",
+              { sourceDirectory: directory.trim() },
+              "POST",
             );
+            const p = await api<Project>(
+              `/projects/${project.id}/runtime-trust`,
+              { ...preview, workflowHome: home.trim(), accept: true },
+              "POST",
+            );
+            saved(p);
           } catch (e) {
             setError(String(e));
+          } finally {
+            setSaving(false);
+            onSavingChange?.(false);
           }
         }}
       >
-        核对可信来源
+        {loading
+          ? "正在读取项目配置…"
+          : saving
+            ? "正在登记信任…"
+            : "确认信任并刷新"}
       </button>
-      {preview && (
-        <>
-          <pre>{JSON.stringify(preview.moduleHashes, null, 2)}</pre>
-          <button
-            className="primary"
-            onClick={async () => {
-              try {
-                const p = await api<Project>(
-                  `/projects/${project.id}/runtime-trust`,
-                  { ...preview, workflowHome: home, accept: true },
-                  "POST",
-                );
-                saved(p);
-                setPreview(undefined);
-              } catch (e) {
-                setError(String(e));
-              }
-            }}
-          >
-            信任这些字节用于此副本的只读查询
-          </button>
-        </>
+      {loadFailed && (
+        <button
+          type="button"
+          className="secondary"
+          disabled={disabled || loading || saving}
+          onClick={() => setReload((value) => value + 1)}
+        >
+          重新读取项目配置
+        </button>
+      )}
+      {project.runtimeTrust && (
+        <details>
+          <summary>已登记的模块指纹</summary>
+          <pre>
+            {JSON.stringify(project.runtimeTrust.moduleHashes, null, 2)}
+          </pre>
+        </details>
       )}
       {error && <p role="alert">{error}</p>}
     </details>

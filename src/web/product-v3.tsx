@@ -1,4 +1,22 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  buildOverviewData,
+  isOverviewSnapshot,
+  requirementDescription,
+  type OverviewRequirement,
+} from "../shared/overview-data";
+import { LazyDetails, PagedItems } from "./lazy-details";
+import {
+  defaultOverviewFilters,
+  matchesOverviewFilters,
+  overviewConclusionOptions,
+  overviewFiltersActive,
+  overviewReportVerdict,
+  overviewRequirementSignals,
+  type ConclusionFilter,
+  type OverviewFilters,
+} from "./overview-card-state";
+import { OverviewFilterBar } from "./overview-filters";
 import { navigationScrollContainer } from "./navigation-scroll";
 import {
   ReactFlow,
@@ -18,7 +36,7 @@ import {
   selectAssessment,
   type Subject,
 } from "../shared/product-view";
-import { overviewTaskStates } from "../shared/overview-model";
+import { AssessmentOverview } from "./assessment-overview";
 import {
   requirementBindings,
   requirementHierarchy,
@@ -29,8 +47,9 @@ import {
   ProductDetail,
   ProductStatusPanel,
   type ProductContext,
+  type OverviewContext,
 } from "./product";
-import { SourceButton } from "./components";
+import { Modal, SourceButton } from "./components";
 import { lifecycleLabels } from "./runtime";
 
 type ViewState = {
@@ -302,6 +321,7 @@ export function RequirementsV3({
     const isSelected = entry.key === selected;
     return {
       id: entry.key,
+      className: `requirements-v3-node${entry.type === "goal" ? " is-goal" : ""}${isSelected ? " is-selected" : ""}`,
       position: { x: column * 285, y: level * 185 },
       data: {
         label: (
@@ -352,10 +372,7 @@ export function RequirementsV3({
       },
       style: {
         width: 255,
-        border: isSelected ? "2px solid #397365" : "1px solid #cbd8cf",
-        borderRadius: 8,
         padding: 0,
-        boxShadow: isSelected ? "0 0 0 3px #39736518" : "0 3px 12px #2146320d",
       },
     };
   });
@@ -372,7 +389,7 @@ export function RequirementsV3({
             : "依赖",
       style:
         relation.link.relation === "depends_on"
-          ? { strokeDasharray: "5 4", stroke: "#b67d3f" }
+          ? { strokeDasharray: "5 4", stroke: "var(--overview-amber)" }
           : undefined,
     }),
   );
@@ -711,7 +728,7 @@ export function RequirementsV3({
               fitView
               minZoom={0.25}
             >
-              <Background color="#d6dfd8" gap={19} size={1} />
+              <Background color="var(--overview-rule)" gap={19} size={1} />
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>
@@ -791,24 +808,6 @@ function OriginalAssessment({ report }: { report: ProductItem }) {
       {!report.usable && "（字段异常，保留原字段供核对）"}
     </p>
   );
-}
-
-function requirementDescription(item: ProductItem) {
-  const body = item.body.replace(/\r\n|\r/g, "\n");
-  const section = body.split(/^###\s+需求内容\s*$/m)[1] || body;
-  const text = section
-    .split(/^###\s+/m)[0]
-    .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/[`*_>#]/g, "")
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  if (!text) return "完整需求范围见原文";
-  const firstSentence = text.split(/[。；;.!！?？]/)[0]?.trim() || text;
-  const compact = firstSentence.slice(0, 44).trim();
-  return compact + (compact.length < firstSentence.length ? "…" : "");
 }
 
 type ReadingSection = { heading: string; text: string; lines: string[] };
@@ -1178,290 +1177,506 @@ export function ScopedConclusion({
     </section>
   );
 }
-export function OverviewV3({
-  context,
-  requirements,
-}: {
-  context: ProductContext;
-  requirements: () => void;
-  planning?: () => void;
-}) {
-  const product = context.snapshot.product!,
-    model = productView(product);
-  const planned = model.registered.filter(
-    (item) => item.metadata.scope === "current",
-  );
-  const roadmap = [...planned].reverse();
-  const unordered = model.unordered.filter(
-    (item) => item.metadata.scope === "current",
-  );
-  const activeBindings = product.bindings.filter(
-    (view) => view.binding.state === "active",
-  );
-  const plannedBindings = activeBindings.filter((view) =>
-    planned.some((item) => item.key === view.ownerKey),
-  );
-  const totalTaskCount = overviewTaskStates(
-    context.snapshot,
-    plannedBindings,
-  ).total;
-  const rootGoal = model.rootGoal;
-
-  const openFirstTask = (item: ProductItem) => {
-    const taskId = activeBindings
-      .filter((view) => view.ownerKey === item.key)
-      .flatMap((view) => view.match.taskIds)
-      .find((id) => context.snapshot.tasks.some((task) => task.id === id));
-    if (taskId) context.openTask(taskId);
-    else context.openProduct(item.key);
-  };
-
-  const card = (item: ProductItem, index: number) => {
-    const bindings = activeBindings.filter(
-      (view) => view.ownerKey === item.key,
+const storedOverviewFilters = new Map<string, OverviewFilters>();
+export const OverviewV3 = memo(
+  function OverviewV3({
+    context,
+    requirements,
+  }: {
+    context: OverviewContext;
+    requirements: () => void;
+    planning?: () => void;
+  }) {
+    const [assessmentKey, setAssessmentKey] = useState<string>();
+    const data = isOverviewSnapshot(context.snapshot)
+      ? context.snapshot.overview!
+      : buildOverviewData(context.snapshot);
+    const { planned, unordered, rootGoal } = data;
+    const [filters, setFilters] = useState<OverviewFilters>(
+      () =>
+        storedOverviewFilters.get(context.snapshot.projectId) ||
+        defaultOverviewFilters(),
     );
-    const taskState = overviewTaskStates(context.snapshot, bindings);
-    const counts = { completed: 0, active: 0, pending: 0 };
-    for (const state of taskState.states) {
-      if (["已完成", "已关闭", "已归档", "已跳过"].includes(state.label))
-        counts.completed += state.count;
-      else if (
-        ["进行中", "受阻"].includes(state.label) ||
-        state.tone === "orange"
-      )
-        counts.active += state.count;
-      else counts.pending += state.count;
-    }
-    const total = taskState.total + taskState.unconfirmed;
-    const counted = counts.completed + counts.active + counts.pending;
-    if (total > counted) counts.pending += total - counted;
-    const dependencies = product.relations
-      .filter(
-        (relation) =>
-          relation.ownerKey === item.key &&
-          relation.link.relation === "depends_on" &&
-          relation.link.state === "active" &&
-          relation.resolution === "resolved",
-      )
-      .map((relation) => relation.link.target)
-      .filter((value, position, values) => values.indexOf(value) === position);
-    const childCount = product.relations.filter(
-      (relation) =>
-        relation.targetKey === item.key &&
-        relation.link.relation === "part_of" &&
-        relation.link.state === "active" &&
-        relation.resolution === "resolved",
-    ).length;
-    const percentages = total
-      ? {
-          completed: (counts.completed / total) * 100,
-          active: (counts.active / total) * 100,
-        }
-      : { completed: 0, active: 0 };
-    const donutStyle = {
-      "--complete": `${percentages.completed}%`,
-      "--active": `${percentages.active}%`,
-    } as CSSProperties;
+    useEffect(() => {
+      storedOverviewFilters.set(context.snapshot.projectId, filters);
+    }, [context.snapshot.projectId, filters]);
+    const signals = useMemo(
+      () =>
+        new Map(
+          [...data.planned, ...data.unordered].map((item) => [
+            item.key,
+            overviewRequirementSignals(item),
+          ]),
+        ),
+      [data],
+    );
+    const roadmap = planned.map((item, index) => ({ item, index })).reverse();
+    const visibleRoadmap = roadmap.filter(({ item }) =>
+      matchesOverviewFilters(signals.get(item.key)!, filters),
+    );
+    const visibleUnordered = unordered
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) =>
+        matchesOverviewFilters(signals.get(item.key)!, filters),
+      );
+    const filtersActive = overviewFiltersActive(filters);
+    const conclusionCounts = Object.fromEntries(
+      overviewConclusionOptions.map((option) => [
+        option.value,
+        [...signals.values()].filter((value) =>
+          value.conclusions.includes(option.value),
+        ).length,
+      ]),
+    ) as Record<ConclusionFilter, number>;
+    const assessmentItem = [...planned, ...unordered].find(
+      (item) => item.key === assessmentKey,
+    );
+    const totalTaskCount = data.taskCount;
+    const openFirstTask = (item: OverviewRequirement) => {
+      if (item.firstTask) context.openTask(item.firstTask);
+      else context.openProduct(item.key);
+    };
 
-    return (
-      <article
-        className="overview-route-card"
-        key={item.key}
-        data-overview-card={item.id}
-      >
-        <div className="overview-route-pin" aria-hidden="true">
-          <span>{String(index + 1).padStart(2, "0")}</span>
-        </div>
-        <div className="overview-route-body">
-          <div className="overview-route-code">{item.id} / REQUIREMENT</div>
-          <h3>{item.title}</h3>
-          <p className="overview-route-description">
-            {requirementDescription(item)}
-          </p>
-          <div className="overview-route-predecessor">
-            <span>前置需求</span>
-            <strong>
-              {dependencies.length ? dependencies.join(" / ") : "—"}
-            </strong>
-          </div>
-          <div className="overview-task-total">
-            <span>关联 TASK</span>
-            <strong>{String(total).padStart(2, "0")}</strong>
-          </div>
-          <div className="overview-task-breakdown">
-            <div
-              className="overview-donut"
-              style={donutStyle}
-              aria-label={`共 ${total} 个 Task，已完成 ${counts.completed} 个，进行中 ${counts.active} 个，待开始 ${counts.pending} 个`}
-            >
-              <div className="overview-donut-inner">
-                <strong>{total}</strong>
-                <small>TASKS</small>
-              </div>
-            </div>
-            <div className="overview-task-counts">
-              <div>
-                <i className="complete" />
-                <span>已完成</span>
-                <b>{counts.completed}</b>
-              </div>
-              <div>
-                <i className="active" />
-                <span>进行中</span>
-                <b>{counts.active}</b>
-              </div>
-              <div>
-                <i className="pending" />
-                <span>待开始</span>
-                <b>{counts.pending}</b>
-              </div>
-            </div>
-          </div>
-          <button
-            className="overview-route-link"
-            onClick={() => openFirstTask(item)}
+    const card = (item: OverviewRequirement, index: number) => {
+      const { taskState, assessmentRecords, dependencies, childCount } = item;
+      const total = taskState.total + taskState.unconfirmed;
+      const { verdicts, conclusions, review } = signals.get(item.key)!;
+      const taskSummary = taskState.states
+        .map((state) => `${state.label} ${state.count}`)
+        .join("，");
+      return (
+        <article
+          className="overview-route-card"
+          key={item.key}
+          data-overview-card={item.id}
+          data-review={review || undefined}
+        >
+          <div
+            className="overview-card-verdict-strip"
+            role="img"
+            aria-label={`报告结论：${verdicts.map((verdict) => verdict.label).join("、") || "无验收记录"}${review ? "；待核对" : ""}`}
           >
-            <span>查看关联 Task</span>
-            <span aria-hidden="true">↗</span>
-          </button>
-          {childCount > 0 && (
-            <button
-              className="overview-route-link"
-              aria-label={`展开子需求 · ${item.id}`}
-              onClick={() => context.openProduct(item.key)}
-            >
-              <span>展开子需求</span>
-              <span aria-hidden="true">↗</span>
-            </button>
-          )}
-        </div>
-      </article>
-    );
-  };
-  return (
-    <div className="overview-dashboard">
-      <section className="overview-hero" aria-label="核心目标及规划范围">
-        <div className="overview-hero-section overview-hero-goal">
-          <div className="overview-eyebrow">01 / CURRENT PROJECT GOAL</div>
-          <h1>{rootGoal?.title || model.project?.title || "项目目标待确认"}</h1>
-          <p>基于已确认的项目目标与需求规划展示</p>
-          {rootGoal ? (
-            <button
-              className="overview-hero-link"
-              onClick={() => context.openProduct(rootGoal.key)}
-            >
-              查看目标演变 <span aria-hidden="true">↗</span>
-            </button>
-          ) : (
-            <button className="overview-hero-link" onClick={requirements}>
-              查看需求视图 <span aria-hidden="true">↗</span>
-            </button>
-          )}
-        </div>
-        <div className="overview-hero-section overview-hero-unplanned">
-          <h2>仍有 {unordered.length} 个需求尚未规划</h2>
-          <p>
-            已识别的需求方向尚未纳入正式需求拆分与实现顺序，不代表现有需求尚未完成。
-          </p>
-          {unordered.length ? (
-            <ul>
-              {unordered.slice(0, 3).map((item) => (
-                <li key={item.key}>
-                  <button onClick={() => context.openProduct(item.key)}>
-                    {item.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="overview-hero-empty">当前没有待规划需求</div>
-          )}
-          <button className="overview-hero-outline" onClick={requirements}>
-            查看待规划需求 <span aria-hidden="true">↗</span>
-          </button>
-        </div>
-        <div className="overview-hero-section overview-hero-planned">
-          <h2>已规划的需求</h2>
-          {planned.length ? (
-            <ul>
-              {planned.slice(0, 4).map((item) => (
-                <li key={item.key}>
-                  <span aria-hidden="true">✓</span>
-                  <button onClick={() => context.openProduct(item.key)}>
-                    {item.title}
-                  </button>
-                </li>
-              ))}
-              {planned.length > 4 && (
-                <li className="overview-hero-more">
-                  + {planned.length - 4} 个需求已列入路线图
-                </li>
-              )}
-            </ul>
-          ) : (
-            <p className="overview-hero-empty">尚未登记规划顺序</p>
-          )}
-          <div className="overview-hero-foot">
-            待规划需求 <b>{String(unordered.length).padStart(2, "0")}</b>
-          </div>
-        </div>
-      </section>
-      <section className="overview-route-heading" aria-label="需求路线图标题">
-        <div>
-          <h2>
-            需求路线图
-            <span className="overview-semantic-label">需求全景</span>
-          </h2>
-          <p>按项目文档确定的规划顺序 · 非执行工作流</p>
-        </div>
-        <div className="overview-route-count">
-          已规划需求 <b>{String(planned.length).padStart(2, "0")}</b>
-          <span>/</span>
-          关联 Task <b>{String(totalTaskCount).padStart(2, "0")}</b>
-        </div>
-      </section>
-      <section className="overview-route-grid" aria-label="需求路线图">
-        {roadmap.length ? (
-          roadmap.map((item, index) => card(item, planned.length - index - 1))
-        ) : (
-          <div className="overview-empty">
-            当前项目没有已登记的需求顺序，请先在项目文档中声明
-            requirement_order。
-          </div>
-        )}
-      </section>
-      <details className="overview-unordered-details">
-        <summary>未指定顺序 · {unordered.length} 项（ID 定位排序）</summary>
-        {unordered.length ? (
-          <div className="overview-unordered-grid">
-            {unordered.map((item, index) => card(item, roadmap.length + index))}
-          </div>
-        ) : (
-          <p>当前没有未指定顺序的需求。</p>
-        )}
-      </details>
-      <footer className="overview-bottom-note">
-        <span>
-          <b>阅读方式</b>　目标 → 需求 → Task → Step
-        </span>
-        <span>需求不直接判定完成；颜色仅代表关联 Task 状态</span>
-        <span>TraceLens 仅读取与展示，不决定需求顺序</span>
-      </footer>
-      {!!context.snapshot.tasks.length && (
-        <section className="overview-task-index" aria-label="关联 Task 索引">
-          <h2>关联 Task</h2>
-          <div>
-            {context.snapshot.tasks.map((task) => (
-              <button key={task.id} onClick={() => context.openTask(task.id)}>
-                {task.number ? `${task.number} ${task.title}` : task.title}
-              </button>
+            {conclusions.map((conclusion) => (
+              <span key={conclusion} data-conclusion={conclusion} />
             ))}
           </div>
+          <div className="overview-card-heading">
+            <span
+              className="overview-route-pin"
+              aria-label={`需求序号 ${index + 1}`}
+            >
+              {String(index + 1).padStart(2, "0")}
+            </span>
+            <span className="overview-route-code" title={item.id}>
+              {item.id}
+            </span>
+            {review && (
+              <span
+                className="overview-review-marker"
+                title="验收适用性待核对，原报告结论保留"
+              >
+                <i aria-hidden="true">!</i>待核对
+              </span>
+            )}
+          </div>
+          <div className="overview-route-body">
+            <div className="overview-card-intro">
+              <h3>
+                <button
+                  onClick={() => context.openProduct(item.key)}
+                  title={item.title}
+                >
+                  {item.title}
+                </button>
+              </h3>
+              <p
+                className="overview-route-description"
+                title={item.description}
+              >
+                {item.description}
+              </p>
+            </div>
+            <div
+              className="overview-requirement-assessments"
+              aria-label="需求验收结果"
+            >
+              <div className="overview-card-section-heading">
+                <span>
+                  验收记录 <small>按报告范围</small>
+                </span>
+                {assessmentRecords.length > 0 && (
+                  <button
+                    onClick={() => setAssessmentKey(item.key)}
+                    aria-label={`查看验收记录 · ${item.id}`}
+                  >
+                    {assessmentRecords.length} 份记录 ↗
+                  </button>
+                )}
+              </div>
+              {assessmentRecords.length ? (
+                <div
+                  className="overview-verdicts"
+                  data-single={assessmentRecords.length === 1}
+                >
+                  {verdicts.slice(0, 3).map((verdict) => (
+                    <span
+                      key={`${verdict.conclusion}:${verdict.review}`}
+                      className="requirements-v3-pill overview-verdict-pill"
+                      data-conclusion={verdict.conclusion}
+                      title={`${verdict.label}${verdict.review ? " · 待核对" : " · 本次范围"}`}
+                    >
+                      <i aria-hidden="true">{verdict.symbol}</i>
+                      {verdict.label}
+                      {assessmentRecords.length > 1 && ` ${verdict.count}`}
+                      {assessmentRecords.length === 1 &&
+                        (verdict.review ? " · 待核对" : " · 本次范围")}
+                    </span>
+                  ))}
+                  {verdicts.length > 3 && (
+                    <button onClick={() => setAssessmentKey(item.key)}>
+                      另 {verdicts.length - 3} 种结果 ↗
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <span className="overview-assessment-empty">
+                  暂无范围验收记录
+                </span>
+              )}
+            </div>
+            <div
+              className="overview-task-summary"
+              aria-label={`共 ${total} 个 Task${taskSummary ? `，${taskSummary}` : ""}`}
+            >
+              <div className="overview-card-section-heading">
+                <span>关联 Task</span>
+                <strong>{total}</strong>
+              </div>
+              <div className="overview-task-bar" aria-hidden="true">
+                {taskState.states.map((state) => (
+                  <span
+                    key={state.label}
+                    data-tone={state.tone}
+                    style={{ width: `${(state.count / total) * 100}%` }}
+                  />
+                ))}
+              </div>
+              {total ? (
+                <div className="overview-task-states" title={taskSummary}>
+                  {taskState.states.slice(0, 3).map((state) => (
+                    <span key={state.label}>
+                      <i data-tone={state.tone} />
+                      <span>{state.label}</span>
+                      <b>{state.count}</b>
+                    </span>
+                  ))}
+                  {taskState.states.length > 3 && (
+                    <button onClick={() => context.openProduct(item.key)}>
+                      另 {taskState.states.length - 3} 种状态 ↗
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="overview-task-empty">尚未记录 Task 关联</p>
+              )}
+            </div>
+            <div className="overview-route-predecessor">
+              <span>前置需求</span>
+              <strong title={dependencies.join(" / ")}>
+                {dependencies.length ? `${dependencies.length} 项` : "无"}
+              </strong>
+              {taskState.associationPending > 0 && (
+                <span className="overview-association-note">
+                  关联待核对 · {taskState.associationPending}
+                </span>
+              )}
+            </div>
+            <div className="overview-card-actions">
+              <button onClick={() => context.openProduct(item.key)}>
+                查看需求 <span aria-hidden="true">↗</span>
+              </button>
+              <div>
+                {total > 0 && (
+                  <button onClick={() => openFirstTask(item)}>Task ↗</button>
+                )}
+                {childCount > 0 && (
+                  <button
+                    aria-label={`展开子需求 · ${item.id}`}
+                    onClick={() => context.openProduct(item.key)}
+                  >
+                    子需求 {childCount} ↗
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </article>
+      );
+    };
+    return (
+      <div className="overview-dashboard">
+        <section className="overview-hero" aria-label="核心目标及规划范围">
+          <div className="overview-hero-section overview-hero-goal">
+            <div className="overview-eyebrow">01 / CURRENT PROJECT GOAL</div>
+            <h1>
+              {rootGoal?.title || data.project?.title || "项目目标待确认"}
+            </h1>
+            <p>基于已确认的项目目标与需求规划展示</p>
+            {rootGoal ? (
+              <button
+                className="overview-hero-link"
+                onClick={() => context.openProduct(rootGoal.key)}
+              >
+                查看目标演变 <span aria-hidden="true">↗</span>
+              </button>
+            ) : (
+              <button className="overview-hero-link" onClick={requirements}>
+                查看需求视图 <span aria-hidden="true">↗</span>
+              </button>
+            )}
+          </div>
+          <div className="overview-hero-section overview-hero-unplanned">
+            <h2>仍有 {unordered.length} 个需求尚未规划</h2>
+            <p>
+              已识别的需求方向尚未纳入正式需求拆分与实现顺序，不代表现有需求尚未完成。
+            </p>
+            {unordered.length ? (
+              <ul>
+                {unordered.slice(0, 3).map((item) => (
+                  <li key={item.key}>
+                    <button onClick={() => context.openProduct(item.key)}>
+                      {item.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="overview-hero-empty">当前没有待规划需求</div>
+            )}
+            <button className="overview-hero-outline" onClick={requirements}>
+              查看待规划需求 <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+          <div className="overview-hero-section overview-hero-planned">
+            <h2>已规划的需求</h2>
+            {planned.length ? (
+              <ul>
+                {planned.slice(0, 4).map((item) => (
+                  <li key={item.key}>
+                    <span aria-hidden="true">✓</span>
+                    <button onClick={() => context.openProduct(item.key)}>
+                      {item.title}
+                    </button>
+                  </li>
+                ))}
+                {planned.length > 4 && (
+                  <li className="overview-hero-more">
+                    + {planned.length - 4} 个需求已列入路线图
+                  </li>
+                )}
+              </ul>
+            ) : (
+              <p className="overview-hero-empty">尚未登记规划顺序</p>
+            )}
+            <div className="overview-hero-foot">
+              待规划需求 <b>{String(unordered.length).padStart(2, "0")}</b>
+            </div>
+          </div>
         </section>
-      )}
-    </div>
-  );
-}
+        <section className="overview-route-heading" aria-label="需求路线图标题">
+          <div>
+            <h2>
+              需求路线图
+              <span className="overview-semantic-label">需求全景</span>
+            </h2>
+            <p>按项目文档确定的规划顺序 · 非执行工作流</p>
+          </div>
+          <div className="overview-route-count">
+            已规划需求 <b>{String(planned.length).padStart(2, "0")}</b>
+            <span>/</span>
+            关联 Task <b>{String(totalTaskCount).padStart(2, "0")}</b>
+          </div>
+        </section>
+        <OverviewFilterBar
+          filters={filters}
+          change={setFilters}
+          counts={conclusionCounts}
+          reviewCount={
+            [...signals.values()].filter((value) => value.review).length
+          }
+          shown={visibleRoadmap.length + visibleUnordered.length}
+          total={planned.length + unordered.length}
+        />
+        <section className="overview-route-grid" aria-label="需求路线图">
+          {visibleRoadmap.length ? (
+            visibleRoadmap.map(({ item, index }) => card(item, index))
+          ) : filtersActive ? (
+            <div className="overview-empty overview-filter-empty">
+              <p>
+                已规划需求中没有匹配项
+                {visibleUnordered.length
+                  ? `；下方有 ${visibleUnordered.length} 项未指定顺序的匹配需求。`
+                  : "。"}
+              </p>
+              <button onClick={() => setFilters(defaultOverviewFilters())}>
+                清除筛选
+              </button>
+            </div>
+          ) : (
+            <div className="overview-empty">
+              当前项目没有已登记的需求顺序，请先在项目文档中声明
+              requirement_order。
+            </div>
+          )}
+        </section>
+        {filtersActive && visibleUnordered.length > 0 ? (
+          <section
+            className="overview-unordered-details"
+            aria-label="未指定顺序的筛选结果"
+          >
+            <h3>
+              未指定顺序 · 匹配 {visibleUnordered.length} / {unordered.length}{" "}
+              项
+            </h3>
+            <div className="overview-unordered-grid">
+              {visibleUnordered.map(({ item, index }) =>
+                card(item, planned.length + index),
+              )}
+            </div>
+          </section>
+        ) : (
+          !filtersActive && (
+            <LazyDetails
+              className="overview-unordered-details"
+              summary={<>未指定顺序 · {unordered.length} 项（ID 定位排序）</>}
+            >
+              {() =>
+                unordered.length ? (
+                  <div className="overview-unordered-grid">
+                    {unordered.map((item, index) =>
+                      card(item, roadmap.length + index),
+                    )}
+                  </div>
+                ) : (
+                  <p>当前没有未指定顺序的需求。</p>
+                )
+              }
+            </LazyDetails>
+          )
+        )}
+        <footer className="overview-bottom-note">
+          <span>
+            <b>阅读方式</b>　目标 → 需求 → Task → Step
+          </span>
+          <span>验收结论保留报告范围；Task 数量与状态单独展示</span>
+          <span>TraceLens 仅读取与展示，不决定需求顺序</span>
+        </footer>
+        <AssessmentOverview
+          groups={data.assessmentGroups}
+          openProduct={context.openProduct}
+        />
+        {assessmentItem && (
+          <Modal title="验收记录" close={() => setAssessmentKey(undefined)}>
+            <div className="modal-body overview-assessment-dialog">
+              <h3>{assessmentItem.title}</h3>
+              <p>每份结论保留其目标、范围和交付对象。</p>
+              {assessmentItem.assessmentRecords.map((record) => {
+                const { report, selection } = record;
+                const verdict = overviewReportVerdict(record);
+                return (
+                  <section
+                    key={report.key}
+                    data-overview-assessment={report.id}
+                  >
+                    <div className="overview-card-section-heading">
+                      <span
+                        className="requirements-v3-pill overview-verdict-pill"
+                        data-conclusion={verdict.conclusion}
+                      >
+                        <i aria-hidden="true">{verdict.symbol}</i>
+                        {verdict.label}
+                        {verdict.review ? " · 待核对" : " · 本次范围"}
+                      </span>
+                      <span>{report.metadata.checked_at?.split("T")[0]}</span>
+                    </div>
+                    {selection.reasons.length > 0 && (
+                      <p>适用性待核对，详情见报告依据。</p>
+                    )}
+                    <p>{report.metadata.applicability?.coverage}</p>
+                    <dl>
+                      <dt>目标 / 范围</dt>
+                      <dd>
+                        {report.metadata.applicability?.goal_id} /{" "}
+                        {report.metadata.applicability?.scope_id}
+                      </dd>
+                      <dt>交付对象</dt>
+                      <dd>
+                        {report.metadata.subject?.kind} ·{" "}
+                        {report.metadata.subject?.value}
+                        {report.metadata.subject?.revision &&
+                          ` @ ${report.metadata.subject.revision}`}
+                      </dd>
+                    </dl>
+                    <button
+                      className="overview-assessment-link"
+                      onClick={() => {
+                        setAssessmentKey(undefined);
+                        context.openProduct(report.key);
+                      }}
+                    >
+                      查看报告与依据 <span aria-hidden="true">↗</span>
+                    </button>
+                  </section>
+                );
+              })}
+            </div>
+          </Modal>
+        )}
+        {!!data.tasks.length && (
+          <LazyDetails
+            className="overview-task-index"
+            label="关联 Task 索引"
+            summary="关联 Task"
+          >
+            {() => (
+              <PagedItems items={data.tasks}>
+                {(tasks) => (
+                  <div>
+                    {tasks.map((task) => (
+                      <button
+                        key={task.id}
+                        onClick={() => context.openTask(task.id)}
+                      >
+                        {task.number
+                          ? `${task.number} ${task.title}`
+                          : task.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </PagedItems>
+            )}
+          </LazyDetails>
+        )}
+      </div>
+    );
+  },
+  (previous, next) => {
+    const before = isOverviewSnapshot(previous.context.snapshot)
+      ? previous.context.snapshot.overview
+      : buildOverviewData(previous.context.snapshot);
+    const after = isOverviewSnapshot(next.context.snapshot)
+      ? next.context.snapshot.overview
+      : buildOverviewData(next.context.snapshot);
+    return (
+      before === after &&
+      previous.context.open === next.context.open &&
+      previous.context.openProduct === next.context.openProduct &&
+      previous.context.openTask === next.context.openTask &&
+      previous.requirements === next.requirements
+    );
+  },
+);
 
 type ProductData = NonNullable<ProductContext["snapshot"]["product"]>;
 

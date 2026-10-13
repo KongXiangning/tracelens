@@ -827,6 +827,10 @@ try {
       .scrollIntoViewIfNeeded();
     await screenshot(`${size.width}-scoped-repair-plan`);
     await page.getByRole("button", { name: "项目设置", exact: true }).click();
+    await page.getByText("高级扫描设置", { exact: true }).click();
+    await page
+      .getByRole("button", { name: "更新读取预览", exact: true })
+      .click();
     await visible(page.getByRole("region", { name: "vNext 文档状态" }));
     await noOverflow(`${size.width} configuration`);
     await screenshot(`${size.width}-product-configuration`);

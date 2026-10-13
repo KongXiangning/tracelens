@@ -4,6 +4,131 @@ import type {
   ProductSnapshot,
 } from "./product-types.js";
 import type { Snapshot } from "./types.js";
+import { selectAssessment, type AssessmentSelection } from "./product-view.js";
+
+/** Keep each declared scope and delivery object separate, including conflicts. */
+export function overviewAssessmentRecords(
+  product: ProductSnapshot,
+  requirement: ProductItem,
+): { report: ProductItem; selection: AssessmentSelection }[] {
+  const records: { report: ProductItem; selection: AssessmentSelection }[] = [];
+  const seen = new Set<string>();
+  for (const report of product.items) {
+    const { applicability, subject, target } = report.metadata;
+    if (
+      report.type !== "assessment" ||
+      report.version !== 3 ||
+      target !== requirement.id ||
+      !applicability ||
+      !subject
+    )
+      continue;
+    if (
+      !product.items.some(
+        (item) =>
+          item.id === applicability.goal_id &&
+          item.type === "goal" &&
+          item.usable &&
+          item.metadata.scope === "current",
+      )
+    )
+      continue;
+    const key = JSON.stringify([
+      applicability.goal_id,
+      applicability.scope_id,
+      subject.kind,
+      subject.value,
+      subject.revision ?? null,
+    ]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const selection = selectAssessment(
+      product,
+      requirement.id,
+      applicability.goal_id,
+      subject,
+      applicability.scope_id,
+    );
+    for (const selected of selection.reports)
+      records.push({ report: selected, selection });
+  }
+  return records;
+}
+
+/** Browse declarations without adopting the latest report as a requirement verdict. */
+export function assessmentGroups(product: ProductSnapshot) {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      path: string;
+      goal?: string;
+      subject?: string;
+      checkedAt: string;
+      reports: ProductItem[];
+      conclusions: Record<string, number>;
+      passed: number;
+      failed: number;
+      pending: number;
+      failedChecks: number;
+    }
+  >();
+  for (const report of product.items.filter(
+    (item) => item.type === "assessment",
+  )) {
+    const m = report.metadata;
+    const key = JSON.stringify([
+      report.source.path,
+      m.applicability?.goal_id,
+      m.subject?.kind,
+      m.subject?.value,
+      m.subject?.revision,
+    ]);
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        path: report.source.path,
+        goal: m.applicability?.goal_id,
+        subject:
+          m.subject && m.subject.kind !== "unknown"
+            ? `${m.subject.kind} · ${m.subject.value}${m.subject.revision ? ` @ ${m.subject.revision}` : ""}`
+            : undefined,
+        checkedAt: m.checked_at || "",
+        reports: [],
+        conclusions: {},
+        passed: 0,
+        failed: 0,
+        pending: 0,
+        failedChecks: 0,
+      };
+      groups.set(key, group);
+    }
+    group.reports.push(report);
+    const conclusion = m.conclusion || "undetermined";
+    group.conclusions[conclusion] = (group.conclusions[conclusion] || 0) + 1;
+    if (m.extensions?.scenario_verdict === "pass") group.passed++;
+    if (m.extensions?.scenario_verdict === "fail") group.failed++;
+    for (const check of product.sources.filter(
+      (s) => s.ownerKey === report.key,
+    )) {
+      if (check.readState === "not-read") group.pending++;
+      else if (
+        check.readState === "unavailable" ||
+        check.readState === "outside" ||
+        check.readState === "excluded" ||
+        check.byteState === "changed" ||
+        check.locationState === "unlocated" ||
+        check.locationState === "ambiguous"
+      )
+        group.failedChecks++;
+    }
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      b.checkedAt.localeCompare(a.checkedAt) || a.key.localeCompare(b.key),
+  );
+}
 
 export interface OverviewCard {
   key: string;

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { buildSnapshot } from "../src/server/snapshot.js";
 import {
   overviewCards,
+  overviewAssessmentRecords,
   overviewTaskStates,
 } from "../src/shared/overview-model.js";
 import { OverviewDashboard } from "../src/web/overview-dashboard.js";
@@ -17,10 +18,10 @@ afterEach(async () => {
   for (const root of roots.splice(0))
     await rm(root, { recursive: true, force: true });
 });
-async function fixture(name: string) {
+async function fixture(name: string, base = "examples/product-planning") {
   const root = await mkdtemp(path.join(os.tmpdir(), "tracelens-overview-"));
   roots.push(root);
-  await cp(path.resolve("examples/product-planning", name), root, {
+  await cp(path.resolve(base, name), root, {
     recursive: true,
   });
   return buildSnapshot(
@@ -67,6 +68,95 @@ it("keeps the reordered plan, explicit dependencies and B's binding without crea
       .map((card) => card.id),
   ).toEqual(["C"]);
   expect(snapshot.tasks).toEqual([]);
+});
+
+it("shows scoped acceptance without inventing a completed Task and keeps report inventory below the roadmap", async () => {
+  const snapshot = await fixture("product-scoped", "examples");
+  const product = snapshot.product!;
+  const requirement = product.items.find((item) => item.id === "R-IMPORT")!;
+  expect(
+    overviewAssessmentRecords(product, requirement).map(
+      ({ report, selection }) => [report.id, selection.conclusion],
+    ),
+  ).toEqual([
+    ["A-DEMO", "satisfied"],
+    ["A-LIVE", "partially-satisfied"],
+    ["A-RELEASE", "not-satisfied"],
+  ]);
+  product.bindings = [];
+  snapshot.tasks = [];
+  const html = renderToStaticMarkup(
+    <OverviewDashboard
+      context={{
+        snapshot,
+        open: () => {},
+        openProduct: () => {},
+        openTask: () => {},
+        relations: () => {},
+      }}
+      requirements={() => {}}
+      planning={() => {}}
+    />,
+  );
+  const card = html.match(
+    /<article[^>]*data-overview-card="R-IMPORT"[^>]*>[\s\S]*?<\/article>/,
+  )![0];
+  expect(card).toContain("已满足 1");
+  expect(card).toContain("部分满足 1");
+  expect(card).toContain("查看验收记录 · R-IMPORT");
+  expect(card).not.toContain("固定知识集全量入库；排除持续更新及失败恢复");
+  expect(card).toContain("尚未记录 Task 关联");
+  expect(card).not.toContain("overview-donut");
+  expect(html.indexOf('class="overview-hero"')).toBeLessThan(
+    html.indexOf('class="overview-assessments"'),
+  );
+  expect(
+    html.match(/<details class="overview-assessments"[^>]*>/)![0],
+  ).not.toContain(" open");
+});
+
+it("uses explicit supersession and retains same-scope conflicts instead of choosing the latest report", async () => {
+  const snapshot = await fixture("product-scoped", "examples");
+  const product = snapshot.product!;
+  const requirement = product.items.find((item) => item.id === "R-IMPORT")!;
+  const original = product.items.find((item) => item.id === "A-DEMO")!;
+  const replacement = structuredClone(original);
+  replacement.id = replacement.metadata.id = "A-REPLACEMENT";
+  replacement.key = "replacement";
+  replacement.metadata.supersedes = [original.id];
+  product.items.push(replacement);
+  product.sources.push(
+    ...product.sources
+      .filter((source) => source.ownerKey === original.key)
+      .map((source) => ({
+        ...source,
+        id: `${source.id}-replacement`,
+        ownerKey: replacement.key,
+      })),
+  );
+  let records = overviewAssessmentRecords(product, requirement);
+  expect(records.some(({ report }) => report.id === original.id)).toBe(false);
+  expect(
+    records.find(({ report }) => report.id === replacement.id)?.selection
+      .conclusion,
+  ).toBe("satisfied");
+  const conflict = structuredClone(replacement);
+  conflict.id = conflict.metadata.id = "A-CONFLICT";
+  conflict.key = "conflict";
+  conflict.metadata.checked_at = "2099-01-01";
+  product.items.push(conflict);
+  records = overviewAssessmentRecords(product, requirement);
+  const conflicted = records.filter(({ report }) =>
+    [replacement.id, conflict.id].includes(report.id),
+  );
+  expect(conflicted).toHaveLength(2);
+  expect(
+    conflicted.every(
+      ({ selection }) =>
+        selection.conclusion === "undetermined" &&
+        selection.reasons.includes("multiple-reports"),
+    ),
+  ).toBe(true);
 });
 it("keeps all known requirements without a plan and distinguishes plans sharing a work ID", async () => {
   const snapshot = await fixture("multiple-plans"),

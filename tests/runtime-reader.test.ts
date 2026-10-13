@@ -24,6 +24,7 @@ import { runtimeModules } from "../src/shared/runtime-types.js";
 import type { Project } from "../src/shared/types.js";
 import { ProjectRegistry } from "../src/server/registry.js";
 import { SnapshotStore } from "../src/server/snapshot.js";
+import { readTaskTimes } from "../src/server/task-times.js";
 import corpus from "./fixtures/task-query-v1.json" with { type: "json" };
 
 const upstream = path.resolve("tests/fixtures/runtime-vn05");
@@ -442,6 +443,14 @@ describe("VN-02 current contract consumer", () => {
       expect(step.step?.id).toBe("S1");
       const source = await reader.readSource(f.project, view, prepared.ref, []);
       expect(source.raw).toContain("Same title");
+      const times = await readTaskTimes(detail.task!, (ref) =>
+        reader.readSource(f.project, view, ref, []),
+      );
+      expect(times.createdAt).toBe(JSON.parse(source.raw!).recorded_at);
+      expect(times.createdRef).toBe(prepared.ref);
+      expect(times.completedRef).toBe(detail.task!.lifecycle_ref);
+      expect(times.completedAt).toBeTruthy();
+      expect(times.issues).toEqual([]);
       expect(await tree(f.root)).toEqual(before);
       const clone = path.join(f.directory, "copy-b");
       await cp(f.root, clone, { recursive: true });

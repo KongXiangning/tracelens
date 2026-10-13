@@ -127,6 +127,7 @@ export interface ProductMetadata {
   }[];
 }
 export interface ProductDiagnostic {
+  origin?: "index";
   code: string;
   message: string;
   severity: "info" | "warning" | "error";

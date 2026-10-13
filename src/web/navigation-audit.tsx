@@ -1,3 +1,4 @@
+import { LazyDetails, PagedItems } from "./lazy-details";
 import { useState } from "react";
 import { Check, Copy, FileText, MessageSquareText } from "lucide-react";
 import {
@@ -66,79 +67,96 @@ export function RegistrationList({
           ))}
         </select>
       </div>
-      <div className="registration-list">
-        {entries.map((entry) => {
-          const target = snapshot?.documents.find((d) => d.path === entry.path);
-          return (
-            <div className="registration-row" key={entry.path}>
-              <div className="registration-path">
-                {target && open ? (
-                  <SourceButton
-                    source={{
-                      documentId: target.id,
-                      path: target.path,
-                      line: 1,
-                      section: null,
-                      digest: target.digest,
-                    }}
-                    open={open}
-                  />
-                ) : (
-                  <code>{entry.path}</code>
-                )}
-                <span className="registration-meta">
-                  <span>{kindLabels[entry.kind]}</span>
-                  <span
-                    className={
-                      entry.classification === "suggested" ||
-                      entry.classification === "unclassified"
-                        ? "warning-text"
-                        : ""
-                    }
-                  >
-                    {classifications[entry.classification]}
-                  </span>
-                  <span>{entry.status || "未声明状态"}</span>
-                  {entry.supersededBy && (
-                    <span>替代文档：{entry.supersededBy}</span>
-                  )}
-                  <span>{availability[entry.availability]}</span>
-                  {entry.sourcesTruncated && <span>登记来源已截断</span>}
-                </span>
-              </div>
-              <div className="registration-evidence">
-                {entry.sources.map((source, i) => {
-                  const document = snapshot?.documents.find(
-                    (d) => d.path === source.path,
-                  );
-                  return (
-                    <div key={i}>
-                      <small>{source.label}</small>
-                      {document && open ? (
-                        <SourceButton
-                          source={{
-                            documentId: document.id,
-                            path: source.path,
-                            line: source.line,
-                            section: null,
-                            digest: document.digest,
-                          }}
-                          open={open}
-                        />
-                      ) : (
-                        <code>
-                          {source.path}:{source.line}
-                        </code>
+      <PagedItems key={kind} items={entries}>
+        {(visible) => (
+          <div className="registration-list">
+            {visible.map((entry) => {
+              const target = snapshot?.documents.find(
+                (d) => d.path === entry.path,
+              );
+              return (
+                <div className="registration-row" key={entry.path}>
+                  <div className="registration-path">
+                    {target && open ? (
+                      <SourceButton
+                        source={{
+                          documentId: target.id,
+                          path: target.path,
+                          line: 1,
+                          section: null,
+                          digest: target.digest,
+                        }}
+                        open={open}
+                      />
+                    ) : (
+                      <code>{entry.path}</code>
+                    )}
+                    <span className="registration-meta">
+                      <span>{kindLabels[entry.kind]}</span>
+                      <span
+                        className={
+                          entry.classification === "suggested" ||
+                          entry.classification === "unclassified"
+                            ? "warning-text"
+                            : ""
+                        }
+                      >
+                        {classifications[entry.classification]}
+                      </span>
+                      <span>{entry.status || "未声明状态"}</span>
+                      {entry.supersededBy && (
+                        <span>替代文档：{entry.supersededBy}</span>
                       )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        {!entries.length && <p className="muted">本次范围内没有此类登记</p>}
-      </div>
+                      <span>{availability[entry.availability]}</span>
+                      {entry.sourcesTruncated && <span>登记来源已截断</span>}
+                    </span>
+                  </div>
+                  <LazyDetails
+                    className="registration-evidence"
+                    summary={<>登记来源 · {entry.sources.length} 项</>}
+                  >
+                    {() => (
+                      <PagedItems items={entry.sources}>
+                        {(sources) => (
+                          <>
+                            {sources.map((source, i) => {
+                              const document = snapshot?.documents.find(
+                                (d) => d.path === source.path,
+                              );
+                              return (
+                                <div key={i}>
+                                  <small>{source.label}</small>
+                                  {document && open ? (
+                                    <SourceButton
+                                      source={{
+                                        documentId: document.id,
+                                        path: source.path,
+                                        line: source.line,
+                                        section: null,
+                                        digest: document.digest,
+                                      }}
+                                      open={open}
+                                    />
+                                  ) : (
+                                    <code>
+                                      {source.path}:{source.line}
+                                    </code>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
+                      </PagedItems>
+                    )}
+                  </LazyDetails>
+                </div>
+              );
+            })}
+            {!entries.length && <p className="muted">本次范围内没有此类登记</p>}
+          </div>
+        )}
+      </PagedItems>
     </>
   );
 }
@@ -151,49 +169,73 @@ export function CandidateList({ report }: { report: NavigationReport }) {
     path.toLowerCase().includes(query.toLowerCase()),
   );
   return (
-    <details className="candidate-documents">
-      <summary>
-        磁盘存在但未登记 <span>{inventory.candidates.length}</span>
-      </summary>
-      <p className="muted">
-        盘点目录：{inventory.roots.join("、") || "未配置"}。
-        {inventory.incomplete ? "盘点不完整。" : "已完成本次目录盘点。"}
-        这里只确认文件存在，尚未读取正文或确认用途。请将整理提示词交给项目中的
-        vNext，由它核对用途、规范位置和登记。
-      </p>
-      <input
-        aria-label="搜索未登记文档"
-        placeholder="搜索路径"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      <div className="registration-list">
-        {candidates.map((path) => (
-          <div className="registration-row" key={path}>
-            <code>{path}</code>
-            <small>存在 · 未登记 · 未读取正文</small>
-          </div>
-        ))}
-        {!candidates.length && (
-          <p className="muted">本次盘点范围内没有匹配的未登记文件</p>
-        )}
-      </div>
-      {inventory.excluded.length > 0 && (
-        <details>
-          <summary>
-            未盘点的路径 <span>{inventory.excluded.length}</span>
-          </summary>
+    <LazyDetails
+      className="candidate-documents"
+      summary={
+        <>
+          磁盘存在但未登记 <span>{inventory.candidates.length}</span>
+        </>
+      }
+    >
+      {() => (
+        <>
+          <p className="muted">
+            盘点目录：{inventory.roots.join("、") || "未配置"}。
+            {inventory.incomplete ? "盘点不完整。" : "已完成本次目录盘点。"}
+            这里只确认文件存在，尚未读取正文或确认用途。请将整理提示词交给项目中的
+            vNext，由它核对用途、规范位置和登记。
+          </p>
+          <input
+            aria-label="搜索未登记文档"
+            placeholder="搜索路径"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
           <div className="registration-list">
-            {inventory.excluded.map((entry, index) => (
-              <div className="registration-row" key={`${entry.path}:${index}`}>
-                <code>{entry.path}</code>
-                <small>{entry.reason}</small>
-              </div>
-            ))}
+            <PagedItems key={query} items={candidates}>
+              {(entries) =>
+                entries.map((path) => (
+                  <div className="registration-row" key={path}>
+                    <code>{path}</code>
+                    <small>存在 · 未登记 · 未读取正文</small>
+                  </div>
+                ))
+              }
+            </PagedItems>
+            {!candidates.length && (
+              <p className="muted">本次盘点范围内没有匹配的未登记文件</p>
+            )}
           </div>
-        </details>
+          {inventory.excluded.length > 0 && (
+            <LazyDetails
+              summary={
+                <>
+                  未盘点的路径 <span>{inventory.excluded.length}</span>
+                </>
+              }
+            >
+              {() => (
+                <div className="registration-list">
+                  <PagedItems items={inventory.excluded}>
+                    {(entries) =>
+                      entries.map((entry, index) => (
+                        <div
+                          className="registration-row"
+                          key={`${entry.path}:${index}`}
+                        >
+                          <code>{entry.path}</code>
+                          <small>{entry.reason}</small>
+                        </div>
+                      ))
+                    }
+                  </PagedItems>
+                </div>
+              )}
+            </LazyDetails>
+          )}
+        </>
       )}
-    </details>
+    </LazyDetails>
   );
 }
 
@@ -337,14 +379,18 @@ export function DocumentSummary({
 
 function IssueList({ issues }: { issues: ReturnType<typeof documentIssues> }) {
   return (
-    <ul className="navigation-gaps document-issues">
-      {issues.map((issue, index) => (
-        <li key={index}>
-          {issue.path && <code>{issue.path}</code>}
-          <span>{issue.message}</span>
-        </li>
-      ))}
-    </ul>
+    <PagedItems items={issues}>
+      {(entries) => (
+        <ul className="navigation-gaps document-issues">
+          {entries.map((issue, index) => (
+            <li key={index}>
+              {issue.path && <code>{issue.path}</code>}
+              <span>{issue.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </PagedItems>
   );
 }
 
@@ -367,17 +413,22 @@ export function NavigationAudit({
         projectName={projectName}
         root={root}
       />
-      <details>
-        <summary>
-          文档登记与读取详情 · {snapshot.navigation.entries.length} 项
-        </summary>
-        <RegistrationList
-          report={snapshot.navigation}
-          snapshot={snapshot}
-          open={open}
-        />
-        <CandidateList report={snapshot.navigation} />
-      </details>
+      <LazyDetails
+        summary={
+          <>文档登记与读取详情 · {snapshot.navigation.entries.length} 项</>
+        }
+      >
+        {() => (
+          <>
+            <RegistrationList
+              report={snapshot.navigation}
+              snapshot={snapshot}
+              open={open}
+            />
+            <CandidateList report={snapshot.navigation} />
+          </>
+        )}
+      </LazyDetails>
     </section>
   );
 }

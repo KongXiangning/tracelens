@@ -1,7 +1,13 @@
 import {
+  isOverviewSnapshot,
+  type OverviewSnapshot,
+} from "../shared/overview-data";
+import { mergeProjectView, type ProjectView } from "./view-state";
+import {
   lazy,
   Suspense,
   useCallback,
+  useMemo,
   useEffect,
   useRef,
   useState,
@@ -14,21 +20,20 @@ import {
   Plus,
   RefreshCw,
   Settings2,
+  FolderOpen,
   Trash2,
   AlertTriangle,
   LoaderCircle,
   X,
   CheckCircle2,
   BookOpenCheck,
-  Target,
-  Route,
   Search,
 } from "lucide-react";
 import { api, session } from "./api";
 import { Empty, IconButton, Modal, ProjectForm } from "./components";
-import { Overview, TasksPage, DocumentsPage } from "./pages";
+import { TasksPage, DocumentsPage } from "./pages";
 import { VNextGuide } from "./vnext-guide";
-import { RuntimeStatus, RuntimeTrustPanel } from "./runtime";
+import { RuntimeStatus } from "./runtime";
 import { navigationScrollContainer } from "./navigation-scroll";
 import type {
   Project,
@@ -65,15 +70,6 @@ function ProductLoading() {
     />
   );
 }
-const pages = [
-  { id: "overview", name: "概览", icon: LayoutDashboard },
-  { id: "requirements", name: "需求", icon: Target },
-  { id: "planning", name: "规划", icon: Route },
-  { id: "tasks", name: "任务", icon: ListTodo },
-  { id: "documents", name: "文档", icon: BookOpen },
-  { id: "relations", name: "关联", icon: Network },
-  { id: "guide", name: "vNext 使用说明", icon: BookOpenCheck },
-] as const;
 const overviewPages = [
   { id: "overview", name: "项目总览", icon: LayoutDashboard },
   { id: "requirements", name: "需求视图", icon: Network },
@@ -105,7 +101,7 @@ const cleanConfig = (config: ScanConfig): ScanConfig => ({
   ) as ScanConfig["rules"],
   excludes: config.excludes.map((r) => r.trim()).filter(Boolean),
 });
-function scanState(view?: SnapshotView): { label: string; tone: string } {
+function scanState(view?: ProjectView): { label: string; tone: string } {
   if (view?.attempt?.state === "scanning")
     return { label: "正在扫描，当前内容保持可读", tone: "busy" };
   if (view?.attempt?.state === "failed")
@@ -119,7 +115,7 @@ function scanState(view?: SnapshotView): { label: string; tone: string } {
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActive] = useState("");
-  const [views, setViews] = useState<Record<string, SnapshotView>>({});
+  const [views, setViews] = useState<Record<string, ProjectView>>({});
   const [page, setPage] = useState<Page>("overview");
   const [loading, setLoading] = useState(true);
   const [loadingView, setLoadingView] = useState(false);
@@ -167,32 +163,108 @@ export function App() {
     }, 100);
   }
   const mounted = useRef(true);
+  const projectStrip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const strip = projectStrip.current;
+    const card = strip?.querySelector<HTMLButtonElement>(
+      '[aria-pressed="true"]',
+    );
+    if (!strip || !card) return;
+    if (card.offsetLeft < strip.scrollLeft) strip.scrollLeft = card.offsetLeft;
+    else if (
+      card.offsetLeft + card.offsetWidth >
+      strip.scrollLeft + strip.clientWidth
+    )
+      strip.scrollLeft = card.offsetLeft + card.offsetWidth - strip.clientWidth;
+  }, [active, projects.length]);
+  const projectListGeneration = useRef(0);
   const refreshGenerations = useRef<Record<string, number>>({});
   const project = projects.find((p) => p.id === active);
   const view = views[active];
   const snapshot = view?.snapshot;
+  const fullSnapshot =
+    snapshot && !isOverviewSnapshot(snapshot) ? snapshot : undefined;
+  const overview =
+    snapshot && isOverviewSnapshot(snapshot) ? snapshot.overview : undefined;
+  const representation = page === "overview" ? "overview" : "full";
+  const currentPage = useRef<{
+    active: string;
+    representation: "overview" | "full";
+  }>({ active, representation });
+  currentPage.current = { active, representation };
+  const viewsRef = useRef(views);
+  viewsRef.current = views;
+  const viewRequests = useRef<Record<string, number>>({});
+  const overviewCache = useRef<Record<string, OverviewSnapshot>>({});
+  const acceptView = useCallback((id: string, result: ProjectView) => {
+    setViews((previous) => {
+      const next = mergeProjectView(previous[id], result);
+      return next === previous[id] ? previous : { ...previous, [id]: next };
+    });
+  }, []);
+  const fetchView = useCallback(
+    async (id: string, mode: "overview" | "full") => {
+      const generation = (viewRequests.current[id] || 0) + 1;
+      viewRequests.current[id] = generation;
+      const cached = overviewCache.current[id];
+      const previous = viewsRef.current[id]?.snapshot;
+      const endpoint =
+        mode === "overview"
+          ? `/projects/${id}/overview${cached ? `?knownRevision=${encodeURIComponent(cached.revision)}` : ""}`
+          : `/projects/${id}/snapshot?compact=1${previous && !isOverviewSnapshot(previous) ? `&knownSnapshotId=${encodeURIComponent(previous.id)}` : ""}`;
+      const result = await api<ProjectView>(endpoint);
+      if (!mounted.current || viewRequests.current[id] !== generation)
+        return undefined;
+      if (result.snapshot && isOverviewSnapshot(result.snapshot)) {
+        if (
+          !result.snapshot.overview &&
+          cached?.revision === result.snapshot.revision
+        )
+          result.snapshot = { ...result.snapshot, overview: cached.overview };
+        if (!result.snapshot.overview)
+          throw new Error("总览缓存已失效，请重新加载页面");
+        overviewCache.current[id] = result.snapshot;
+      }
+      acceptView(id, result);
+      return result;
+    },
+    [acceptView],
+  );
   const scanning = view?.attempt?.state === "scanning";
   const configChanged = Boolean(
     snapshot && project && snapshot.configVersion !== project.configVersion,
   );
   const scan = scanState(view);
+  const syncProjects = useCallback(async () => {
+    const generation = ++projectListGeneration.current;
+    try {
+      const list = await api<Project[]>("/projects");
+      if (!mounted.current || generation !== projectListGeneration.current)
+        return;
+      setProjects((previous) =>
+        JSON.stringify(previous) === JSON.stringify(list) ? previous : list,
+      );
+      setActive((previous) =>
+        list.some((p) => p.id === previous) ? previous : list[0]?.id || "",
+      );
+    } catch (e) {
+      if (mounted.current && generation === projectListGeneration.current)
+        setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const info = await session();
       setDataDir(info.dataDir);
-      const list = await api<Project[]>("/projects");
-      setProjects(list);
-      setActive((previous) =>
-        list.some((p) => p.id === previous) ? previous : list[0]?.id || "",
-      );
+      await syncProjects();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [syncProjects]);
   useEffect(() => {
     mounted.current = true;
     void load();
@@ -201,39 +273,66 @@ export function App() {
     };
   }, [load]);
   useEffect(() => {
-    if (!active) return;
+    const onFocus = () => void syncProjects();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void syncProjects();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [syncProjects]);
+  useEffect(() => {
+    if (!active || page === "guide") return;
     let cancelled = false;
     setLoadingView(true);
-    api<SnapshotView>(`/projects/${active}/snapshot`)
+    void fetchView(active, representation)
       .then((result) => {
-        if (!cancelled) setViews((v) => ({ ...v, [active]: result }));
+        if (!cancelled && result?.restored) void refresh(active);
       })
-      .catch((e) => {
-        if (!cancelled) setError(e.message);
+      .catch((error) => {
+        if (!cancelled) setError(String(error));
       })
       .finally(() => {
         if (!cancelled) setLoadingView(false);
       });
     return () => {
       cancelled = true;
+      viewRequests.current[active] = (viewRequests.current[active] || 0) + 1;
     };
-  }, [active]);
+  }, [active, representation, page === "guide", fetchView]);
   useEffect(() => {
-    if (!scanning) return;
+    if (!scanning || page === "guide") return;
+    let cancelled = false;
+    let pending = false;
     const timer = setInterval(() => {
-      void api<SnapshotView>(`/projects/${active}/snapshot`)
-        .then((result) => {
-          if (mounted.current) setViews((v) => ({ ...v, [active]: result }));
+      if (pending) return;
+      pending = true;
+      void fetchView(active, representation)
+        .catch((error) => {
+          if (!cancelled) setError(String(error));
         })
-        .catch((e) => setError(e.message));
-    }, 800);
-    return () => clearInterval(timer);
-  }, [active, scanning]);
+        .finally(() => {
+          pending = false;
+        });
+    }, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [active, scanning, representation, page === "guide", fetchView]);
   useEffect(() => {
     setSelection((s) => ({ ...s, line: 1 }));
   }, [snapshot?.id]);
-  async function refresh(id = active) {
+  async function refresh(
+    id = active,
+    mode: "overview" | "full" = representation,
+  ) {
     refreshGenerations.current[id] = (refreshGenerations.current[id] || 0) + 1;
+    const generation = refreshGenerations.current[id];
+    viewRequests.current[id] = (viewRequests.current[id] || 0) + 1;
     setError("");
     setViews((v) => ({
       ...v,
@@ -246,11 +345,21 @@ export function App() {
     try {
       const result = await api<SnapshotView>(
         `/projects/${id}/refresh`,
-        {},
+        { background: true, statusOnly: true },
         "POST",
       );
-      setViews((v) => ({ ...v, [id]: result }));
+      if (!mounted.current || refreshGenerations.current[id] !== generation)
+        return;
+      acceptView(id, result);
+      await fetchView(
+        id,
+        currentPage.current.active === id
+          ? currentPage.current.representation
+          : mode,
+      );
     } catch (e) {
+      if (!mounted.current || refreshGenerations.current[id] !== generation)
+        return;
       const message = e instanceof Error ? e.message : String(e);
       setViews((v) => ({
         ...v,
@@ -273,6 +382,7 @@ export function App() {
         { name, config: cleanConfig(config) },
         "PATCH",
       );
+      projectListGeneration.current++;
       setProjects((p) =>
         p.map((item) => (item.id === result.id ? result : item)),
       );
@@ -283,18 +393,23 @@ export function App() {
         { name, root, config: cleanConfig(config) },
         "POST",
       );
-      setProjects((p) => [...p, result]);
+      projectListGeneration.current++;
+      setProjects((p) => [
+        ...p.filter((item) => item.id !== result.id),
+        result,
+      ]);
       setActive(result.id);
       setPage("overview");
       setSelection({});
       // Registration is complete before scanning; a failed first scan still has a manageable project.
-      void refresh(result.id);
+      void refresh(result.id, "overview");
     }
   }
   async function removeProject() {
     if (!project) return;
     try {
       await api(`/projects/${project.id}`, {}, "DELETE");
+      projectListGeneration.current++;
       const next = projects.filter((p) => p.id !== project.id);
       setProjects(next);
       setActive(next[0]?.id || "");
@@ -316,12 +431,15 @@ export function App() {
       ...s,
       task: id,
       taskRealId:
-        snapshot?.tasks.find((task) => task.id === id)?.realTaskId ?? null,
+        (fullSnapshot?.tasks || overview?.tasks)?.find((task) => task.id === id)
+          ?.realTaskId ?? null,
     }));
     setPage("tasks");
   }
   function openRelations(id: string) {
-    const task = snapshot?.tasks.find((entry) => entry.id === id);
+    const task = (fullSnapshot?.tasks || overview?.tasks)?.find(
+      (entry) => entry.id === id,
+    );
     setSelection((s) => ({
       ...s,
       relation: id,
@@ -331,8 +449,10 @@ export function App() {
   }
   function openProduct(key: string, workItemId?: string) {
     remember();
-    const item = snapshot?.product?.items.find((entry) => entry.key === key);
-    if (item?.type === "plan") {
+    const type =
+      fullSnapshot?.product?.items.find((entry) => entry.key === key)?.type ||
+      overview?.itemTypes[key];
+    if (type === "plan") {
       setSelection((s) => ({ ...s, plan: key, work: workItemId }));
       setPage("planning");
     } else {
@@ -340,6 +460,25 @@ export function App() {
       setPage("requirements");
     }
   }
+  const navigationRef = useRef({
+    openSource,
+    openTask,
+    openProduct,
+    openRelations,
+  });
+  navigationRef.current = { openSource, openTask, openProduct, openRelations };
+  const navigation = useMemo(
+    () => ({
+      open: (source: SourceRef) => navigationRef.current.openSource(source),
+      openTask: (id: string) => navigationRef.current.openTask(id),
+      openProduct: (key: string, work?: string) =>
+        navigationRef.current.openProduct(key, work),
+      relations: (id: string) => navigationRef.current.openRelations(id),
+    }),
+    [],
+  );
+  const showRequirements = useCallback(() => setPage("requirements"), []);
+  const showPlanning = useCallback(() => setPage("planning"), []);
   function renderContent() {
     if (page === "guide") return <VNextGuide />;
     if (loading)
@@ -378,7 +517,7 @@ export function App() {
           title={title}
           detail={
             scanning
-              ? "扫描完成后在此显示文档记录。"
+              ? "正在建立需求索引，需求就绪后即可浏览，证据将在后台继续核验。"
               : "项目和扫描范围已登记，刷新后查看内容。"
           }
           action={
@@ -394,13 +533,29 @@ export function App() {
         />
       );
     }
-    const context = {
-      snapshot,
-      open: openSource,
-      openTask,
-      openProduct,
-      relations: openRelations,
-    };
+    if (page === "overview")
+      return (
+        <Suspense fallback={<ProductLoading />}>
+          <ProductOverview
+            key={active}
+            context={{ snapshot, ...navigation }}
+            configure={() => setForm("edit")}
+            requirements={showRequirements}
+            planning={showPlanning}
+            projectName={project.name}
+            root={project.root}
+            loadSnapshot={async () => {
+              const result = await api<SnapshotView>(
+                `/projects/${active}/snapshot?compact=1&snapshotId=${encodeURIComponent(snapshot.id)}`,
+              );
+              if (!result.snapshot) throw new Error("没有可读取的详细快照");
+              return result.snapshot;
+            }}
+          />
+        </Suspense>
+      );
+    if (isOverviewSnapshot(snapshot)) return <ProductLoading />;
+    const context = { snapshot, ...navigation };
     switch (page) {
       case "requirements":
         return (
@@ -427,42 +582,6 @@ export function App() {
               configure={() => setForm("edit")}
             />
           </Suspense>
-        );
-      case "overview":
-        return (
-          <>
-            <Suspense
-              fallback={
-                <p className="product-overview muted" role="status">
-                  正在读取产品概况…
-                </p>
-              }
-            >
-              <ProductOverview
-                key={active}
-                context={context}
-                configure={() => setForm("edit")}
-                requirements={() => setPage("requirements")}
-                planning={() => setPage("planning")}
-              />
-            </Suspense>
-            <details
-              className="overview-record-details"
-              open={
-                !snapshot.product?.manifest ||
-                !["ready", "partial", "empty"].includes(snapshot.product.status)
-              }
-            >
-              <summary>当前任务、文档记录与扫描详情</summary>
-              <Overview
-                snapshot={snapshot}
-                open={openSource}
-                openTask={openTask}
-                projectName={project?.name || "本地项目"}
-                root={project?.root || ""}
-              />
-            </details>
-          </>
         );
       case "tasks":
         return (
@@ -517,80 +636,32 @@ export function App() {
         );
     }
   }
-  let subtitle = project?.root || "本地项目文档";
-  if (page === "guide") subtitle = "业务场景 · Skill 指令 · 使用边界";
-  else if (page === "overview")
-    subtitle = "从项目文档中解析目标、需求、Task 与状态";
-  const unifiedNavigation = Boolean(project);
-  const overviewVisual = page === "overview" && unifiedNavigation;
+  const overviewVisual = page === "overview";
   const currentPageLabel =
     overviewPages.find((item) => item.id === page)?.name ||
-    pages.find((item) => item.id === page)?.name ||
+    (page === "planning" ? "规划" : undefined) ||
     "当前视图";
-  const navPages = unifiedNavigation ? overviewPages : pages;
   return (
     <div
-      className={`app-shell modern-shell${unifiedNavigation ? " overview-theme" : ""}`}
+      className={`app-shell modern-shell overview-theme${page === "requirements" ? " requirements-theme" : ""}${page === "tasks" ? " task-view-shell" : ""}`}
     >
       <aside className="sidebar">
-        <div className={`brand${unifiedNavigation ? " overview-brand" : ""}`}>
-          {unifiedNavigation ? (
-            <span className="overview-brand-mark" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-              <i />
-            </span>
-          ) : (
-            <span className="brand-icon">
-              <LayoutDashboard size={25} />
-            </span>
-          )}
-          <span>
-            {unifiedNavigation ? (
-              <span className="overview-brand-name">TraceLens</span>
-            ) : (
-              <>
-                TraceLens<small>本地文档工作台</small>
-              </>
-            )}
+        <div className="brand overview-brand">
+          <span className="overview-brand-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
           </span>
+          <span className="overview-brand-name">TraceLens</span>
         </div>
-        {unifiedNavigation ? (
-          <div className="overview-sidebar-caption">WORKSPACE</div>
-        ) : (
-          <div className="sidebar-label">
-            <span>项目</span>
-            <IconButton label="添加项目" onClick={() => setForm("add")}>
-              <Plus size={17} />
-            </IconButton>
-          </div>
-        )}
-        <div className="project-list">
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              title={p.root}
-              className={`project-item ${active === p.id ? "selected" : ""}`}
-              onClick={() => {
-                setActive(p.id);
-                setPage("overview");
-                setSelection({});
-                setError("");
-              }}
-            >
-              <span className="project-dot" />
-              <span>{p.name}</span>
-            </button>
-          ))}
-          {!projects.length && <p className="sidebar-empty">尚无项目</p>}
-        </div>
+        <div className="overview-sidebar-caption">WORKSPACE</div>
         <nav aria-label="主导航">
-          {navPages.map((p) => (
+          {overviewPages.map((p) => (
             <button
               key={p.id}
               aria-label={p.id === "overview" ? "概览" : p.name}
-              className={`${page === p.id ? "active" : ""}${unifiedNavigation && p.id === "guide" ? " overview-guide-link" : ""}`}
+              className={`${page === p.id ? "active" : ""}${p.id === "guide" ? " overview-guide-link" : ""}`}
               onClick={() => setPage(p.id as Page)}
             >
               <p.icon size={18} />
@@ -606,121 +677,104 @@ export function App() {
             </button>
           ))}
         </nav>
-        {unifiedNavigation ? (
-          <div className="sidebar-footer overview-sidebar-footer">
-            <div className="overview-sidebar-caption">CURRENT PROJECT</div>
-            <label className="overview-sidebar-project">
-              <select
-                aria-label="当前项目"
-                value={active}
-                onChange={(event) => {
-                  setActive(event.target.value);
+        <section
+          className="sidebar-footer overview-sidebar-footer"
+          aria-label="项目管理"
+        >
+          <div className="overview-sidebar-caption">项目管理</div>
+          <p className="project-switch-hint">点击顶部项目标签切换</p>
+          <small title={dataDir}>只读呈现 · 文档驱动</small>
+        </section>
+      </aside>
+      <main className="workspace">
+        <nav className="project-switcher" aria-label="项目切换">
+          <div className="project-switcher-cards" ref={projectStrip}>
+            {projects.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`project-switch-card${item.id === active ? " active" : ""}`}
+                data-project-id={item.id}
+                aria-pressed={item.id === active}
+                title={`${item.name}\n${item.root}`}
+                onClick={() => {
+                  if (item.id === active) return;
+                  setActive(item.id);
                   setPage("overview");
                   setSelection({});
                   setError("");
                 }}
               >
-                {projects.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <small>只读呈现 · 文档驱动</small>
-          </div>
-        ) : (
-          <div className="sidebar-footer">
-            <span className="online-dot" />
-            本机 · 只读<small title={dataDir}>登记保存在本机</small>
-          </div>
-        )}
-      </aside>
-      <main className="workspace">
-        {unifiedNavigation ? (
-          <header className="topbar overview-topbar">
-            <div className="overview-breadcrumb">
-              <strong>TRACELENS</strong>
-              <span>/</span>
-              <h1 className="overview-breadcrumb-project">
-                {project?.name || "当前项目"}
-              </h1>
-              <span>/</span>
-              <span>{overviewVisual ? "需求总览" : currentPageLabel}</span>
-            </div>
-            <div className="overview-top-actions">
-              <span>从项目文档读取</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const source = snapshot?.product?.manifestSource;
-                  if (source) openSource(source);
-                  else setPage("documents");
-                }}
-              >
-                源文档 ↗
+                <FolderOpen size={16} aria-hidden="true" />
+                <span>{item.name}</span>
               </button>
-              {page !== "guide" && (
-                <>
-                  <button
-                    type="button"
-                    className="overview-refresh"
-                    disabled={scanning}
-                    onClick={() => void refresh()}
-                  >
-                    <RefreshCw size={14} className={scanning ? "spin" : ""} />
-                    {scanning ? "扫描中" : "刷新"}
-                  </button>
-                  <IconButton label="项目设置" onClick={() => setForm("edit")}>
-                    <Settings2 size={16} />
-                  </IconButton>
-                  <IconButton
-                    label="移除项目"
-                    onClick={() => setRemove(true)}
-                    disabled={scanning}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </>
-              )}
-            </div>
-          </header>
-        ) : (
-          <header className="topbar">
-            <div className="project-heading">
-              <h1>
-                {page === "guide"
-                  ? "vNext 场景指南"
-                  : project?.name || "TraceLens"}
-              </h1>
-              <p title={page === "guide" ? undefined : project?.root}>
-                {subtitle}
-              </p>
-            </div>
+            ))}
+            {!projects.length && (
+              <span className="project-switch-empty">尚无项目</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="overview-add-project project-switch-add"
+            onClick={() => setForm("add")}
+          >
+            <Plus size={16} aria-hidden="true" />
+            添加项目
+          </button>
+        </nav>
+        <header className="topbar overview-topbar">
+          <div className="overview-breadcrumb">
+            <strong>TRACELENS</strong>
+            <span>/</span>
+            <h1 className="overview-breadcrumb-project">
+              {project?.name || "本地工作台"}
+            </h1>
+            <span>/</span>
+            <span>{currentPageLabel}</span>
+          </div>
+          <div className="overview-top-actions">
+            <span>从项目文档读取</span>
+            <button
+              type="button"
+              disabled={!project}
+              onClick={() => {
+                const source =
+                  fullSnapshot?.product?.manifestSource ||
+                  overview?.manifestSource;
+                if (source) openSource(source);
+                else setPage("documents");
+              }}
+            >
+              源文档 ↗
+            </button>
             {project && page !== "guide" && (
-              <div className="toolbar">
-                <IconButton label="项目设置" onClick={() => setForm("edit")}>
-                  <Settings2 size={18} />
-                </IconButton>
-                <IconButton
-                  label="移除项目"
-                  onClick={() => setRemove(true)}
-                  disabled={scanning}
-                >
-                  <Trash2 size={17} />
-                </IconButton>
+              <>
                 <button
-                  className="primary"
+                  type="button"
+                  className="overview-refresh"
                   disabled={scanning}
                   onClick={() => void refresh()}
                 >
-                  <RefreshCw size={16} className={scanning ? "spin" : ""} />
+                  <RefreshCw size={14} className={scanning ? "spin" : ""} />
                   {scanning ? "扫描中" : "刷新"}
                 </button>
-              </div>
+                <button type="button" onClick={() => setForm("edit")}>
+                  <Settings2 size={16} aria-hidden="true" />
+                  项目设置
+                </button>
+                <button
+                  type="button"
+                  className="overview-remove-project"
+                  onClick={() => setRemove(true)}
+                  disabled={scanning}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  移除项目
+                </button>
+              </>
             )}
-          </header>
-        )}
+          </div>
+        </header>
         {error && (
           <div className="banner error" role="alert">
             <AlertTriangle size={17} />
@@ -758,34 +812,48 @@ export function App() {
             </div>
           </div>
         )}
+        {project &&
+          page !== "guide" &&
+          (scanning || view?.restored || snapshot?.phase === "core") && (
+            <div className="scan-strip" role="status" aria-live="polite">
+              <span>
+                {scanning
+                  ? view?.attempt?.phase || "正在检查更新"
+                  : view?.restored
+                    ? "已恢复上次结果"
+                    : "需求已载入，证据核验尚未完成"}
+              </span>
+              {scanning && view?.attempt?.total !== undefined && (
+                <span>
+                  {view.attempt.completed} / {view.attempt.total}
+                </span>
+              )}
+              {snapshot && (
+                <span>
+                  上次读取：{time(snapshot.completedAt)}
+                  {view?.restored ? " · 点击刷新检查文件变化" : " · 可继续浏览"}
+                </span>
+              )}
+            </div>
+          )}
         <div className="page-content" key={active}>
           {!!backStack.length && (
             <button className="secondary navigation-back" onClick={back}>
               返回上一视图
             </button>
           )}
-          {project && page !== "guide" && !overviewVisual && (
-            <RuntimeTrustPanel
-              key={`runtime-trust:${project.id}`}
-              project={project}
-              saved={(p) => {
-                setProjects((v) => v.map((x) => (x.id === p.id ? p : x)));
-                void refresh(p.id);
-              }}
-            />
-          )}
           {snapshot &&
             page !== "guide" &&
             page !== "tasks" &&
-            !overviewVisual && <RuntimeStatus view={snapshot.runtime} />}
-          {snapshot?.runtime?.nextRequest &&
+            !overviewVisual && <RuntimeStatus view={fullSnapshot?.runtime} />}
+          {fullSnapshot?.runtime?.nextRequest &&
             page !== "guide" &&
             !overviewVisual && (
               <button
                 className="secondary"
                 disabled={paging || scanning || configChanged}
                 onClick={async () => {
-                  const id = snapshot.projectId;
+                  const id = fullSnapshot.projectId;
                   const generation = refreshGenerations.current[id] || 0;
                   const isCurrent = () =>
                     mounted.current &&
@@ -794,12 +862,12 @@ export function App() {
                   try {
                     const next = await api<SnapshotView>(
                       `/projects/${id}/task-page`,
-                      { snapshotId: snapshot.id },
+                      { snapshotId: fullSnapshot.id },
                       "POST",
                     );
                     if (mounted.current)
                       setViews((v) =>
-                        isCurrent() && v[id]?.snapshot?.id === snapshot.id
+                        isCurrent() && v[id]?.snapshot?.id === fullSnapshot.id
                           ? { ...v, [id]: next }
                           : v,
                       );
@@ -813,7 +881,7 @@ export function App() {
                 {" "}
                 {paging
                   ? "续读中…"
-                  : `读取下一页 Task（已读 ${snapshot.tasks.length}/${snapshot.runtime.total}）`}
+                  : `读取下一页 Task（已读 ${fullSnapshot.tasks.length}/${fullSnapshot.runtime.total}）`}
               </button>
             )}
           {renderContent()}
@@ -833,7 +901,10 @@ export function App() {
           </span>
           {snapshot && page !== "guide" && (
             <span>
-              快照 {snapshot.id.slice(0, 8)} · {snapshot.documents.length}{" "}
+              快照 {snapshot.id.slice(0, 8)} ·{" "}
+              {fullSnapshot?.documents.length ??
+                overview?.counts.documents ??
+                0}{" "}
               份文档
             </span>
           )}
@@ -844,6 +915,11 @@ export function App() {
           project={form === "edit" ? project : undefined}
           close={() => setForm(null)}
           submit={saveProject}
+          runtimeSaved={(p) => {
+            projectListGeneration.current++;
+            setProjects((v) => v.map((x) => (x.id === p.id ? p : x)));
+            void refresh(p.id);
+          }}
         />
       )}
       {remove && project && (

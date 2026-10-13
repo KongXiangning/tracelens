@@ -159,8 +159,10 @@ it("separates pending business states and unavailable evidence from readable pro
     />,
   );
   expect(html).toContain("需求全景");
-  expect(html).toContain("项目需求总纲与完整正文");
-  expect(html).toContain("data-overview-card");
+  expect(html).toContain("overview-reading-details");
+  expect(html).not.toContain("项目需求总纲与完整正文");
+  expect(html).toContain("overview-unordered-details");
+  expect(html).not.toContain("data-overview-card");
   expect(html).not.toContain("已报告交付与待核对");
   expect(html).not.toContain("对象：unknown");
   const page = renderToStaticMarkup(

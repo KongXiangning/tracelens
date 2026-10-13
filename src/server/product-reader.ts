@@ -520,7 +520,7 @@ export async function readProduct(
           if (stopped) break;
         }
       } else if (stat.isFile() && productMatches(relative, pattern)) {
-        if (selected.size >= limits.files) {
+        if (selected.size >= limits.files && !session.options.batched) {
           stopped = true;
           omit(pattern, "达到 PRODUCT 文件预算");
           return;
@@ -569,7 +569,10 @@ export async function readProduct(
       }
       const input = addInput(await session.read(relative), true);
       product.coverage.paths.push(relative);
-      const parsed = parseProductDocument(project.id, namespace, input);
+      const parse = () => parseProductDocument(project.id, namespace, input);
+      const parsed =
+        session.options.index?.memo(input, `product:${project.id}`, parse) ||
+        parse();
       product.items.push(...parsed.items);
       product.diagnostics.push(...parsed.diagnostics);
     } catch (error) {
@@ -587,8 +590,18 @@ export async function readProduct(
         item.usable = false;
       });
   const sourceLayouts = new Map<string, ReturnType<typeof sourceLayout>>();
+  const totalSources = product.items
+    .filter((i) => i.usable)
+    .reduce((n, item) => n + references(item).length, 0);
+  let completedSources = 0;
   for (const item of product.items.filter((i) => i.usable)) {
     for (const { role, reference } of references(item)) {
+      if (++completedSources % 50 === 0)
+        session.options.progress?.(
+          "核验报告与来源",
+          completedSources,
+          totalSources,
+        );
       const check: ProductSourceCheck = {
         id: `source:${hash(`${item.key}\0${role}\0${JSON.stringify(reference)}`)}`,
         ownerKey: item.key,
@@ -636,17 +649,61 @@ export async function readProduct(
           check.detail = "来源未在 managed_paths 或 source_paths 有效范围内";
         } else
           try {
-            const input = addInput(await session.read(relative, true));
+            if (
+              session.options.coreOnly &&
+              !session.inputs.has(documentPathKey(relative))
+            ) {
+              check.detail = "等待后台核验";
+              continue;
+            }
+            const binary = /\.(png|jpe?g|gif|webp|pdf|zip|apk)$/i.test(
+              relative,
+            );
+            const bytes = await session.read(relative, true, { binary });
+            const input = binary
+              ? { ...bytes, kind: "unclassified" as const }
+              : addInput(bytes);
             check.readState = "read";
             check.byteState = reference.sha256
               ? reference.sha256 === input.digest
                 ? "same-bytes"
                 : "changed"
               : "unknown";
+            if (binary) {
+              check.locationState =
+                reference.item_id || reference.section || reference.lines
+                  ? "unlocated"
+                  : "located";
+              check.detail = "已核对二进制文件摘要；不解析正文";
+              if (check.byteState === "changed")
+                diagnostic(
+                  "SOURCE_CHECK",
+                  "来源字节已变化；不自动更新既有报告",
+                  relative,
+                  item,
+                );
+              continue;
+            }
+            if (!reference.item_id && !reference.section && !reference.lines) {
+              check.locationState = "located";
+              check.detail = "已核对整个文件；未要求章节或条目定位";
+              check.source = sourceOf(project.id, input);
+              if (check.byteState === "changed")
+                diagnostic(
+                  "SOURCE_CHECK",
+                  "来源字节已变化；不自动更新既有报告",
+                  relative,
+                  item,
+                );
+              continue;
+            }
             const sourceKey = documentPathKey(input.path);
             let layout = sourceLayouts.get(sourceKey);
             if (!layout) {
-              layout = sourceLayout(input);
+              const parse = () => sourceLayout(input);
+              layout =
+                session.options.index?.memo(input, "source-layout", parse) ||
+                parse();
               sourceLayouts.set(sourceKey, layout);
             }
             const location = located(input, layout, reference);

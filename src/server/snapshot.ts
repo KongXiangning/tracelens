@@ -1,6 +1,10 @@
 import path from "node:path";
 import { productStructureIssue } from "../shared/product-health.js";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
+import {
+  buildOverviewData,
+  type OverviewSnapshot,
+} from "../shared/overview-data.js";
 import { lstat } from "node:fs/promises";
 import type {
   Project,
@@ -17,7 +21,15 @@ import {
   safePattern,
   within,
 } from "./config.js";
-import { blockedPath, matches, scanFiles } from "./scanner.js";
+import {
+  blockedPath,
+  matches,
+  scanFiles,
+  type ScanOptions,
+} from "./scanner.js";
+import { FileIndex } from "./file-index.js";
+import { SnapshotCache } from "./snapshot-cache.js";
+import { treeFingerprint } from "./tree-fingerprint.js";
 import { examplePath } from "./document-metadata.js";
 import { attachCurrentPlan } from "./current-plan.js";
 import { buildProductIndex } from "./product-index.js";
@@ -34,21 +46,68 @@ import {
 } from "./parser.js";
 import type { ProjectRegistry } from "./registry.js";
 import { RuntimeReader, runtimeTasks } from "./runtime-reader.js";
+import { readTaskTimes } from "./task-times.js";
+import type { TaskTimes } from "../shared/runtime-types.js";
 const runtimeReader = new RuntimeReader();
+interface BuildContext {
+  reader: RuntimeReader;
+  isCurrent: () => boolean;
+  scan?: ScanOptions;
+}
 
 export async function buildSnapshot(
   project: Project,
   startedAt: string,
   previous?: Snapshot,
-  runtimeContext = { reader: runtimeReader, isCurrent: () => true },
+  runtimeContext: BuildContext = {
+    reader: runtimeReader,
+    isCurrent: () => true,
+  },
 ): Promise<Snapshot> {
-  const scan = await scanFiles(project, previous?.navigation);
+  const started = Date.now();
+  const scan = await scanFiles(
+    project,
+    previous?.navigation,
+    false,
+    runtimeContext.scan,
+  );
   if (!runtimeContext.isCurrent()) throw new AppError("扫描上下文已过期", 409);
   const parsed = scan.inputs.map((input): Parsed => {
-    try {
-      // Explicit SourceRefs may point to code or extensionless UTF-8 text.
-      // Preserve captured bytes without interpreting them as task documents.
-      if (!/\.(md|markdown|ya?ml|json|txt)$/i.test(input.path))
+    const parse = (): Parsed => {
+      try {
+        // Explicit SourceRefs may point to code or extensionless UTF-8 text.
+        // Preserve captured bytes without interpreting them as task documents.
+        if (!/\.(md|markdown|ya?ml|json|txt)$/i.test(input.path))
+          return {
+            document: {
+              ...input,
+              id: stableId(project.id, input.path),
+              title: path.posix.basename(input.path),
+              headings: [],
+              recognized: false,
+            },
+            task: null,
+            statements: [],
+            references: [],
+            warnings: [],
+          };
+        const envelope = inspectProductEnvelope(input.raw);
+        // A standard product file is one source document with many business items.
+        // Never feed its prose or state labels into generic task extraction.
+        if (
+          scan.productPaths?.has(documentPathKey(input.path)) ||
+          envelope.isProduct ||
+          /\.txt$/i.test(input.path)
+        ) {
+          return parseProductMarkdown(
+            project.id,
+            input,
+            envelope.bodyStart,
+            Boolean(scan.productPaths?.has(documentPathKey(input.path))),
+          );
+        }
+        return parseInput(project.id, input);
+      } catch (error) {
         return {
           document: {
             ...input,
@@ -60,45 +119,24 @@ export async function buildSnapshot(
           task: null,
           statements: [],
           references: [],
-          warnings: [],
+          warnings: [
+            {
+              code: "parse",
+              path: input.path,
+              message: `文档提取失败，原文保留：${String(error)}`,
+            },
+          ],
         };
-      const envelope = inspectProductEnvelope(input.raw);
-      // A standard product file is one source document with many business items.
-      // Never feed its prose or state labels into generic task extraction.
-      if (
-        scan.productPaths?.has(documentPathKey(input.path)) ||
-        envelope.isProduct ||
-        /\.txt$/i.test(input.path)
-      ) {
-        return parseProductMarkdown(
-          project.id,
-          input,
-          envelope.bodyStart,
-          Boolean(scan.productPaths?.has(documentPathKey(input.path))),
-        );
       }
-      return parseInput(project.id, input);
-    } catch (error) {
-      return {
-        document: {
-          ...input,
-          id: stableId(project.id, input.path),
-          title: path.posix.basename(input.path),
-          headings: [],
-          recognized: false,
-        },
-        task: null,
-        statements: [],
-        references: [],
-        warnings: [
-          {
-            code: "parse",
-            path: input.path,
-            message: `文档提取失败，原文保留：${String(error)}`,
-          },
-        ],
-      };
-    }
+    };
+    const result =
+      runtimeContext.scan?.index?.memo(
+        input,
+        `document:${project.id}:${input.kind}:${scan.productPaths?.has(documentPathKey(input.path))}`,
+        parse,
+      ) || parse();
+    result.document = { ...result.document, ...input };
+    return result;
   });
   const manualCurrent = parsed
     .flatMap((p) => (p.task ? [p.task] : []))
@@ -123,8 +161,13 @@ export async function buildSnapshot(
       documentPathKey(task.source.path) === documentPathKey(currentPath),
     );
   if (!runtimeContext.isCurrent()) throw new AppError("查询上下文已过期", 409);
-  const runtime = await runtimeContext.reader.refresh(project);
-  const tasks = runtimeTasks(project, runtime);
+  runtimeContext.scan?.progress?.(
+    runtimeContext.scan.coreOnly ? "发布需求与报告" : "更新 Task 状态",
+  );
+  const runtime = runtimeContext.scan?.coreOnly
+    ? undefined
+    : await runtimeContext.reader.refresh(project);
+  const tasks = runtime ? runtimeTasks(project, runtime) : [];
   const isCurrentSource = (filename: string) =>
     Boolean(
       currentPath && documentPathKey(filename) === documentPathKey(currentPath),
@@ -370,6 +413,14 @@ export async function buildSnapshot(
     );
   }
   return {
+    phase: runtimeContext.scan?.coreOnly ? "core" : "complete",
+    metrics: {
+      durationMs: Date.now() - started,
+      filesRead: runtimeContext.scan?.index?.stats.read || 0,
+      filesReused: runtimeContext.scan?.index?.stats.reused || 0,
+      parsed: runtimeContext.scan?.index?.stats.parsed || 0,
+      reusedParses: runtimeContext.scan?.index?.stats.reusedParses || 0,
+    },
     id: randomUUID(),
     projectId: project.id,
     configVersion: project.configVersion,
@@ -404,7 +455,13 @@ export const relationLabels = {
   unsafe: "不安全或越界引用",
 };
 export class SnapshotStore {
+  private taskTimesCache = new Map<string, Promise<TaskTimes>>();
   private reader: RuntimeReader;
+  private cache: SnapshotCache;
+  private indexes = new Map<string, { version: number; index: FileIndex }>();
+  private restored = new Set<string>();
+  private loaded = new Map<string, Promise<void>>();
+  private overviewCache = new WeakMap<Snapshot, OverviewSnapshot>();
   private isCurrent(project: Project): boolean {
     try {
       const current = this.registry.get(project.id);
@@ -424,11 +481,35 @@ export class SnapshotStore {
     private builder = buildSnapshot,
   ) {
     this.reader = new RuntimeReader((project) => this.isCurrent(project));
+    this.cache = new SnapshotCache(registry.dataDir);
+  }
+  async restore(id: string): Promise<void> {
+    const project = this.registry.get(id);
+    const key = `${id}:${project.configVersion}`;
+    let loading = this.loaded.get(key);
+    if (!loading) {
+      loading = (async () => {
+        const cached = await this.cache.load(project);
+        if (!cached || !this.isCurrent(project) || this.snapshots.has(id))
+          return;
+        this.indexes.set(id, {
+          version: project.configVersion,
+          index: new FileIndex(cached.files),
+        });
+        if (cached.snapshot) {
+          this.snapshots.set(id, cached.snapshot);
+          this.restored.add(id);
+        }
+      })();
+      this.loaded.set(key, loading);
+    }
+    await loading;
   }
   view(id: string): SnapshotView {
     const project = this.registry.get(id);
     const snapshot = this.snapshots.get(id) || null;
     return {
+      restored: this.restored.has(id),
       snapshot,
       attempt: this.attempts.get(id) || null,
       configChanged: Boolean(
@@ -436,10 +517,77 @@ export class SnapshotStore {
       ),
     };
   }
-  remove(id: string): void {
+  summary(id: string, knownSnapshotId?: string): SnapshotView {
+    const view = this.view(id);
+    if (!view.snapshot) return view;
+    if (view.snapshot.id === knownSnapshotId)
+      return { ...view, snapshot: null, unchanged: true };
+    const managed = new Set(
+      view.snapshot.product?.items.map((item) => item.source.documentId),
+    );
+    return {
+      ...view,
+      snapshot: {
+        ...view.snapshot,
+        documents: view.snapshot.documents.map((document) =>
+          managed.has(document.id)
+            ? document
+            : { ...document, raw: "", contentOmitted: true },
+        ),
+        product: view.snapshot.product
+          ? {
+              ...view.snapshot.product,
+              items: view.snapshot.product.items.map((item) =>
+                item.usable ? { ...item, rawMetadata: undefined } : item,
+              ),
+            }
+          : undefined,
+      },
+    };
+  }
+  overview(id: string, knownRevision?: string): SnapshotView<OverviewSnapshot> {
+    const view = this.view(id);
+    if (!view.snapshot) return { ...view, snapshot: null };
+    const snapshot = view.snapshot;
+    let summary = this.overviewCache.get(snapshot);
+    if (!summary) {
+      const overview = buildOverviewData(snapshot);
+      summary = {
+        id: snapshot.id,
+        projectId: snapshot.projectId,
+        configVersion: snapshot.configVersion,
+        startedAt: snapshot.startedAt,
+        completedAt: snapshot.completedAt,
+        outcome: snapshot.outcome,
+        phase: snapshot.phase,
+        revision: createHash("sha256")
+          .update(JSON.stringify(overview))
+          .digest("hex"),
+        overview,
+      };
+      this.overviewCache.set(snapshot, summary);
+    }
+    if (knownRevision === summary.revision)
+      return {
+        ...view,
+        snapshot: { ...summary, overview: undefined },
+        unchanged: true,
+      };
+    return { ...view, snapshot: summary };
+  }
+  status(id: string): SnapshotView {
+    const view = this.view(id);
+    return { ...view, snapshot: null, unchanged: true };
+  }
+  async remove(id: string): Promise<void> {
     this.snapshots.delete(id);
     this.attempts.delete(id);
     this.reader.remove(id);
+    this.indexes.delete(id);
+    this.restored.delete(id);
+    for (const key of this.loaded.keys())
+      if (key.startsWith(`${id}:`)) this.loaded.delete(key);
+    await this.cache.remove(id);
   }
   refresh(id: string): Promise<SnapshotView> {
     const project = this.registry.get(id);
@@ -450,11 +598,115 @@ export class SnapshotStore {
     this.attempts.set(id, { state: "scanning", startedAt });
     const operation = (async () => {
       try {
+        if (this.builder === buildSnapshot) await this.restore(id);
+        const previous = this.snapshots.get(id);
+        const prior = this.indexes.get(id);
+        const index =
+          prior?.version === project.configVersion
+            ? prior.index
+            : new FileIndex();
+        this.indexes.set(id, { version: project.configVersion, index });
+        index.begin();
+        const progress: ScanOptions["progress"] = (phase, completed, total) => {
+          if (this.isCurrent(project))
+            this.attempts.set(id, {
+              state: "scanning",
+              startedAt,
+              phase,
+              completed,
+              total,
+            });
+        };
+        const checkpoint = async () => {
+          await this.cache.save(
+            project,
+            {
+              snapshot: this.snapshots.get(id) || null,
+              files: index.entries(),
+            },
+            () => this.isCurrent(project),
+          );
+        };
+        const staged = this.builder === buildSnapshot;
+        const context: BuildContext = {
+          reader: this.reader,
+          isCurrent: () => this.isCurrent(project),
+          ...(staged
+            ? {
+                scan: {
+                  index,
+                  batched: true,
+                  isCurrent: () => this.isCurrent(project),
+                  checkpoint,
+                  progress,
+                },
+              }
+            : {}),
+        };
+        let fingerprint: string | undefined;
+        if (
+          staged &&
+          previous?.phase === "complete" &&
+          previous.configVersion === project.configVersion
+        ) {
+          progress("检查文件变化");
+          fingerprint = await treeFingerprint(project, previous);
+          if (fingerprint && fingerprint === previous.treeFingerprint) {
+            progress("更新 Task 状态");
+            const runtime = await this.reader.refresh(project);
+            if (!this.isCurrent(project)) return this.view(id);
+            const next: Snapshot = {
+              ...previous,
+              id: randomUUID(),
+              startedAt,
+              completedAt: new Date().toISOString(),
+              runtime,
+              tasks: runtimeTasks(project, runtime),
+              product: previous.product
+                ? structuredClone(previous.product)
+                : undefined,
+              metrics: {
+                durationMs: Date.now() - Date.parse(startedAt),
+                filesRead: 0,
+                filesReused: index.files.size,
+                parsed: 0,
+                reusedParses: 0,
+              },
+            };
+            if (next.product)
+              buildProductIndex(next.product, [
+                ...next.tasks,
+                ...(next.taskObservations || []),
+              ]);
+            this.snapshots.set(id, next);
+            this.restored.delete(id);
+            await checkpoint();
+            this.attempts.set(id, {
+              state: next.outcome,
+              startedAt,
+              completedAt: next.completedAt,
+            });
+            return this.view(id);
+          }
+        }
+        if (staged && project.config.product?.enabled) {
+          const core = await this.builder(project, startedAt, undefined, {
+            ...context,
+            scan: { ...context.scan, coreOnly: true },
+          });
+          if (!this.isCurrent(project)) return this.view(id);
+          this.snapshots.set(id, core);
+          this.restored.delete(id);
+          await checkpoint();
+          fingerprint ||= await treeFingerprint(project, core);
+          // Let the browser retrieve the core view before continuing historical work.
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
         const snapshot = await this.builder(
           project,
           startedAt,
-          this.snapshots.get(id),
-          { reader: this.reader, isCurrent: () => this.isCurrent(project) },
+          previous,
+          context,
         );
         const current = this.registry.get(id);
         if (
@@ -463,6 +715,15 @@ export class SnapshotStore {
         )
           return this.view(id);
         this.snapshots.set(id, snapshot);
+        if (
+          staged &&
+          fingerprint &&
+          fingerprint === (await treeFingerprint(project, snapshot))
+        )
+          snapshot.treeFingerprint = fingerprint;
+        this.restored.delete(id);
+        if (staged) index.entries(true);
+        await checkpoint();
         this.attempts.set(id, {
           state: snapshot.outcome,
           startedAt,
@@ -517,6 +778,50 @@ export class SnapshotStore {
       throw new AppError("请求期间快照已变化", 409);
     return result;
   }
+  async taskTimes(
+    id: string,
+    snapshotId: string,
+    taskId: string,
+  ): Promise<TaskTimes> {
+    const project = this.registry.get(id);
+    const snapshot = this.view(id).snapshot;
+    if (
+      !snapshot ||
+      snapshot.id !== snapshotId ||
+      snapshot.configVersion !== project.configVersion
+    )
+      throw new AppError("快照或配置已变化，请刷新", 409);
+    if (!snapshot.runtime?.tasks.some((task) => task.task_id === taskId))
+      throw new AppError("任务不在当前快照中", 404);
+    const cacheKey = JSON.stringify([
+      id,
+      project.configVersion,
+      snapshotId,
+      taskId,
+    ]);
+    let operation = this.taskTimesCache.get(cacheKey);
+    if (!operation) {
+      operation = (async () => {
+        const detail = await this.taskDetail(id, snapshotId, taskId);
+        if (detail.status !== "available" || !detail.task)
+          throw new AppError(detail.error || "任务详情暂不可用", 503);
+        return readTaskTimes(detail.task, (ref) =>
+          this.taskSource(id, snapshotId, ref),
+        );
+      })();
+      this.taskTimesCache.set(cacheKey, operation);
+      void operation.catch(() => this.taskTimesCache.delete(cacheKey));
+      if (this.taskTimesCache.size > 256)
+        this.taskTimesCache.delete(this.taskTimesCache.keys().next().value!);
+    }
+    const result = await operation;
+    if (
+      this.registry.get(id).configVersion !== project.configVersion ||
+      this.view(id).snapshot?.id !== snapshotId
+    )
+      throw new AppError("读取期间快照已变化", 409);
+    return result;
+  }
   async moreTasks(id: string, snapshotId: string): Promise<SnapshotView> {
     const project = this.registry.get(id),
       snapshot = this.view(id).snapshot;
@@ -554,6 +859,11 @@ export class SnapshotStore {
       buildProductIndex(next.product, [...next.tasks, ...observations]);
     }
     this.snapshots.set(id, next);
+    await this.cache.save(
+      project,
+      { snapshot: next, files: this.indexes.get(id)?.index.entries() || [] },
+      () => this.isCurrent(project),
+    );
     return this.view(id);
   }
   async taskSource(id: string, snapshotId: string, ref: string) {

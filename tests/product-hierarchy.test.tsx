@@ -13,6 +13,7 @@ import type {
 import type { Snapshot, Task } from "../src/shared/types.js";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CompactTasks } from "../src/web/product.js";
+import { OverviewV3 } from "../src/web/product-v3.js";
 
 const source = {
   documentId: "doc",
@@ -187,7 +188,12 @@ it("keeps trusted Task lifecycle/navigation when another row conflicts, and reta
       statuses: [],
     },
   ] as unknown as Task[];
-  const snapshot = { tasks, product } as unknown as Snapshot;
+  const snapshot = {
+    tasks,
+    product,
+    documents: [],
+    warnings: [],
+  } as unknown as Snapshot;
   const result = overviewTaskStates(snapshot, rows);
   expect(result.total).toBe(1);
   expect(result.unconfirmed).toBe(2);
@@ -214,6 +220,33 @@ it("keeps trusted Task lifecycle/navigation when another row conflicts, and reta
   expect(html).toContain("查看 Task / Step");
   expect(html).toContain("coverage b2");
   expect(html).toContain("来源需求：");
+  product.items.unshift({
+    ...item("PROJECT"),
+    type: "project",
+    metadata: { id: "PROJECT", type: "project", requirement_order: ["A", "B"] },
+  });
+  product.manifest = { entry: source.path } as ProductSnapshot["manifest"];
+  product.bindings = rows;
+  const overview = renderToStaticMarkup(
+    <OverviewV3
+      context={{
+        snapshot,
+        open: () => {},
+        openTask: () => {},
+        openProduct: () => {},
+        relations: () => {},
+      }}
+      requirements={() => {}}
+    />,
+  );
+  const parentCard = overview.match(
+    /<article[^>]*data-overview-card="A"[^>]*>[\s\S]*?<\/article>/,
+  )![0];
+  expect(parentCard).toContain("共 3 个 Task，已关闭 1，身份未确认 2");
+  expect(parentCard).not.toContain("已完成");
+  expect(parentCard).toContain("已关闭</span><b>1</b>");
+  expect(parentCard).toContain("身份未确认</span><b>2</b>");
+  expect(parentCard).toContain("关联待核对 · 3");
 });
 it("extracts literal report sections with exact source lines, ignoring quoted/code headings", () => {
   const report = {

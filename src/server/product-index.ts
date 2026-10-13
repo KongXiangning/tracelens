@@ -268,6 +268,13 @@ export function buildProductIndex(
   product: ProductSnapshot,
   tasks: Task[],
 ): void {
+  product.diagnostics = product.diagnostics.filter(
+    (diagnostic) => diagnostic.origin !== "index",
+  );
+  for (const item of product.items)
+    item.diagnostics = item.diagnostics.filter(
+      (diagnostic) => diagnostic.origin !== "index",
+    );
   product.relations = [];
   product.bindings = [];
   product.assessments = [];
@@ -279,6 +286,7 @@ export function buildProductIndex(
     severity: ProductDiagnostic["severity"] = "warning",
   ) => {
     const diagnostic: ProductDiagnostic = {
+      origin: "index",
       code,
       message,
       severity,

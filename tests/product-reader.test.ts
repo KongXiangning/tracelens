@@ -381,7 +381,7 @@ describe("controlled PRODUCT read and snapshot integration", () => {
       "excluded",
       "outside",
       "unavailable",
-      "unavailable",
+      "read",
       "read",
     ]);
     expect(scan.product?.sources.at(-1)?.locationState).toBe("unlocated");

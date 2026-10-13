@@ -180,9 +180,7 @@ try {
   await page.goto(base);
   for (const [index, { input, project, snapshot }] of prepared.entries()) {
     await page.getByRole("button", { name: "概览", exact: true }).click();
-    await page
-      .getByRole("combobox", { name: "当前项目", exact: true })
-      .selectOption(project.id);
+    await page.locator(`[data-project-id="${project.id}"]`).click();
     await page.getByRole("button", { name: "需求视图", exact: true }).click();
     await page
       .getByRole("heading", { name: "目标与需求图", exact: true })

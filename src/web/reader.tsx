@@ -8,6 +8,7 @@ import { visit } from "unist-util-visit";
 import { kindLabels, type Document, type Snapshot } from "../shared/types";
 import type { OpenSource } from "./components";
 import { documentSource } from "./pages";
+import { api } from "./api";
 
 type LineRange = { start: number; end: number };
 function selectLines(options: { range?: LineRange }) {
@@ -46,7 +47,46 @@ function annotate(options: { lineOffset?: number } = {}) {
     walk(tree);
   };
 }
-export function DocumentReader({
+type ReaderProps = {
+  document: Document;
+  snapshot: Snapshot;
+  line: number;
+  open: OpenSource;
+  relations: () => void;
+};
+export function DocumentReader(props: ReaderProps) {
+  const [loaded, setLoaded] = useState<{ key: string; document: Document }>();
+  const [error, setError] = useState("");
+  const key = `${props.snapshot.id}:${props.document.id}`;
+  useEffect(() => {
+    if (!props.document.contentOmitted) return;
+    let cancelled = false;
+    setError("");
+    void api<{ document: Document }>(
+      `/projects/${props.snapshot.projectId}/documents/${encodeURIComponent(props.document.id)}?snapshotId=${encodeURIComponent(props.snapshot.id)}`,
+    )
+      .then((value) => {
+        if (!cancelled) setLoaded({ key, document: value.document });
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, props.document.contentOmitted]);
+  if (props.document.contentOmitted && loaded?.key !== key)
+    return <p role="status">{error || "正在读取原文…"}</p>;
+  return (
+    <LoadedDocumentReader
+      {...props}
+      document={
+        props.document.contentOmitted ? loaded!.document : props.document
+      }
+    />
+  );
+}
+function LoadedDocumentReader({
   document,
   snapshot,
   line,

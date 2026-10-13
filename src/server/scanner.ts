@@ -22,6 +22,7 @@ import {
   within,
 } from "./config.js";
 import type { ProductSnapshot } from "../shared/product-types.js";
+import type { FileIndex } from "./file-index.js";
 import { matchesProductPath, parseProductManifest } from "./product-parser.js";
 
 export const limits = {
@@ -56,6 +57,8 @@ export function matches(file: string, pattern: string): boolean {
   });
 }
 export interface InputFile {
+  fingerprint?: string;
+  binary?: boolean;
   path: string;
   kind: DocumentKind;
   raw: string;
@@ -76,6 +79,8 @@ export interface ScanResult {
 // One cache and budget per refresh, shared by general navigation, PRODUCT and
 // exact adopted-plan sources. Failed reads are cached too: no new-version retry.
 export interface ReadAllowance {
+  cached?: Omit<InputFile, "kind">;
+  binary?: boolean;
   remainingBytes?: () => number;
   onBytesRead?: (bytes: number) => void;
   onResolvedPath?: (relative: string) => void;
@@ -94,9 +99,13 @@ export class ScanReadSession {
   private productExclusions: string[] = [];
   private pending: Promise<void> = Promise.resolve();
   bytes = 0;
+  private batchBytes = 0;
+  private batchFiles = 0;
+  batches = 1;
   constructor(
     readonly root: string,
     private readonly config?: ScanConfig,
+    readonly options: ScanOptions = {},
   ) {}
   setProductExclusions(patterns: readonly string[]): void {
     this.productExclusions = [...patterns];
@@ -160,7 +169,8 @@ export class ScanReadSession {
     }
     if (
       !this.attemptedPaths.has(key) &&
-      this.attemptedPaths.size >= limits.files
+      this.attemptedPaths.size >= limits.files &&
+      !this.options.batched
     )
       throw new AppError("达到 1000 文件读取上限，扫描不完整");
     this.attemptedPaths.add(key);
@@ -169,17 +179,36 @@ export class ScanReadSession {
     let charged = 0;
     const reading = this.pending
       .then(async () => {
+        if (this.options.isCurrent && !this.options.isCurrent())
+          throw new AppError("扫描上下文已过期", 409);
         this.assertAllowed(relative, includeRecords);
-        if (this.bytes >= limits.totalBytes)
+        if (
+          this.options.batched &&
+          (this.batchFiles >= limits.files ||
+            this.batchBytes + limits.fileBytes > limits.totalBytes)
+        ) {
+          await this.options.checkpoint?.();
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          this.batchFiles = 0;
+          this.batchBytes = 0;
+          this.batches++;
+        }
+        if (!this.options.batched && this.bytes >= limits.totalBytes)
           throw new AppError("达到总读取量 20 MiB 上限，未读取");
+        this.batchFiles++;
+        const cachedInput = this.options.index?.get(relative);
         const input = await readBounded(this.root, relative, includeRecords, {
+          cached: cachedInput,
+          binary: allowance?.binary,
           remainingBytes: () =>
             Math.min(
-              limits.totalBytes - this.bytes,
+              limits.totalBytes -
+                (this.options.batched ? this.batchBytes : this.bytes),
               allowance?.remainingBytes?.() ?? Infinity,
             ),
           onBytesRead: (count) => {
             this.bytes += count;
+            this.batchBytes += count;
             charged += count;
             allowance?.onBytesRead?.(count);
           },
@@ -189,10 +218,16 @@ export class ScanReadSession {
             allowance?.onResolvedPath?.(canonical);
           },
         });
+        if (this.options.index) {
+          if (input === cachedInput) this.options.index.stats.reused++;
+          else this.options.index.stats.read++;
+          this.options.index.set(input);
+        }
         this.inputs.set(key, input);
         return input;
       })
       .catch((error) => {
+        this.options.index?.forget(relative);
         // A navigation-local preflight rejection is not a captured file failure.
         // Do not let it constrain a later explicitly registered PRODUCT read.
         // Real I/O failures, partial reads and global exhaustion stay memoized.
@@ -215,6 +250,14 @@ export class ScanReadSession {
     );
     return reading;
   }
+}
+export interface ScanOptions {
+  index?: FileIndex;
+  batched?: boolean;
+  coreOnly?: boolean;
+  isCurrent?: () => boolean;
+  checkpoint?: () => Promise<void>;
+  progress?: (phase: string, completed?: number, total?: number) => void;
 }
 export async function readBounded(
   root: string,
@@ -245,6 +288,30 @@ export async function readBounded(
     if (!before.isFile()) throw new AppError("不是普通文件");
     if (before.size > limits.fileBytes)
       throw new AppError("单文件超过 2 MiB 上限，扫描不完整");
+    const fingerprint = [
+      before.dev,
+      before.ino,
+      before.size,
+      before.mtimeMs,
+      before.ctimeMs,
+    ].join(":");
+    if (
+      allowance?.cached?.fingerprint === fingerprint &&
+      Boolean(allowance.cached.binary) === Boolean(allowance.binary)
+    ) {
+      const current = await lstat(filename);
+      if (
+        !current.isSymbolicLink() &&
+        [
+          current.dev,
+          current.ino,
+          current.size,
+          current.mtimeMs,
+          current.ctimeMs,
+        ].join(":") === fingerprint
+      )
+        return allowance.cached;
+    }
     if (before.size > (allowance?.remainingBytes?.() ?? Infinity))
       throw new ReadBudgetError(before.size);
     // Read only the preflight size. Post-read stat checks still reject growth,
@@ -271,6 +338,7 @@ export async function readBounded(
     if (
       length !== before.size ||
       before.mtimeMs !== after.mtimeMs ||
+      before.ctimeMs !== after.ctimeMs ||
       before.size !== after.size ||
       before.ino !== current.ino ||
       before.mtimeMs !== current.mtimeMs ||
@@ -280,10 +348,12 @@ export async function readBounded(
     if (!within(root, await realpath(filename)))
       throw new AppError("读取期间真实路径变化");
     const bytes = buffer.subarray(0, length);
-    const raw = new TextDecoder("utf-8", {
-      fatal: true,
-      ignoreBOM: true,
-    }).decode(bytes);
+    const raw = allowance?.binary
+      ? ""
+      : new TextDecoder("utf-8", {
+          fatal: true,
+          ignoreBOM: true,
+        }).decode(bytes);
     if (raw.includes("\0")) throw new AppError("文件包含二进制内容");
     return {
       path: relative,
@@ -291,6 +361,8 @@ export async function readBounded(
       bytes: length,
       digest: createHash("sha256").update(bytes).digest("hex"),
       modifiedAt: before.mtime.toISOString(),
+      fingerprint,
+      ...(allowance?.binary ? { binary: true } : {}),
     };
   } finally {
     await handle.close();
@@ -338,9 +410,10 @@ export async function scanFiles(
   project: Project,
   previousNavigation?: NavigationReport,
   preflight = false,
+  options: ScanOptions = {},
 ): Promise<ScanResult> {
   const root = await validateRoot(project.root);
-  const readSession = new ScanReadSession(root, project.config);
+  const readSession = new ScanReadSession(root, project.config, options);
   // Establish the enabled, valid PRODUCT exclusion policy before any generic
   // navigation or manual reads. Disabled/invalid manifests grant no new scope.
   if (project.config.product?.enabled) {
@@ -357,6 +430,32 @@ export async function scanFiles(
   }
   const files: ScanFile[] = [];
   const warnings: Warning[] = [];
+  const priority: ScanResult = {
+    inputs: [],
+    files,
+    warnings,
+    readSession,
+    navigation: {
+      enabled: false,
+      profileUsed: false,
+      entries: [],
+      incomplete: false,
+      gaps: [],
+    },
+    effectiveRules: {
+      management: [],
+      requirements: [],
+      design: [],
+      planning: [],
+      unclassified: [],
+    },
+  };
+  if (!preflight && options.batched) {
+    options.progress?.(options.coreOnly ? "读取需求与报告" : "核验报告与来源");
+    await (await import("./product-reader.js")).readProduct(project, priority);
+    if (options.coreOnly) return priority;
+    options.progress?.("更新文档导航");
+  }
   const selected = new Map<string, { path: string; kind: DocumentKind }>();
   const { DocumentNavigation } = await import("./navigation.js");
   const navigation = project.config.autoDiscover
@@ -389,7 +488,7 @@ export async function scanFiles(
     if (
       visited >= limits.entries ||
       depth > limits.depth ||
-      selected.size >= limits.files
+      (selected.size >= limits.files && !options.batched)
     ) {
       if (!truncated)
         warnings.push({
@@ -411,7 +510,10 @@ export async function scanFiles(
           a.name.localeCompare(b.name),
         )) {
           visited++;
-          if (visited > limits.entries || selected.size >= limits.files) {
+          if (
+            visited > limits.entries ||
+            (selected.size >= limits.files && !options.batched)
+          ) {
             await walk(relative, limits.depth + 1, kind, pattern);
             break;
           }
@@ -487,6 +589,7 @@ export async function scanFiles(
       if (wildcard < 0) {
         if (
           selected.size >= limits.files &&
+          !options.batched &&
           !selected.has(documentPathKey(pattern))
         ) {
           truncated = true;
@@ -537,7 +640,11 @@ export async function scanFiles(
     for (const entry of navigation?.entries.values() || []) {
       if (entry.availability === "excluded") continue;
       const key = documentPathKey(entry.path);
-      if (selected.size >= limits.files && !selected.has(key)) {
+      if (
+        !options.batched &&
+        selected.size >= limits.files &&
+        !selected.has(key)
+      ) {
         truncated = true;
         break;
       }
@@ -559,6 +666,7 @@ export async function scanFiles(
     await lstat(path.join(root, ".workflow-system/PROJECT_PROFILE.yaml"));
     if (!excluded(".workflow-system/PROJECT_PROFILE.yaml")) {
       if (
+        options.batched ||
         selected.size < limits.files ||
         selected.has(documentPathKey(".workflow-system/PROJECT_PROFILE.yaml"))
       )
@@ -574,10 +682,12 @@ export async function scanFiles(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT")
       warnings.push({ code: "profile", message: String(error) });
   }
-  const inputs: InputFile[] = [];
+  const inputs: InputFile[] = [...priority.inputs];
   let bytes = navigation?.bytes || 0;
   let failed = files.filter((f) => f.status === "error").length;
-  const attempted = new Set<string>();
+  const attempted = new Set<string>(
+    inputs.map((input) => documentPathKey(input.path)),
+  );
   async function readSelected(): Promise<void> {
     for (const [key, { path: relative, kind }] of selected) {
       if (attempted.has(key)) continue;
@@ -591,7 +701,10 @@ export async function scanFiles(
             navigation?.entries.get(key)?.path || relative,
             project.config.includeRecords,
           ));
-        if (bytes + (cached ? 0 : input.bytes) > limits.totalBytes)
+        if (
+          !options.batched &&
+          bytes + (cached ? 0 : input.bytes) > limits.totalBytes
+        )
           throw new AppError("超过总读取量 20 MiB 上限，扫描不完整");
         bytes += cached ? 0 : input.bytes;
         inputs.push({ ...input, kind });
@@ -619,7 +732,7 @@ export async function scanFiles(
     await navigation.includeScanned(inputs);
     bytes += navigation.bytes - previousBytes;
     selectNavigation();
-    if (bytes > limits.totalBytes)
+    if (!options.batched && bytes > limits.totalBytes)
       warnings.push({
         code: "limit",
         message: "导航与正文达到总读取量 20 MiB 上限，扫描不完整",
@@ -673,7 +786,10 @@ export async function scanFiles(
     navigation: report,
     readSession,
   };
-  if (!preflight)
+  if (priority.product) {
+    result.product = priority.product;
+    result.productPaths = priority.productPaths;
+  } else if (!preflight)
     await (await import("./product-reader.js")).readProduct(project, result);
   if (!preflight && inputs.length === 0 && failed > 0)
     throw new AppError(

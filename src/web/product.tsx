@@ -1,4 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  buildOverviewData,
+  isOverviewSnapshot,
+  type OverviewSnapshot,
+} from "../shared/overview-data";
+import { LazyDetails, PagedItems } from "./lazy-details";
+import { OverviewDetails } from "./overview-details";
 import { ArrowRight, FileText, Network, Search, Settings2 } from "lucide-react";
 import type { NavigationReport, Snapshot, Task } from "../shared/types";
 import type {
@@ -20,6 +27,7 @@ import {
 } from "../shared/product-health";
 import { scopeGroups } from "../shared/product-scope";
 import { OverviewDashboard } from "./overview-dashboard";
+import { ProjectRecords } from "./pages";
 import { lifecycleLabels } from "./runtime";
 import { requirementBindings } from "../shared/product-hierarchy";
 
@@ -49,6 +57,10 @@ const reportSubject = (item: ProductItem) => {
     return "尚未记录报告对应的版本或构建";
   return `${({ commit: "提交", release: "发布版本", "working-copy": "工作副本" } as Record<string, string>)[subject.kind] || subject.kind}：${subject.value || "未记录"}`;
 };
+export type OverviewContext = Omit<ProductContext, "snapshot"> & {
+  snapshot: Snapshot | OverviewSnapshot;
+};
+
 export type OpenProduct = (key: string, workItemId?: string) => void;
 export type ProductContext = {
   snapshot: Snapshot;
@@ -140,6 +152,7 @@ export function ProductStatusPanel({
         {coverageRead &&
           ` 已读取 ${product?.coverage.paths.length} 份托管文档，${product?.items.filter((item) => item.usable).length} 个可用条目。`}
       </p>
+      <p className="muted">本次托管范围字节读取：{coverageLabel}</p>
       {product && status !== "ready" && (
         <OrganizationPromptButton
           report={
@@ -169,127 +182,165 @@ export function ProductStatusPanel({
               维护已暂停，当前材料仍可阅读；这不表示项目结束。
             </p>
           )}
-          <details className="product-coverage">
-            <summary>
-              读取范围与结构诊断 ·{" "}
-              {product.diagnostics.filter(productStructureIssue).length} 项
-            </summary>
-            {product.manifest && (
-              <dl className="product-fields">
-                <dt>标准项目身份</dt>
-                <dd>{product.manifest.project_id}</dd>
-                <dt>工作副本</dt>
-                <dd>
-                  <code>{product.workingCopy}</code>
-                </dd>
-                <dt>格式版本</dt>
-                <dd>{product.manifest.schema}</dd>
-                <dt>当前定义范围</dt>
-                <dd>
-                  <pre>{product.manifest.managed_paths.join("\n")}</pre>
-                </dd>
-                <dt>来源许可范围</dt>
-                <dd>
-                  <pre>{product.manifest.source_paths.join("\n") || "无"}</pre>
-                  <small>仅按直接明确引用读取，不递归遍历来源目录。</small>
-                </dd>
-                <dt>capture_paths</dt>
-                <dd>
-                  <pre>
-                    {product.manifest.capture_paths?.join("\n") || "未记录"}
-                  </pre>
-                  <small>不是读写或遍历授权。</small>
-                </dd>
-              </dl>
+          <LazyDetails
+            className="product-coverage"
+            summary={
+              <>
+                读取范围与结构诊断 ·{" "}
+                {product.diagnostics.filter(productStructureIssue).length} 项
+              </>
+            }
+          >
+            {() => (
+              <>
+                {product.manifest && (
+                  <dl className="product-fields">
+                    <dt>标准项目身份</dt>
+                    <dd>{product.manifest.project_id}</dd>
+                    <dt>工作副本</dt>
+                    <dd>
+                      <code>{product.workingCopy}</code>
+                    </dd>
+                    <dt>格式版本</dt>
+                    <dd>{product.manifest.schema}</dd>
+                    <dt>当前定义范围</dt>
+                    <dd>
+                      <pre>{product.manifest.managed_paths.join("\n")}</pre>
+                    </dd>
+                    <dt>来源许可范围</dt>
+                    <dd>
+                      <pre>
+                        {product.manifest.source_paths.join("\n") || "无"}
+                      </pre>
+                      <small>仅按直接明确引用读取，不递归遍历来源目录。</small>
+                    </dd>
+                    <dt>capture_paths</dt>
+                    <dd>
+                      <pre>
+                        {product.manifest.capture_paths?.join("\n") || "未记录"}
+                      </pre>
+                      <small>不是读写或遍历授权。</small>
+                    </dd>
+                  </dl>
+                )}
+                <p>
+                  本次托管范围字节读取：
+                  {coverageLabel} · 可用条目{" "}
+                  {product.items.filter((item) => item.usable).length} ·
+                  不可用条目{" "}
+                  {product.items.filter((item) => !item.usable).length}
+                </p>
+                <p className="muted">
+                  字节完整、结构可用、业务盘点和交付结论互不替代。
+                </p>
+                <PagedItems
+                  items={[
+                    ...product.coverage.paths.map((path) => ({
+                      path,
+                      label: "已读取",
+                      reason: "",
+                    })),
+                    ...product.coverage.omitted.map((entry) => ({
+                      ...entry,
+                      label: "未读取",
+                    })),
+                    ...product.coverage.excluded.map((entry) => ({
+                      ...entry,
+                      label: "已排除",
+                    })),
+                  ]}
+                >
+                  {(entries) => (
+                    <ul className="product-evidence-list">
+                      {entries.map((entry, i) => (
+                        <li key={i}>
+                          <strong>{entry.label}：</strong>
+                          <code>{entry.path}</code>
+                          {entry.reason && ` · ${entry.reason}`}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </PagedItems>
+                <ProductDiagnostics
+                  diagnostics={product.diagnostics.filter(
+                    (entry) => productDiagnosticArea(entry) === "structure",
+                  )}
+                  open={open}
+                />
+              </>
             )}
-            <p>
-              本次托管范围字节读取：
-              {coverageLabel} · 可用条目{" "}
-              {product.items.filter((item) => item.usable).length} · 不可用条目{" "}
-              {product.items.filter((item) => !item.usable).length}
-            </p>
-            <p className="muted">
-              字节完整、结构可用、业务盘点和交付结论互不替代。
-            </p>
-            <ul className="product-evidence-list">
-              {product.coverage.paths.map((path) => (
-                <li key={path}>
-                  <code>{path}</code>
-                </li>
-              ))}
-              {product.coverage.omitted.map((entry, i) => (
-                <li key={`omitted:${i}`}>
-                  <strong>未读取：</strong>
-                  <code>{entry.path}</code> · {entry.reason}
-                </li>
-              ))}
-              {product.coverage.excluded.map((entry, i) => (
-                <li key={`excluded:${i}`}>
-                  <strong>已排除：</strong>
-                  <code>{entry.path}</code> · {entry.reason}
-                </li>
-              ))}
-            </ul>
-            <ProductDiagnostics
-              diagnostics={product.diagnostics.filter(
-                (entry) => productDiagnosticArea(entry) === "structure",
-              )}
-              open={open}
-            />
-          </details>
+          </LazyDetails>
           {product.diagnostics.some(
             (entry) => productDiagnosticArea(entry) === "evidence",
           ) && (
-            <details className="product-coverage">
-              <summary>
-                来源依据待处理 ·{" "}
-                {
-                  new Set(
-                    product.diagnostics
-                      .filter(
-                        (entry) => productDiagnosticArea(entry) === "evidence",
-                      )
-                      .map((entry) => entry.path || entry.code),
-                  ).size
-                }{" "}
-                个文件或事项
-              </summary>
-              <p className="muted">
-                产品正文已读取；以下来源缺失或核对问题影响相关依据，需由 vNext
-                按实际涉及范围处理。
-              </p>
-              <ProductDiagnostics
-                diagnostics={product.diagnostics.filter(
-                  (entry) => productDiagnosticArea(entry) === "evidence",
-                )}
-                open={open}
-              />
-            </details>
+            <LazyDetails
+              className="product-coverage"
+              summary={
+                <>
+                  来源依据待处理 ·{" "}
+                  {
+                    new Set(
+                      product.diagnostics
+                        .filter(
+                          (entry) =>
+                            productDiagnosticArea(entry) === "evidence",
+                        )
+                        .map((entry) => entry.path || entry.code),
+                    ).size
+                  }{" "}
+                  个文件或事项
+                </>
+              }
+            >
+              {() => (
+                <>
+                  <p className="muted">
+                    产品正文已读取；以下来源缺失或核对问题影响相关依据，需由
+                    vNext 按实际涉及范围处理。
+                  </p>
+                  <ProductDiagnostics
+                    diagnostics={product.diagnostics.filter(
+                      (entry) => productDiagnosticArea(entry) === "evidence",
+                    )}
+                    open={open}
+                  />
+                </>
+              )}
+            </LazyDetails>
           )}
           {product.diagnostics.some(
             (entry) => productDiagnosticArea(entry) === "pending",
           ) && (
-            <details className="product-coverage">
-              <summary>
-                业务待核对 ·{" "}
-                {
-                  product.diagnostics.filter(
-                    (entry) => productDiagnosticArea(entry) === "pending",
-                  ).length
-                }{" "}
-                项
-              </summary>
-              <p className="muted">
-                这些是 vNext
-                保留的待核对状态，不表示文档解析失败，也不构成开发阻塞。
-              </p>
-              <ProductDiagnostics
-                diagnostics={product.diagnostics.filter(
-                  (entry) => productDiagnosticArea(entry) === "pending",
-                )}
-                open={open}
-              />
-            </details>
+            <LazyDetails
+              className="product-coverage"
+              summary={
+                <>
+                  业务待核对 ·{" "}
+                  {
+                    product.diagnostics.filter(
+                      (entry) => productDiagnosticArea(entry) === "pending",
+                    ).length
+                  }{" "}
+                  项
+                </>
+              }
+            >
+              {() => (
+                <>
+                  <p className="muted">
+                    这些是 vNext
+                    保留的待核对状态，不表示文档解析失败，也不构成开发阻塞。
+                  </p>
+                  <ProductDiagnostics
+                    diagnostics={product.diagnostics.filter(
+                      (entry) => productDiagnosticArea(entry) === "pending",
+                    )}
+                    open={open}
+                  />
+                </>
+              )}
+            </LazyDetails>
           )}
         </>
       )}
@@ -304,25 +355,29 @@ function ProductDiagnostics({
   open: OpenSource;
 }) {
   return diagnostics.length ? (
-    <ul className="warning-list">
-      {diagnostics.map((entry, i) => (
-        <li key={i}>
-          <span>
-            <strong>{entry.code}</strong> · {entry.message}
-          </span>
-          {entry.source ? (
-            <SourceButton source={entry.source} open={open} />
-          ) : (
-            entry.path && (
-              <code>
-                {entry.path}
-                {entry.line ? `:${entry.line}` : ""}
-              </code>
-            )
-          )}
-        </li>
-      ))}
-    </ul>
+    <PagedItems items={diagnostics}>
+      {(entries) => (
+        <ul className="warning-list">
+          {entries.map((entry, i) => (
+            <li key={i}>
+              <span>
+                <strong>{entry.code}</strong> · {entry.message}
+              </span>
+              {entry.source ? (
+                <SourceButton source={entry.source} open={open} />
+              ) : (
+                entry.path && (
+                  <code>
+                    {entry.path}
+                    {entry.line ? `:${entry.line}` : ""}
+                  </code>
+                )
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </PagedItems>
   ) : (
     <p className="muted">本次未报告产品结构诊断。</p>
   );
@@ -1986,16 +2041,12 @@ function BusinessScope({
   );
 }
 
-export function ProductOverview({
+function OverviewReading({
   context,
   configure,
-  requirements,
-  planning,
 }: {
   context: ProductContext;
   configure: () => void;
-  requirements: () => void;
-  planning: () => void;
 }) {
   const product = context.snapshot.product;
   const projects =
@@ -2004,69 +2055,150 @@ export function ProductOverview({
   const plans =
     product?.items.filter((item) => item.usable && item.type === "plan") || [];
   return (
+    <>
+      <ProductStatusPanel
+        product={product}
+        navigation={context.snapshot.navigation}
+        open={context.open}
+        configure={configure}
+      />
+      {projects.map((item) => (
+        <section className="product-project-summary" key={item.key}>
+          <h2>{item.title}</h2>
+          <LazyDetails
+            className="product-project-body"
+            summary="项目需求总纲与完整正文"
+          >
+            {() => <Body item={item} context={context} />}
+          </LazyDetails>
+          <Inventory item={item} context={context} />
+        </section>
+      ))}
+      <section>
+        <h3>项目计划 · {plans.length}</h3>
+        {plans.length ? (
+          plans.map((plan) => (
+            <p key={plan.key}>
+              <button
+                className="text-link"
+                onClick={() => context.openProduct(plan.key)}
+              >
+                {plan.title}
+                <ArrowRight size={14} />
+              </button>{" "}
+              · {intentLabel(plan.metadata.intent_state)}
+            </p>
+          ))
+        ) : (
+          <p className="muted">
+            尚未登记标准项目计划；目标、需求与现有任务仍可阅读。
+          </p>
+        )}
+      </section>
+    </>
+  );
+}
+
+export function ProductOverview({
+  context,
+  configure,
+  requirements,
+  planning,
+  projectName = "本地项目",
+  root = "",
+  loadSnapshot,
+}: {
+  context: OverviewContext;
+  configure: () => void;
+  requirements: () => void;
+  planning: () => void;
+  projectName?: string;
+  root?: string;
+  loadSnapshot?: () => Promise<Snapshot>;
+}) {
+  const snapshot = context.snapshot;
+  const overview = isOverviewSnapshot(snapshot)
+    ? snapshot.overview!
+    : buildOverviewData(snapshot);
+  const pending = useRef<
+    { id: string; promise: Promise<Snapshot> } | undefined
+  >(undefined);
+  function loadDetails(): Promise<Snapshot> {
+    if (!isOverviewSnapshot(snapshot)) return Promise.resolve(snapshot);
+    if (pending.current?.id === snapshot.id) return pending.current.promise;
+    if (!loadSnapshot) return Promise.reject(new Error("详细记录暂不可用"));
+    const promise = loadSnapshot().catch((error) => {
+      if (pending.current?.id === snapshot.id) pending.current = undefined;
+      throw error;
+    });
+    pending.current = { id: snapshot.id, promise };
+    return promise;
+  }
+  return (
     <section className="product-overview">
-      {product &&
-        product.manifest &&
-        ["ready", "partial", "empty"].includes(product.status) && (
-          <>
-            <OverviewDashboard
-              context={context}
-              requirements={requirements}
-              planning={planning}
-            />
-            <details className="overview-reading-details">
-              <summary>文档读取与来源核对</summary>
-              <ProductStatusPanel
-                product={product}
-                navigation={context.snapshot.navigation}
-                open={context.open}
+      {overview.ready ? (
+        <OverviewDashboard
+          context={context}
+          requirements={requirements}
+          planning={planning}
+        />
+      ) : (
+        <div className="overview-dashboard">
+          <section
+            className="overview-hero overview-pending"
+            aria-label="项目总览"
+          >
+            <div className="overview-hero-section overview-hero-goal">
+              <div className="overview-eyebrow">PROJECT OVERVIEW</div>
+              <h1>{projectName}</h1>
+              <p>目标与需求尚未就绪，已读取的任务和文档仍可查看。</p>
+              <button className="overview-hero-link" onClick={requirements}>
+                查看需求视图 ↗
+              </button>
+            </div>
+          </section>
+          <section className="product-status">
+            <h3>{productStatusLabels[overview.productStatus]}</h3>
+            <p>{productStatusDetails[overview.productStatus]}</p>
+            <button className="text-link" onClick={configure}>
+              查看项目设置
+            </button>
+          </section>
+        </div>
+      )}
+      <LazyDetails
+        className="overview-reading-details"
+        summary="文档读取与来源核对"
+      >
+        {() => (
+          <OverviewDetails snapshotId={snapshot.id} load={loadDetails}>
+            {(full) => (
+              <OverviewReading
+                context={{ ...context, snapshot: full }}
                 configure={configure}
               />
-              {projects.map((item) => (
-                <section className="product-project-summary" key={item.key}>
-                  <h2>{item.title}</h2>
-                  <details className="product-project-body">
-                    <summary>项目需求总纲与完整正文</summary>
-                    <Body item={item} context={context} />
-                  </details>
-                  <Inventory item={item} context={context} />
-                </section>
-              ))}
-              <section>
-                <h3>项目计划 · {plans.length}</h3>
-                {plans.length ? (
-                  plans.map((plan) => (
-                    <p key={plan.key}>
-                      <button
-                        className="text-link"
-                        onClick={() => context.openProduct(plan.key)}
-                      >
-                        {plan.title}
-                        <ArrowRight size={14} />
-                      </button>{" "}
-                      · {intentLabel(plan.metadata.intent_state)}
-                    </p>
-                  ))
-                ) : (
-                  <p className="muted">
-                    vNext
-                    尚未登记标准项目计划；目标、需求与现有任务仍可阅读。需要制定计划时，在项目中与
-                    vNext 讨论。
-                  </p>
-                )}
-              </section>
-            </details>
-          </>
+            )}
+          </OverviewDetails>
         )}
-      {(!product?.manifest ||
-        !["ready", "partial", "empty"].includes(product.status)) && (
-        <ProductStatusPanel
-          product={product}
-          navigation={context.snapshot.navigation}
-          open={context.open}
-          configure={configure}
-        />
-      )}
+      </LazyDetails>
+      <LazyDetails
+        className="overview-record-details"
+        summary="当前任务、文档记录与扫描详情"
+      >
+        {() => (
+          <OverviewDetails snapshotId={snapshot.id} load={loadDetails}>
+            {(full) => (
+              <ProjectRecords
+                snapshot={full}
+                open={context.open}
+                openTask={context.openTask}
+                projectName={projectName}
+                root={root}
+              />
+            )}
+          </OverviewDetails>
+        )}
+      </LazyDetails>
     </section>
   );
 }

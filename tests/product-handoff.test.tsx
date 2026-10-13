@@ -371,4 +371,9 @@ it("does not render missing product input as zero business requirements", async 
   expect(html).not.toContain("目标与需求全景");
   expect(html).not.toContain("项目计划 · 0");
   expect(html).toContain("未发现 PRODUCT 入口");
+  expect(html).toContain('class="overview-hero overview-pending"');
+  expect(html).not.toContain("项目概览</h2>");
+  expect(
+    html.match(/<details class="overview-record-details"[^>]*>/)![0],
+  ).not.toContain(" open");
 });

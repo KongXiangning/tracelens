@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { LazyDetails, PagedItems } from "./lazy-details";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -32,6 +33,8 @@ const TaskProductLinks = lazy(() =>
   import("./product").then((module) => ({ default: module.TaskProductLinks })),
 );
 import { NavigationAudit } from "./navigation-audit";
+import { tasksByDescendingNumber } from "../shared/task-order";
+import { TaskCardTimes } from "./task-card-times";
 
 const methodLabels = {
   structured: "结构化引用",
@@ -146,102 +149,131 @@ function SnapshotDiagnostics({
 }) {
   return (
     <div className="diagnostics">
-      <details>
-        <summary>
-          <AlertTriangle size={16} />
-          扫描提示 <span>{snapshot.warnings.length}</span>
-        </summary>
-        {snapshot.warnings.length === 0 ? (
-          <p className="muted">本次扫描未报告异常。</p>
-        ) : (
-          <ul className="warning-list">
-            {snapshot.warnings.map((warning, i) => {
-              const document = snapshot.documents.find(
-                (d) => d.path === warning.path,
-              );
-              const source =
-                document &&
-                documentSource(snapshot, document.id, warning.line || 1);
-              return (
-                <li key={i}>
-                  <span>{warning.message}</span>
-                  {source ? (
-                    <SourceButton source={source} open={open} />
-                  ) : (
-                    warning.path && (
-                      <code>
-                        {warning.path}
-                        {warning.line && `:${warning.line}`}
-                      </code>
-                    )
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+      <LazyDetails
+        summary={
+          <>
+            <AlertTriangle size={16} />
+            扫描提示 <span>{snapshot.warnings.length}</span>
+          </>
+        }
+      >
+        {() => (
+          <>
+            {snapshot.warnings.length === 0 ? (
+              <p className="muted">本次扫描未报告异常。</p>
+            ) : (
+              <PagedItems items={snapshot.warnings}>
+                {(warnings) => (
+                  <ul className="warning-list">
+                    {warnings.map((warning, i) => {
+                      const document = snapshot.documents.find(
+                        (d) => d.path === warning.path,
+                      );
+                      const source =
+                        document &&
+                        documentSource(
+                          snapshot,
+                          document.id,
+                          warning.line || 1,
+                        );
+                      return (
+                        <li key={i}>
+                          <span>{warning.message}</span>
+                          {source ? (
+                            <SourceButton source={source} open={open} />
+                          ) : (
+                            warning.path && (
+                              <code>
+                                {warning.path}
+                                {warning.line && `:${warning.line}`}
+                              </code>
+                            )
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </PagedItems>
+            )}
+          </>
         )}
-      </details>
-      <details>
-        <summary>
-          <FileText size={16} />
-          本快照的扫描范围 <span>{snapshot.files.length}</span>
-        </summary>
-        <div className="scope-rules">
-          {documentKinds.map((kind) => (
-            <div key={kind}>
-              <strong>{kindLabels[kind]}</strong>
-              <code>
-                {snapshot.effectiveRules[kind].join("\n") || "未发现"}
-              </code>
+      </LazyDetails>
+      <LazyDetails
+        summary={
+          <>
+            <FileText size={16} />
+            本快照的扫描范围 <span>{snapshot.files.length}</span>
+          </>
+        }
+      >
+        {() => (
+          <>
+            <div className="scope-rules">
+              {documentKinds.map((kind) => (
+                <div key={kind}>
+                  <strong>{kindLabels[kind]}</strong>
+                  <code>
+                    {snapshot.effectiveRules[kind].join("\n") || "未发现"}
+                  </code>
+                </div>
+              ))}
+              <div>
+                <strong>排除</strong>
+                <code>
+                  {snapshot.config.excludes.join("\n") || "无自定义排除"}
+                </code>
+              </div>
+              <p className="muted">
+                固定跳过依赖、构建产物、.git、journal、符号链接。records
+                仅按显式允许的范围或精确来源读取。Profile
+                如存在则作为管理配置读取。
+              </p>
             </div>
-          ))}
-          <div>
-            <strong>排除</strong>
-            <code>{snapshot.config.excludes.join("\n") || "无自定义排除"}</code>
-          </div>
-          <p className="muted">
-            固定跳过依赖、构建产物、.git、journal、符号链接。records
-            仅按显式允许的范围或精确来源读取。Profile 如存在则作为管理配置读取。
-          </p>
-        </div>
-        <table className="scope-table">
-          <thead>
-            <tr>
-              <th>实际路径</th>
-              <th>类型</th>
-              <th>读取结果</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snapshot.files.map((file, i) => (
-              <tr key={i}>
-                <td>
-                  <code>{file.path}</code>
-                  {file.detail && <small>{file.detail}</small>}
-                </td>
-                <td>{kindLabels[file.kind]}</td>
-                <td>
-                  {
-                    {
-                      read: "已读取",
-                      missing: "缺失",
-                      error: "读取失败",
-                      skipped: "跳过",
-                    }[file.status]
-                  }
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!snapshot.files.length && (
-          <p className="muted">配置范围内无匹配文件。</p>
+            <PagedItems items={snapshot.files}>
+              {(files) => (
+                <table className="scope-table">
+                  <thead>
+                    <tr>
+                      <th>实际路径</th>
+                      <th>类型</th>
+                      <th>读取结果</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {files.map((file, i) => (
+                      <tr key={i}>
+                        <td>
+                          <code>{file.path}</code>
+                          {file.detail && <small>{file.detail}</small>}
+                        </td>
+                        <td>{kindLabels[file.kind]}</td>
+                        <td>
+                          {
+                            {
+                              read: "已读取",
+                              missing: "缺失",
+                              error: "读取失败",
+                              skipped: "跳过",
+                            }[file.status]
+                          }
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </PagedItems>
+            {!snapshot.files.length && (
+              <p className="muted">配置范围内无匹配文件。</p>
+            )}
+          </>
         )}
-      </details>
+      </LazyDetails>
     </div>
   );
 }
-export function Overview({
+export function ProjectRecords({
   snapshot,
   open,
   openTask,
@@ -273,7 +305,7 @@ export function Overview({
   return (
     <div className="overview">
       <div className="page-title">
-        <h2>项目概览</h2>
+        <h2>任务与文档记录</h2>
         <span className="muted">来自当前扫描范围的文档记录</span>
       </div>
       <div className="overview-facts">
@@ -432,15 +464,20 @@ export function TasksPage({
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const detailPane = useRef<HTMLDivElement>(null);
+  const ordered = tasksByDescendingNumber(snapshot.tasks);
   const candidate =
     selected !== undefined
       ? snapshot.tasks.find((t) => t.id === selected)
-      : snapshot.tasks.find((t) => t.current) || snapshot.tasks[0];
+      : ordered[0];
   const identityChanged = Boolean(
     selectedRealTaskId && candidate?.realTaskId !== selectedRealTaskId,
   );
   const task = identityChanged ? undefined : candidate;
-  const filtered = snapshot.tasks.filter(
+  useEffect(() => {
+    detailPane.current?.scrollTo({ top: 0 });
+  }, [task?.id]);
+  const filtered = ordered.filter(
     (t) =>
       `${t.title} ${t.number || ""} ${t.source.path}`
         .toLowerCase()
@@ -448,7 +485,7 @@ export function TasksPage({
       (filter === "all" || (filter === "current" ? t.current : !t.current)),
   );
   return (
-    <div className="browser-page">
+    <div className="browser-page tasks-page">
       <div className="browser-list">
         <div className="list-header">
           <h2>
@@ -459,6 +496,9 @@ export function TasksPage({
                 : snapshot.tasks.length}
             </small>
           </h2>
+          <p className="task-sort-note">
+            按 Task 编号从大到小 · 无编号任务置后
+          </p>
           <RuntimeStatus view={snapshot.runtime} />
           <div className="search">
             <Search size={15} />
@@ -485,26 +525,47 @@ export function TasksPage({
             ))}
           </div>
         </div>
-        <div className="list-items">
+        <div className="list-items task-card-grid" aria-label="任务卡片">
           {filtered.map((t) => (
             <button
               key={t.id}
-              className={`task-item ${task?.id === t.id ? "selected" : ""}`}
+              type="button"
+              className={`task-item task-card ${task?.id === t.id ? "selected" : ""}`}
+              aria-pressed={task?.id === t.id}
               onClick={() => select(t.id)}
             >
-              <div>
+              <div className="task-card-heading">
                 <span className="task-number">{t.number || "未记录编号"}</span>
-                {t.current && <span className="tiny-label">当前</span>}
-              </div>
-              <strong>{t.title}</strong>
-              {t.runtimeLifecycle ? (
-                <span className="status">
-                  {lifecycleLabels[t.runtimeLifecycle]}
+                <span
+                  className={`task-card-state ${t.runtimeLifecycle || "unknown"}`}
+                >
+                  {t.runtimeLifecycle ? (
+                    <span className="status">
+                      {lifecycleLabels[t.runtimeLifecycle]}
+                    </span>
+                  ) : (
+                    <Status text={t.statuses[0]?.text || null} />
+                  )}
                 </span>
-              ) : (
-                <Status text={t.statuses[0]?.text || null} />
-              )}
-              <small title={t.source.path}>{t.source.path}</small>
+              </div>
+              <strong className="task-card-title" title={t.title}>
+                {t.title}
+              </strong>
+              <TaskCardTimes
+                key={`${snapshot.id}:${t.id}`}
+                snapshot={snapshot}
+                task={t}
+              />
+              <span
+                className="task-card-action"
+                title={!t.runtimeLifecycle ? t.source.path : undefined}
+              >
+                <span>
+                  {t.current && <span className="tiny-label">当前任务</span>}
+                  {task?.id === t.id ? "正在查看" : "查看详情"}
+                </span>
+                <ArrowRight size={14} aria-hidden="true" />
+              </span>
             </button>
           ))}
           {!filtered.length && (
@@ -518,7 +579,7 @@ export function TasksPage({
           )}
         </div>
       </div>
-      <div className="browser-detail">
+      <div className="browser-detail" ref={detailPane}>
         {task ? (
           <article className="task-detail">
             <div className="detail-heading">

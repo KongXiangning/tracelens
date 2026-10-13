@@ -273,7 +273,7 @@ try {
   );
   assert.match(
     await page.locator(".runtime-status").first().innerText(),
-    /4\/4.*陈旧性未知/s,
+    /4\/4.*更新时间未知/s,
   );
   await page.getByRole("button", { name: "任务", exact: true }).click();
   assert.equal(await page.locator(".task-item").count(), 4);

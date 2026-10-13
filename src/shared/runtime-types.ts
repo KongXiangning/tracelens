@@ -54,3 +54,10 @@ export interface RuntimeDetail {
   viewRevision: string | null;
   source: RuntimeView["source"];
 }
+export interface TaskTimes {
+  createdAt: string | null;
+  completedAt: string | null;
+  createdRef: string | null;
+  completedRef: string | null;
+  issues: string[];
+}

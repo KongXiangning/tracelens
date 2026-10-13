@@ -75,6 +75,23 @@ afterEach(async () => {
 });
 
 describe("local service acceptance", () => {
+  it("routes development UI requests to one current frontend while keeping the shared project API", async () => {
+    const project = await add();
+    await runtime.app.close();
+    runtime = await createApp({
+      dataDir: path.join(directory, "tool-data"),
+      development: true,
+    });
+    const response = await request("GET", "/?view=overview");
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe(
+      "http://127.0.0.1:5173/?view=overview",
+    );
+    expect(
+      (await request("GET", "/api/projects")).json().map((p: Project) => p.id),
+    ).toEqual([project.id]);
+    expect((await request("GET", "/api/nonexistent")).statusCode).toBe(404);
+  });
   it.runIf(process.platform === "win32").each([false, true])(
     "deduplicates Windows case aliases with auto-discovery=%s and stable identities",
     async (autoDiscover) => {
@@ -290,7 +307,11 @@ describe("local service acceptance", () => {
     expect(list.find((p) => p.id === b.id)?.config).toEqual(b.config);
     expect(
       (await request("GET", `/api/projects/${a.id}/snapshot`)).json(),
-    ).toMatchObject({ snapshot: null, attempt: null });
+    ).toMatchObject({
+      snapshot: { id: viewA.snapshot!.id },
+      attempt: null,
+      restored: true,
+    });
     await request("DELETE", `/api/projects/${a.id}`, {});
     expect(
       await readFile(path.join(root, "docs/workflow/CURRENT_TASK.md")),
@@ -455,7 +476,7 @@ describe("local service acceptance", () => {
     runtime = await createApp({ dataDir: path.join(directory, "tool-data") });
     token = (await request("GET", "/api/session")).json().token;
     const noOld = await refresh(project.id);
-    expect(noOld.snapshot).toBeNull();
+    expect(noOld.snapshot?.id).toBe(old.id);
     expect(noOld.attempt?.state).toBe("failed");
   });
   it("treats all matched reads failing as whole failure and valid empty scope as empty result", async () => {

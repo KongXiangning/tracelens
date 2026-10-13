@@ -14,6 +14,7 @@ import {
 import { api } from "./api";
 import { normalizeReadConfig } from "../shared/scan-config";
 import { ProjectPicker } from "./project-picker";
+import { RuntimeTrustPanel } from "./runtime";
 import {
   CandidateList,
   DocumentSummary,
@@ -194,10 +195,12 @@ export function ProjectForm({
   project,
   close,
   submit,
+  runtimeSaved,
 }: {
   project?: Project;
   close: () => void;
   submit: (name: string, root: string, config: ScanConfig) => Promise<void>;
+  runtimeSaved: (project: Project) => void;
 }) {
   const [name, setName] = useState(project?.name || "");
   const [root, setRoot] = useState(project?.root || "");
@@ -210,7 +213,8 @@ export function ProjectForm({
     ),
   );
   const [confirmed, setConfirmed] = useState(Boolean(project));
-  const [busy, setBusy] = useState(Boolean(project));
+  const [busy, setBusy] = useState(false);
+  const [runtimeBusy, setRuntimeBusy] = useState(false);
   const [error, setError] = useState("");
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   async function discover(selectedRoot: string, selectedName?: string) {
@@ -254,37 +258,12 @@ export function ProjectForm({
       setBusy(false);
     }
   }
-  useEffect(() => {
-    if (!project) return;
-    let current = true;
-    void api<Discovery>(
-      "/discover",
-      {
-        root: project.root,
-        config: normalizeReadConfig(project.config),
-      },
-      "POST",
-    )
-      .then((result) => {
-        if (current) setDiscovery(result);
-      })
-      .catch((error) => {
-        if (current)
-          setError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => {
-        if (current) setBusy(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [project]);
   const manifestPath =
     config.product?.manifestPath ?? ".workflow-system/PRODUCT.yaml";
   const custom = config.readingMode === "custom";
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!confirmed || busy) return;
+    if (!confirmed || busy || runtimeBusy) return;
     setBusy(true);
     setError("");
     try {
@@ -300,7 +279,7 @@ export function ProjectForm({
     <Modal
       title={project ? "项目设置" : "添加本地项目"}
       close={() => {
-        if (!busy) close();
+        if (!busy && !runtimeBusy) close();
       }}
     >
       <form onSubmit={save}>
@@ -367,7 +346,7 @@ export function ProjectForm({
                   <p className="muted">
                     {busy
                       ? "正在读取 vNext 文档登记…"
-                      : "读取预览暂不可用，可保存后重新扫描。"}
+                      : "打开设置不会扫描项目。需要检查读取范围时，可在高级扫描设置中点击“更新读取预览”。"}
                   </p>
                 )}
                 <details className="advanced-scope">
@@ -547,7 +526,7 @@ export function ProjectForm({
                   <button
                     type="button"
                     className="secondary"
-                    disabled={busy}
+                    disabled={busy || runtimeBusy}
                     onClick={() => void previewDocuments()}
                   >
                     更新读取预览
@@ -564,6 +543,14 @@ export function ProjectForm({
                   )}
                 </details>
               </div>
+              {project && (
+                <RuntimeTrustPanel
+                  project={project}
+                  saved={runtimeSaved}
+                  disabled={busy}
+                  onSavingChange={setRuntimeBusy}
+                />
+              )}
             </>
           )}
           {error && (
@@ -577,12 +564,15 @@ export function ProjectForm({
           <button
             type="button"
             className="secondary"
-            disabled={busy}
+            disabled={busy || runtimeBusy}
             onClick={close}
           >
             取消
           </button>
-          <button className="primary" disabled={!confirmed || busy}>
+          <button
+            className="primary"
+            disabled={!confirmed || busy || runtimeBusy}
+          >
             {busy ? (
               <LoaderCircle size={16} className="spin" />
             ) : project ? (

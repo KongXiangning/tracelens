@@ -74,16 +74,16 @@ try {
   await page
     .getByRole("button", { name: "INT 合成范围 A", exact: true })
     .click();
-  const trust = page.locator(".runtime-trust");
+  await page.getByRole("button", { name: "项目设置", exact: true }).click();
+  const trust = page.getByRole("dialog").locator(".runtime-trust");
   if ((await trust.getAttribute("open")) === null)
     await trust.locator("summary").click();
   await page
     .getByRole("textbox", { name: "可信 Runtime 目录" })
     .fill(input.sourceDirectory);
-  await page.getByRole("button", { name: "核对可信来源", exact: true }).click();
   await page
     .getByRole("button", {
-      name: "信任这些字节用于此副本的只读查询",
+      name: "确认信任并刷新",
       exact: true,
     })
     .click();
@@ -92,7 +92,10 @@ try {
       document.querySelector(".runtime-status")?.textContent.includes("2/3") &&
       !document.querySelector(".scan-strip")?.textContent.includes("正在扫描"),
   );
-  await trust.locator("summary").click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "取消", exact: true })
+    .click();
   assert.equal(requests.filter((r) => r.path.endsWith("/task-page")).length, 0);
   checks(
     "initial summary is partial; no automatic page request",
@@ -381,16 +384,16 @@ try {
   await page
     .getByRole("button", { name: "INT 同仓副本 B", exact: true })
     .click();
-  assert.equal(await page.locator(".runtime-trust").count(), 1);
+  assert.equal(await page.locator(".runtime-trust").count(), 0);
+  await page.getByRole("button", { name: "项目设置", exact: true }).click();
   const btrust = page.locator(".runtime-trust");
   await btrust.locator("summary").click();
   await page
     .getByRole("textbox", { name: "可信 Runtime 目录" })
     .fill(input.sourceDirectory);
-  await page.getByRole("button", { name: "核对可信来源", exact: true }).click();
   await page
     .getByRole("button", {
-      name: "信任这些字节用于此副本的只读查询",
+      name: "确认信任并刷新",
       exact: true,
     })
     .click();
@@ -399,6 +402,10 @@ try {
       document.querySelector(".runtime-status")?.textContent.includes("2/3") &&
       !document.querySelector(".scan-strip")?.textContent.includes("正在扫描"),
   );
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "取消", exact: true })
+    .click();
   await page.getByRole("button", { name: /读取下一页 Task/ }).click();
   await page.waitForFunction(() =>
     document.querySelector(".runtime-status")?.textContent.includes("3/3"),

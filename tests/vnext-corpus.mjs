@@ -261,9 +261,7 @@ try {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
   await page.goto(base);
-  await page
-    .getByRole("heading", { name: "需求路线图", exact: true })
-    .waitFor();
+  await page.getByRole("heading", { name: "完整范围", exact: true }).waitFor();
   await page.locator(".overview-reading-details > summary").click();
   assert.ok(
     await page

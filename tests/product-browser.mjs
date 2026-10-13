@@ -619,7 +619,7 @@ try {
   );
   await screenshot("1440-startup-before-product-module");
   releaseProduct();
-  await visible(page.getByRole("heading", { name: "需求路线图", exact: true }));
+  await visible(page.getByRole("heading", { name: "完整范围", exact: true }));
   await page.unroute(snapshotRoute);
   await page.unroute("**/assets/product-*.js");
   await mark(
@@ -628,20 +628,19 @@ try {
 
   const overviewReads = refreshCount;
   await nav("概览");
-  await visible(page.getByRole("heading", { name: "需求路线图", exact: true }));
+  await visible(page.getByRole("heading", { name: "完整范围", exact: true }));
   assert.equal(await page.locator(".overview-theme").count(), 1);
   const overviewPlan = mainView.snapshot.product.items.find(
     (item) => item.type === "plan",
   );
   assert.deepEqual(
     await page
-      .locator(".overview-road-card")
-      .evaluateAll((cards) => cards.map((card) => card.dataset.overviewCard)),
-    overviewPlan.metadata.work_items.map((work) => work.id),
+      .locator("[data-roadmap-work]")
+      .evaluateAll((cards) => cards.map((card) => card.dataset.roadmapWork)),
+    overviewPlan.metadata.work_items.slice(0, 3).map((work) => work.id),
   );
-  await visible(
-    page.locator(".overview-road-card").getByText("已关闭 1", { exact: true }),
-  );
+  // Task lifecycles stay on requirement/Task views, never stand in for WorkItem completion.
+  await visible(page.getByRole("heading", { name: "当前工作", exact: true }));
   for (const size of [
     { width: 1440, height: 1000 },
     { width: 1024, height: 900 },
@@ -653,8 +652,8 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page
-    .locator('[data-overview-card="W-BASE"]')
-    .getByRole("button", { name: "查看详情", exact: true })
+    .locator('[data-roadmap-work="W-BASE"]')
+    .getByRole("button", { name: /W-BASE/ })
     .click();
   await visible(page.locator('[data-work-item-id="W-BASE"]'));
   assert.equal(
@@ -1022,23 +1021,27 @@ try {
   );
   await screenshot("1440-no-plan-full-known-business-scope");
   const multiProject = await add(multiple, "多计划 · 不合并同名工作");
-  await visible(page.getByRole("heading", { name: "需求路线图", exact: true }));
-  await visible(page.getByText("尚未选定实施顺序", { exact: true }));
+  await visible(page.getByRole("heading", { name: "完整范围", exact: true }));
+  await visible(
+    page.getByText("尚未唯一选定适用路线图；不按时间或文件顺序选择全项目计划", {
+      exact: true,
+    }),
+  );
   const overviewMulti = (await view(multiProject.id)).snapshot;
-  const overviewChooser = page.getByRole("combobox", { name: "概览项目计划" });
+  const overviewChooser = page.getByRole("combobox", { name: "阅读路线图" });
   await overviewChooser.selectOption(
     overviewMulti.product.items.find((item) => item.id === "PLAN-IMPORT").key,
   );
   assert.deepEqual(
     await page
-      .locator(".overview-road-card")
-      .evaluateAll((cards) => cards.map((card) => card.dataset.overviewCard)),
+      .locator("[data-roadmap-work]")
+      .evaluateAll((cards) => cards.map((card) => card.dataset.roadmapWork)),
     ["W-VERIFY", "W-BASE", "W-RELEASE"],
   );
   await overviewChooser.selectOption(
     overviewMulti.product.items.find((item) => item.id === "PLAN-EXPORT").key,
   );
-  assert.equal(await page.locator(".overview-road-card").count(), 1);
+  assert.equal(await page.locator("[data-roadmap-work]").count(), 1);
   await nav("规划");
   await visible(
     page.getByRole("heading", { name: "请选择要查看的计划", exact: true }),

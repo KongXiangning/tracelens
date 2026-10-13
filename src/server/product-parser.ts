@@ -3,6 +3,7 @@
  * See product-assets/PROVENANCE.md and LICENSE. No Runtime or project code is executed.
  */
 import { createHash } from "node:crypto";
+import { scopedProductVersion } from "../shared/product-roadmap.js";
 import {
   Ajv2020,
   type ErrorObject,
@@ -27,6 +28,8 @@ import manifestV2 from "./product-assets/product-manifest-v2.json" with { type: 
 import documentV1 from "./product-assets/product-doc-v1.json" with { type: "json" };
 import documentV2 from "./product-assets/product-doc-v2.json" with { type: "json" };
 import documentV3 from "./product-assets/product-doc-v3.json" with { type: "json" };
+import documentV4 from "./product-assets/product-doc-v4.json" with { type: "json" };
+import documentV5 from "./product-assets/product-doc-v5.json" with { type: "json" };
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -69,7 +72,12 @@ const processor = unified().use(remarkParse);
 // strict:false permits their deliberately implicit object types in conditional rules.
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 function validators(
-  schema: typeof documentV1 | typeof documentV2 | typeof documentV3,
+  schema:
+    | typeof documentV1
+    | typeof documentV2
+    | typeof documentV3
+    | typeof documentV4
+    | typeof documentV5,
   version: number,
 ) {
   const root = ajv.compile({
@@ -100,6 +108,8 @@ const documentValidators = {
   1: validators(documentV1, 1),
   2: validators(documentV2, 2),
   3: validators(documentV3, 3),
+  4: validators(documentV4, 4),
+  5: validators(documentV5, 5),
 };
 const manifestValidators = {
   1: ajv.compile(manifestV1),
@@ -459,13 +469,17 @@ export function parseProductDocument(
     );
     const schema = record(yaml.value) ? yaml.value.schema : undefined;
     const version =
-      schema === "vnext-product-doc/v3"
-        ? 3
-        : schema === "vnext-product-doc/v2"
-          ? 2
-          : schema === "vnext-product-doc/v1"
-            ? 1
-            : null;
+      schema === "vnext-product-doc/v5"
+        ? 5
+        : schema === "vnext-product-doc/v4"
+          ? 4
+          : schema === "vnext-product-doc/v3"
+            ? 3
+            : schema === "vnext-product-doc/v2"
+              ? 2
+              : schema === "vnext-product-doc/v1"
+                ? 1
+                : null;
     if (!version)
       return fail(
         "UNSUPPORTED_VERSION",
@@ -560,7 +574,7 @@ export function parseProductDocument(
             itemId: id || undefined,
           })),
       );
-      if (version === 3 && type === "assessment") {
+      if (scopedProductVersion(version) && type === "assessment") {
         const m = metadata as unknown as ProductMetadata;
         const problem = (message: string) =>
           itemDiagnostics.push(
@@ -680,16 +694,15 @@ export function parseProductDocument(
       };
       if (
         item.usable &&
-        (item.type === "requirement" || (version === 3 && item.type === "goal"))
+        (item.type === "requirement" ||
+          (scopedProductVersion(version) && item.type === "goal"))
       ) {
-        item.definitionAlgorithm =
-          version === 3
-            ? "vnext-product-definition/v1"
-            : "vnext-requirement-definition/v1";
-        item.definitionSha256 =
-          version === 3
-            ? productDefinitionDigest(item)
-            : requirementDefinitionDigest(item);
+        item.definitionAlgorithm = scopedProductVersion(version)
+          ? "vnext-product-definition/v1"
+          : "vnext-requirement-definition/v1";
+        item.definitionSha256 = scopedProductVersion(version)
+          ? productDefinitionDigest(item)
+          : requirementDefinitionDigest(item);
       }
       items.push(item);
     }
@@ -758,7 +771,11 @@ export function requirementDefinitionDigest(item: ProductItem): string {
   return hash(`vnext-requirement-definition/v1\n${JSON.stringify(definition)}`);
 }
 
-export function productDefinitionDigest(item: ProductItem): string | null {
+/** Scope selection validates uniqueness; Roadmap also exposes untrusted material hashes with explicit conflict reasons. */
+export function productDefinitionDigest(
+  item: ProductItem,
+  requireUniqueScopes = true,
+): string | null {
   const links = (item.metadata.links || []).filter(
     (l) =>
       l.origin === "declared" &&
@@ -802,6 +819,7 @@ export function productDefinitionDigest(item: ProductItem): string | null {
           )
       : null;
   if (
+    requireUniqueScopes &&
     scopes &&
     new Set(scopes.map((s) => JSON.stringify([s.target, s.scope_id]))).size !==
       scopes.length

@@ -17,7 +17,7 @@ export function overviewAssessmentRecords(
     const { applicability, subject, target } = report.metadata;
     if (
       report.type !== "assessment" ||
-      report.version !== 3 ||
+      ![3, 4, 5].includes(report.version || 0) ||
       target !== requirement.id ||
       !applicability ||
       !subject

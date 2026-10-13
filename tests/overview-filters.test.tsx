@@ -182,5 +182,5 @@ it("shows multi-verdict card stripes, symbols and an independent review marker u
   expect(card).toContain("原报告：已满足");
   expect(card).toContain("原报告：部分满足");
   expect(card).toContain("原报告：尚未判定");
-  expect(html).toContain('aria-label="需求路线图筛选"');
+  expect(html).toContain('aria-label="完整范围筛选"');
 });

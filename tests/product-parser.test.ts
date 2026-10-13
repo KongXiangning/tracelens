@@ -920,3 +920,96 @@ describe("PRODUCT identity, definition hashes, and manifests", () => {
     expect(matchesProductPath("docs/a.b.md", ["docs/a?b.md"])).toBe(true);
   });
 });
+
+describe("fixed v4 / additive v5 contracts", () => {
+  const binding = (contribution?: unknown) => ({
+    id: "B",
+    task: {
+      task_id: null,
+      source: { kind: "text", label: "合成依据", text: "明确覆盖" },
+    },
+    role: "implementation",
+    coverage: "部分义务",
+    origin: "declared",
+    state: "active",
+    ...(contribution !== undefined ? { contribution } : {}),
+  });
+  it.each([1, 2, 3, 4])(
+    "does not silently add contribution to closed v%s",
+    (version) => {
+      const result = parse(
+        document(
+          [{ ...requirement(), task_bindings: [binding("direct")] }],
+          requirementBody(),
+          version,
+        ),
+      );
+      expect(result.items[0].usable).toBe(false);
+      expect(result.items[0].rawMetadata).toMatchObject({
+        task_bindings: [{ contribution: "direct" }],
+      });
+    },
+  );
+  it.each(["direct", "supporting", undefined])(
+    "reads optional v5 contribution %s without modifying definition hashes",
+    (contribution) => {
+      const prior = parse(document([requirement()], requirementBody(), 3))
+        .items[0];
+      const result = parse(
+        document(
+          [{ ...requirement(), task_bindings: [binding(contribution)] }],
+          requirementBody(),
+          5,
+        ),
+      );
+      expect(result.diagnostics).toEqual([]);
+      expect(result.items[0].metadata.task_bindings![0].contribution).toBe(
+        contribution,
+      );
+      expect(result.items[0].definitionSha256).toBe(prior.definitionSha256);
+      expect(result.items[0].definitionAlgorithm).toBe(
+        "vnext-product-definition/v1",
+      );
+    },
+  );
+  it.each([null, "undetermined", "unknown"])(
+    "isolates illegal v5 contribution %s and preserves neighbors",
+    (contribution) => {
+      const result = parse(
+        document(
+          [
+            { ...requirement(), task_bindings: [binding(contribution)] },
+            requirement("REQ-B"),
+          ],
+          requirementBody() + requirementBody("REQ-B"),
+          5,
+        ),
+      );
+      expect(result.items[0].usable).toBe(false);
+      expect(result.items[1].usable).toBe(true);
+      expect(
+        result.items[0].diagnostics.some((d) =>
+          d.message.includes("contribution"),
+        ),
+      ).toBe(true);
+    },
+  );
+  it("pins the full production schemas and keeps future versions unsupported", () => {
+    for (const [version, expected] of [
+      [4, "eca5e89455715bf25601c25d7599b75b743830ba1530d7e5a3027e283f582472"],
+      [5, "a3797f92ba11e1b678c78b77d82a37e8501bb26cf8794b038cdaecbe0a9f3561"],
+    ] as const)
+      expect(
+        digest(
+          fs.readFileSync(
+            `src/server/product-assets/product-doc-v${version}.json`,
+          ),
+        ),
+      ).toBe(expected);
+    const result = parse(document([requirement()], requirementBody(), 6));
+    expect(result.items).toEqual([]);
+    expect(
+      result.diagnostics.some((d) => d.code === "UNSUPPORTED_VERSION"),
+    ).toBe(true);
+  });
+});

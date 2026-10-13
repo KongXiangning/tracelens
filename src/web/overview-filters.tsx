@@ -29,7 +29,7 @@ export function OverviewFilterBar({
     change({ ...filters, conclusions });
   }
   return (
-    <section className="overview-filters" aria-label="需求路线图筛选">
+    <section className="overview-filters" aria-label="完整范围筛选">
       <fieldset className="overview-conclusion-filters">
         <legend>
           报告结论 <span>可多选</span>

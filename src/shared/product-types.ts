@@ -1,3 +1,11 @@
+import type {
+  ProductPlanningBaseline,
+  ProductRoadmapResult,
+} from "./product-roadmap.js";
+export type {
+  ProductPlanningBaseline,
+  ProductRoadmapResult,
+} from "./product-roadmap.js";
 import type { SourceRef } from "./types.js";
 export type ProductType =
   | "project"
@@ -41,6 +49,7 @@ export interface ProductBinding {
   id: string;
   task: ProductTaskRef;
   role: string;
+  contribution?: "direct" | "supporting";
   coverage: string;
   origin: "declared" | "inferred";
   state: "active" | "dismissed";
@@ -94,6 +103,7 @@ export interface ProductMetadata {
   assessment_id?: string | null;
   targets?: { target: string; coverage: string }[];
   work_items?: ProductWorkItem[];
+  planning_baseline?: ProductPlanningBaseline;
   inventory?: {
     state: string;
     checked_sources: ProductSource[];
@@ -246,10 +256,13 @@ export interface ProductSnapshot {
   relations: ProductRelation[];
   bindings: ProductBindingView[];
   assessments: ProductAssessmentView[];
+  roadmaps?: ProductRoadmapResult[];
   sources: ProductSourceCheck[];
   diagnostics: ProductDiagnostic[];
   coverage: {
     complete: boolean;
+    /** Registered selectors actually enumerated, distinct from successfully read file paths. */
+    registeredPaths?: string[];
     paths: string[];
     omitted: { path: string; reason: string }[];
     excluded: { path: string; reason: string }[];

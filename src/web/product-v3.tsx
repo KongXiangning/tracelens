@@ -1,3 +1,13 @@
+import {
+  ContributionCounts,
+  CurrentWorkPanel,
+  FocusResults,
+} from "./overview-focus";
+import {
+  contributionDiagnostics,
+  contributionLabel,
+  contributionSummary,
+} from "../shared/product-contribution";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildOverviewData,
@@ -1227,6 +1237,7 @@ export function ScopedConclusion({
   );
 }
 const storedOverviewFilters = new Map<string, OverviewFilters>();
+const storedFullRange = new Map<string, boolean>();
 export const OverviewV3 = memo(
   function OverviewV3({
     context,
@@ -1237,6 +1248,12 @@ export const OverviewV3 = memo(
     planning?: () => void;
   }) {
     const [assessmentKey, setAssessmentKey] = useState<string>();
+    const [fullRange, setFullRange] = useState(
+      () => storedFullRange.get(context.snapshot.projectId) || false,
+    );
+    useEffect(() => {
+      storedFullRange.set(context.snapshot.projectId, fullRange);
+    }, [context.snapshot.projectId, fullRange]);
     const data = isOverviewSnapshot(context.snapshot)
       ? context.snapshot.overview!
       : buildOverviewData(context.snapshot);
@@ -1259,7 +1276,7 @@ export const OverviewV3 = memo(
         ),
       [data],
     );
-    const roadmap = planned.map((item, index) => ({ item, index })).reverse();
+    const roadmap = planned.map((item, index) => ({ item, index }));
     const visibleRoadmap = roadmap.filter(({ item }) =>
       matchesOverviewFilters(signals.get(item.key)!, filters),
     );
@@ -1269,6 +1286,8 @@ export const OverviewV3 = memo(
         matchesOverviewFilters(signals.get(item.key)!, filters),
       );
     const filtersActive = overviewFiltersActive(filters);
+    const displayedRoadmap =
+      fullRange || filtersActive ? visibleRoadmap : visibleRoadmap.slice(0, 4);
     const conclusionCounts = Object.fromEntries(
       overviewConclusionOptions.map((option) => [
         option.value,
@@ -1400,6 +1419,7 @@ export const OverviewV3 = memo(
                 <span>关联 Task</span>
                 <strong>{total}</strong>
               </div>
+              <ContributionCounts summary={item.contributionSummary} compact />
               <div className="overview-task-bar" aria-hidden="true">
                 {taskState.states.map((state) => (
                   <span
@@ -1467,13 +1487,13 @@ export const OverviewV3 = memo(
     };
     return (
       <div className="overview-dashboard">
-        <section className="overview-hero" aria-label="核心目标及规划范围">
+        <section className="overview-hero" aria-label="核心目标及当前工作">
           <div className="overview-hero-section overview-hero-goal">
             <div className="overview-eyebrow">01 / CURRENT PROJECT GOAL</div>
             <h1>
               {rootGoal?.title || data.project?.title || "项目目标待确认"}
             </h1>
-            <p>基于已确认的项目目标与需求规划展示</p>
+            <p>从已读取目标出发，分别查看活动、成果与安排</p>
             {rootGoal ? (
               <button
                 className="overview-hero-link"
@@ -1487,64 +1507,19 @@ export const OverviewV3 = memo(
               </button>
             )}
           </div>
-          <div className="overview-hero-section overview-hero-unplanned">
-            <h2>仍有 {unordered.length} 个需求尚未规划</h2>
-            <p>
-              已识别的需求方向尚未纳入正式需求拆分与实现顺序，不代表现有需求尚未完成。
-            </p>
-            {unordered.length ? (
-              <ul>
-                {unordered.slice(0, 3).map((item) => (
-                  <li key={item.key}>
-                    <button onClick={() => context.openProduct(item.key)}>
-                      {item.title}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="overview-hero-empty">当前没有待规划需求</div>
-            )}
-            <button className="overview-hero-outline" onClick={requirements}>
-              查看待规划需求 <span aria-hidden="true">↗</span>
-            </button>
-          </div>
-          <div className="overview-hero-section overview-hero-planned">
-            <h2>已规划的需求</h2>
-            {planned.length ? (
-              <ul>
-                {planned.slice(0, 4).map((item) => (
-                  <li key={item.key}>
-                    <span aria-hidden="true">✓</span>
-                    <button onClick={() => context.openProduct(item.key)}>
-                      {item.title}
-                    </button>
-                  </li>
-                ))}
-                {planned.length > 4 && (
-                  <li className="overview-hero-more">
-                    + {planned.length - 4} 个需求已列入路线图
-                  </li>
-                )}
-              </ul>
-            ) : (
-              <p className="overview-hero-empty">尚未登记规划顺序</p>
-            )}
-            <div className="overview-hero-foot">
-              待规划需求 <b>{String(unordered.length).padStart(2, "0")}</b>
-            </div>
-          </div>
+          <CurrentWorkPanel work={data.currentWork} context={context} />
         </section>
-        <section className="overview-route-heading" aria-label="需求路线图标题">
+        <FocusResults data={data} context={context} />
+        <section className="overview-route-heading" aria-label="完整范围标题">
           <div>
             <h2>
-              需求路线图
+              完整范围
               <span className="overview-semantic-label">需求全景</span>
             </h2>
-            <p>按项目文档确定的规划顺序 · 非执行工作流</p>
+            <p>已登记需求按原展示顺序浏览；折叠不表示尚未开始</p>
           </div>
           <div className="overview-route-count">
-            已规划需求 <b>{String(planned.length).padStart(2, "0")}</b>
+            已登记需求 <b>{String(planned.length).padStart(2, "0")}</b>
             <span>/</span>
             关联 Task <b>{String(totalTaskCount).padStart(2, "0")}</b>
           </div>
@@ -1559,13 +1534,13 @@ export const OverviewV3 = memo(
           shown={visibleRoadmap.length + visibleUnordered.length}
           total={planned.length + unordered.length}
         />
-        <section className="overview-route-grid" aria-label="需求路线图">
+        <section className="overview-route-grid" aria-label="完整需求范围">
           {visibleRoadmap.length ? (
-            visibleRoadmap.map(({ item, index }) => card(item, index))
+            displayedRoadmap.map(({ item, index }) => card(item, index))
           ) : filtersActive ? (
             <div className="overview-empty overview-filter-empty">
               <p>
-                已规划需求中没有匹配项
+                已登记需求中没有匹配项
                 {visibleUnordered.length
                   ? `；下方有 ${visibleUnordered.length} 项未指定顺序的匹配需求。`
                   : "。"}
@@ -1581,6 +1556,17 @@ export const OverviewV3 = memo(
             </div>
           )}
         </section>
+        {!filtersActive && visibleRoadmap.length > 4 && (
+          <button
+            className="overview-full-range-toggle"
+            aria-expanded={fullRange}
+            onClick={() => setFullRange(!fullRange)}
+          >
+            {fullRange
+              ? "收起完整范围"
+              : `展开完整范围 · 另 ${visibleRoadmap.length - 4} 项`}
+          </button>
+        )}
         {filtersActive && visibleUnordered.length > 0 ? (
           <section
             className="overview-unordered-details"
@@ -1720,8 +1706,16 @@ export const OverviewV3 = memo(
     const after = isOverviewSnapshot(next.context.snapshot)
       ? next.context.snapshot.overview
       : buildOverviewData(next.context.snapshot);
+    const beforeObservation = isOverviewSnapshot(previous.context.snapshot)
+      ? previous.context.snapshot.runtimeObservation
+      : undefined;
+    const afterObservation = isOverviewSnapshot(next.context.snapshot)
+      ? next.context.snapshot.runtimeObservation
+      : undefined;
     return (
       before === after &&
+      beforeObservation?.readAt === afterObservation?.readAt &&
+      beforeObservation?.queryReadAt === afterObservation?.queryReadAt &&
       previous.context.open === next.context.open &&
       previous.context.openProduct === next.context.openProduct &&
       previous.context.openTask === next.context.openTask &&
@@ -1835,6 +1829,10 @@ function TaskReadingPanel({
   setFilter: (filter: ViewState["taskFilter"]) => void;
 }) {
   const rows = taskRowsForSnapshot(context.snapshot, item);
+  const contributionRows = requirementBindings(context.snapshot.product!, item);
+  const contributionIssues = contributionDiagnostics(
+    context.snapshot.product!.bindings,
+  );
   const visible = rows.filter((row) => taskMatchesFilter(row, filter));
   const runtime = context.snapshot.runtime;
   const sourceText = runtime
@@ -1855,6 +1853,9 @@ function TaskReadingPanel({
           {sourceText}
           。关联有效与任务正在进行是两件事；未关联也不表示这部分功能尚未实现。
         </p>
+        <ContributionCounts
+          summary={contributionSummary(contributionRows, item.key)}
+        />
         <div
           className="requirements-v3-segmented"
           role="group"
@@ -1946,6 +1947,18 @@ function TaskReadingPanel({
                           ) || binding.ownerKey}
                           ：{binding.binding.coverage}
                         </p>
+                        <p>
+                          <strong>{contributionLabel(binding.binding)}</strong>{" "}
+                          · {binding.binding.role} · {binding.binding.origin}
+                        </p>
+                        {binding.binding.reason && (
+                          <p>理由：{binding.binding.reason}</p>
+                        )}
+                        {contributionIssues.get(binding.key)?.map((issue) => (
+                          <p key={issue} className="requirements-v3-warning">
+                            {issue}
+                          </p>
+                        ))}
                         <p className="requirements-v3-meta">
                           {binding.match.detail}
                         </p>

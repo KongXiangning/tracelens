@@ -1,0 +1,380 @@
+{
+  "currentWork": {
+    "taskId": null,
+    "detailState": "unavailable",
+    "source": "file-snapshot",
+    "freshness": "stale-or-unknown",
+    "complete": true,
+    "viewRevision": "0ae25a24061fdcae3da5460118b1dc53fe65d22c4f37d0f7d8033f07486a01b7",
+    "activityEvidence": [],
+    "bindingCount": 0,
+    "reasons": [
+      "当前性待核对，保留原读取时间与快照事实"
+    ]
+  },
+  "confirmedOutcomes": {
+    "total": 1,
+    "items": [
+      {
+        "requirementKey": "product:a62bffefbe3127781a62eed0",
+        "requirementId": "REQ-PARSE",
+        "requirementTitle": "固定格式文本解析",
+        "reportKey": "product:3cd3e54c9a798c876cb87a50",
+        "reportId": "AS-PARSE-BASE-HOST-20261013",
+        "conclusion": "satisfied",
+        "scopeId": "PARSE-BASE",
+        "coverage": "固定无引号两列文本解析与错误行号",
+        "goalId": "GOAL-RECORDS",
+        "subject": {
+          "kind": "working-copy",
+          "value": "/workspace/shared/binding-progress-20261014/host-scenario",
+          "revision": "parse.mjs-sha256:22668d3cdcad69a4de72a4b060388467a0138f5a5da427f64aa13b092e882e87",
+          "limitations": "版本身份固定本范围的纯解析函数；不是全项目代码快照。复用本轮初始化时两项实际Node输出与相同源码字节；本次维护未重跑测试，无独立代码审查，未执行新三类验证。"
+        },
+        "checkedAt": "2026-10-13T19:13:47.409199+00:00"
+      }
+    ]
+  },
+  "roadmapSummary": [],
+  "contributionSummary": {
+    "relations": 4,
+    "direct": 2,
+    "supporting": 1,
+    "unclassified": 1,
+    "conflict": 0,
+    "uniqueTasks": 2,
+    "confirmedTasks": 2,
+    "unconfirmedRelations": 1,
+    "overlappingTasks": 1,
+    "ownDirect": 2,
+    "descendantDirect": 0,
+    "issueCount": 0,
+    "inferredRelations": 0,
+    "owners": [
+      {
+        "ownerKey": "product:34138680f26dda9e47935350",
+        "relations": 1,
+        "direct": 0,
+        "supporting": 0,
+        "unclassified": 1,
+        "conflict": 0
+      },
+      {
+        "ownerKey": "product:d354537975dcd8c12f46eb0f",
+        "relations": 1,
+        "direct": 0,
+        "supporting": 1,
+        "unclassified": 0,
+        "conflict": 0
+      },
+      {
+        "ownerKey": "product:a62bffefbe3127781a62eed0",
+        "relations": 2,
+        "direct": 2,
+        "supporting": 0,
+        "unclassified": 0,
+        "conflict": 0
+      }
+    ]
+  },
+  "ready": true,
+  "productStatus": "ready",
+  "manifestSource": {
+    "documentId": "isolated-agent-host-consumption:4bd206c82db353cefdbc",
+    "path": ".workflow-system/PRODUCT.yaml",
+    "line": 1,
+    "section": null,
+    "digest": "6fc14b7adad7c585a169f6fb96c785bc95cfba4d583ac6e38de0e3d3ac87205c"
+  },
+  "project": {
+    "key": "product:cfcc5878cb3d441c09517efd",
+    "id": "PROJECT-RECORDS",
+    "title": "隔离记录工具",
+    "type": "project"
+  },
+  "rootGoal": {
+    "key": "product:ffbc27417bfb8d74402b106b",
+    "id": "GOAL-RECORDS",
+    "title": "可检查的记录输入",
+    "type": "goal"
+  },
+  "planned": [
+    {
+      "key": "product:a62bffefbe3127781a62eed0",
+      "id": "REQ-PARSE",
+      "title": "固定格式文本解析",
+      "type": "requirement",
+      "description": "接受头为id,value的无引号文本",
+      "contributionSummary": {
+        "relations": 2,
+        "direct": 2,
+        "supporting": 0,
+        "unclassified": 0,
+        "conflict": 0,
+        "uniqueTasks": 2,
+        "confirmedTasks": 2,
+        "unconfirmedRelations": 0,
+        "overlappingTasks": 0,
+        "ownDirect": 2,
+        "descendantDirect": 0,
+        "issueCount": 0,
+        "inferredRelations": 0,
+        "owners": [
+          {
+            "ownerKey": "product:a62bffefbe3127781a62eed0",
+            "relations": 2,
+            "direct": 2,
+            "supporting": 0,
+            "unclassified": 0,
+            "conflict": 0
+          }
+        ]
+      },
+      "taskState": {
+        "total": 2,
+        "unconfirmed": 0,
+        "associationPending": 0,
+        "states": [
+          {
+            "label": "已关闭",
+            "tone": "slate",
+            "count": 1
+          },
+          {
+            "label": "进行中",
+            "tone": "orange",
+            "count": 1
+          }
+        ]
+      },
+      "firstTask": "isolated-agent-host-consumption:8dda51f20b0f308a50b4",
+      "dependencies": [],
+      "childCount": 0,
+      "assessmentRecords": [
+        {
+          "report": {
+            "key": "product:3cd3e54c9a798c876cb87a50",
+            "id": "AS-PARSE-BASE-HOST-20261013",
+            "title": "固定格式解析的有限范围评估",
+            "usable": true,
+            "metadata": {
+              "conclusion": "satisfied",
+              "applicability": {
+                "goal_id": "GOAL-RECORDS",
+                "scope_id": "PARSE-BASE",
+                "coverage": "固定无引号两列文本解析与错误行号"
+              },
+              "subject": {
+                "kind": "working-copy",
+                "value": "/workspace/shared/binding-progress-20261014/host-scenario",
+                "revision": "parse.mjs-sha256:22668d3cdcad69a4de72a4b060388467a0138f5a5da427f64aa13b092e882e87",
+                "limitations": "版本身份固定本范围的纯解析函数；不是全项目代码快照。复用本轮初始化时两项实际Node输出与相同源码字节；本次维护未重跑测试，无独立代码审查，未执行新三类验证。"
+              },
+              "checked_at": "2026-10-13T19:13:47.409199+00:00"
+            }
+          },
+          "selection": {
+            "conclusion": "satisfied",
+            "reasons": []
+          }
+        }
+      ]
+    },
+    {
+      "key": "product:d354537975dcd8c12f46eb0f",
+      "id": "REQ-BATCH",
+      "title": "交互式批量导入",
+      "type": "requirement",
+      "description": "用户在浏览器选择文本文件、预览各行错误并确认导入",
+      "contributionSummary": {
+        "relations": 1,
+        "direct": 0,
+        "supporting": 1,
+        "unclassified": 0,
+        "conflict": 0,
+        "uniqueTasks": 1,
+        "confirmedTasks": 1,
+        "unconfirmedRelations": 0,
+        "overlappingTasks": 0,
+        "ownDirect": 0,
+        "descendantDirect": 0,
+        "issueCount": 0,
+        "inferredRelations": 0,
+        "owners": [
+          {
+            "ownerKey": "product:d354537975dcd8c12f46eb0f",
+            "relations": 1,
+            "direct": 0,
+            "supporting": 1,
+            "unclassified": 0,
+            "conflict": 0
+          }
+        ]
+      },
+      "taskState": {
+        "total": 1,
+        "unconfirmed": 0,
+        "associationPending": 0,
+        "states": [
+          {
+            "label": "已关闭",
+            "tone": "slate",
+            "count": 1
+          }
+        ]
+      },
+      "firstTask": "isolated-agent-host-consumption:8dda51f20b0f308a50b4",
+      "dependencies": [],
+      "childCount": 0,
+      "assessmentRecords": []
+    },
+    {
+      "key": "product:29d15bc0e5ec078b7e6655d2",
+      "id": "REQ-TYPEFACE",
+      "title": "导入页字号",
+      "type": "requirement",
+      "description": "提供导入页字号切换，支持14px和18px，并在重载后保持选择",
+      "contributionSummary": {
+        "relations": 0,
+        "direct": 0,
+        "supporting": 0,
+        "unclassified": 0,
+        "conflict": 0,
+        "uniqueTasks": 0,
+        "confirmedTasks": 0,
+        "unconfirmedRelations": 0,
+        "overlappingTasks": 0,
+        "ownDirect": 0,
+        "descendantDirect": 0,
+        "issueCount": 0,
+        "inferredRelations": 0,
+        "owners": []
+      },
+      "taskState": {
+        "total": 0,
+        "unconfirmed": 0,
+        "associationPending": 0,
+        "states": []
+      },
+      "dependencies": [],
+      "childCount": 0,
+      "assessmentRecords": []
+    },
+    {
+      "key": "product:34138680f26dda9e47935350",
+      "id": "REQ-ARCHIVE",
+      "title": "历史归档检索",
+      "type": "requirement",
+      "description": "用户按批次日期检索归档，保持原始批次记录",
+      "contributionSummary": {
+        "relations": 1,
+        "direct": 0,
+        "supporting": 0,
+        "unclassified": 1,
+        "conflict": 0,
+        "uniqueTasks": 0,
+        "confirmedTasks": 0,
+        "unconfirmedRelations": 1,
+        "overlappingTasks": 0,
+        "ownDirect": 0,
+        "descendantDirect": 0,
+        "issueCount": 0,
+        "inferredRelations": 0,
+        "owners": [
+          {
+            "ownerKey": "product:34138680f26dda9e47935350",
+            "relations": 1,
+            "direct": 0,
+            "supporting": 0,
+            "unclassified": 1,
+            "conflict": 0
+          }
+        ]
+      },
+      "taskState": {
+        "total": 0,
+        "unconfirmed": 1,
+        "associationPending": 1,
+        "states": [
+          {
+            "label": "身份未确认",
+            "tone": "slate",
+            "count": 1
+          }
+        ]
+      },
+      "dependencies": [],
+      "childCount": 0,
+      "assessmentRecords": []
+    }
+  ],
+  "unordered": [],
+  "taskCount": 2,
+  "tasks": [
+    {
+      "id": "isolated-agent-host-consumption:dc78d75ca814c2961f0a",
+      "realTaskId": "task-cf8aff235470d6f515e07e9b5bcbcf01",
+      "number": "TASK-002",
+      "title": "核验解析器三类输入行号"
+    },
+    {
+      "id": "isolated-agent-host-consumption:8dda51f20b0f308a50b4",
+      "realTaskId": "task-0102c3bd2813bcffa3e597e327d47300",
+      "number": "TASK-001",
+      "title": "记录导入基础"
+    }
+  ],
+  "itemTypes": {
+    "product:34138680f26dda9e47935350": "requirement",
+    "product:3cd3e54c9a798c876cb87a50": "assessment",
+    "product:d354537975dcd8c12f46eb0f": "requirement",
+    "product:ffbc27417bfb8d74402b106b": "goal",
+    "product:a62bffefbe3127781a62eed0": "requirement",
+    "product:cfcc5878cb3d441c09517efd": "project",
+    "product:29d15bc0e5ec078b7e6655d2": "requirement"
+  },
+  "assessmentGroups": [
+    {
+      "key": "[\"docs/product/ASSESSMENT-PARSE-BASE.md\",\"GOAL-RECORDS\",\"working-copy\",\"/workspace/shared/binding-progress-20261014/host-scenario\",\"parse.mjs-sha256:22668d3cdcad69a4de72a4b060388467a0138f5a5da427f64aa13b092e882e87\"]",
+      "path": "docs/product/ASSESSMENT-PARSE-BASE.md",
+      "goal": "GOAL-RECORDS",
+      "subject": "working-copy · /workspace/shared/binding-progress-20261014/host-scenario @ parse.mjs-sha256:22668d3cdcad69a4de72a4b060388467a0138f5a5da427f64aa13b092e882e87",
+      "checkedAt": "2026-10-13T19:13:47.409199+00:00",
+      "reports": [
+        {
+          "key": "product:3cd3e54c9a798c876cb87a50",
+          "id": "AS-PARSE-BASE-HOST-20261013",
+          "title": "固定格式解析的有限范围评估",
+          "usable": true,
+          "metadata": {
+            "conclusion": "satisfied",
+            "applicability": {
+              "goal_id": "GOAL-RECORDS",
+              "scope_id": "PARSE-BASE",
+              "coverage": "固定无引号两列文本解析与错误行号"
+            },
+            "subject": {
+              "kind": "working-copy",
+              "value": "/workspace/shared/binding-progress-20261014/host-scenario",
+              "revision": "parse.mjs-sha256:22668d3cdcad69a4de72a4b060388467a0138f5a5da427f64aa13b092e882e87",
+              "limitations": "版本身份固定本范围的纯解析函数；不是全项目代码快照。复用本轮初始化时两项实际Node输出与相同源码字节；本次维护未重跑测试，无独立代码审查，未执行新三类验证。"
+            },
+            "checked_at": "2026-10-13T19:13:47.409199+00:00"
+          }
+        }
+      ],
+      "conclusions": {
+        "satisfied": 1
+      },
+      "passed": 0,
+      "failed": 0,
+      "pending": 0,
+      "failedChecks": 0
+    }
+  ],
+  "counts": {
+    "documents": 25,
+    "warnings": 9,
+    "tasks": 2
+  }
+}

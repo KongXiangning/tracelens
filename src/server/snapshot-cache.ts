@@ -17,7 +17,7 @@ import { assertNoLinks, configFingerprint } from "./config.js";
 const compress = promisify(gzip),
   decompress = promisify(gunzip);
 // Bump when persisted parser/index semantics change.
-const version = 1;
+const version = 2;
 export interface CachedProject {
   snapshot: Snapshot | null;
   files: IndexedFile[];

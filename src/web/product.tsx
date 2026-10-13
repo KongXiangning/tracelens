@@ -1,3 +1,8 @@
+import { CurrentWorkPanel } from "./overview-focus";
+import {
+  contributionLabel,
+  contributionDiagnostics,
+} from "../shared/product-contribution";
 import { useEffect, useRef, useState } from "react";
 import {
   buildOverviewData,
@@ -664,11 +669,27 @@ export function BindingCard({
       <div className="section-heading">
         <h4>关联 {binding.id}</h4>
         <div className="product-inline">
+          <span
+            className="tag"
+            data-contribution={binding.contribution || "unclassified"}
+          >
+            {contributionLabel(binding)}
+          </span>
           <Tag value={binding.role} />
           <Tag value={binding.origin} />
           <Tag value={binding.state} />
         </div>
       </div>
+      {contributionDiagnostics(product.bindings)
+        .get(view.key)
+        ?.map((issue) => (
+          <p key={issue} className="requirements-v3-warning">
+            {issue}
+          </p>
+        ))}
+      <p className="muted">
+        记录的分类不证明当前义务已核验或交付满足；来源可定位也不等于语义正确。
+      </p>
       {showOwner && owner && (
         <button
           className="text-link task-requirement-title"
@@ -1107,6 +1128,121 @@ function Inventory({
     </details>
   );
 }
+function RoadmapReconciliation({
+  item,
+  context,
+}: {
+  item: ProductItem;
+  context: ProductContext;
+}) {
+  const product = context.snapshot.product!;
+  const result = product.roadmaps?.find((entry) => entry.planKey === item.key);
+  if (!result) return <p>已保存安排仍可浏览，路线图核对结果尚不可用。</p>;
+  const labels = {
+    current: "材料与已核对基线一致",
+    "changes-pending": "存在待核对变化",
+    "reviewed-deferred": "已核对并明确延期",
+    unknown: "当前适用性待核对",
+  };
+  return (
+    <section className="roadmap-reconciliation" aria-label="路线图只读核对">
+      <h3>Implementation Roadmap · {labels[result.status]}</h3>
+      <p>
+        核对材料版本与安排，不认证工作完成、业务前置已满足或下一 Task
+        已就绪。任何核对状态均可继续阅读。
+      </p>
+      {result.reasons.map((reason) => (
+        <p key={reason} className="muted">
+          {reason}
+        </p>
+      ))}
+      <dl className="product-fields">
+        <dt>工作副本</dt>
+        <dd>{item.metadata.planning_baseline?.working_copy || "基线缺失"}</dd>
+        <dt>基线核对时间</dt>
+        <dd>{item.metadata.planning_baseline?.checked_at || "未知"}</dd>
+        <dt>成员范围</dt>
+        <dd>{result.scope?.member_ids.join("、") || "未定位"}</dd>
+        <dt>实际读取完整性</dt>
+        <dd>{result.scope?.complete ? "注册身份读取完整" : "未知或未完整"}</dd>
+      </dl>
+      {!!result.changes.length && (
+        <ul>
+          {result.changes.map((change, index) => (
+            <li key={index}>
+              {change.kind} · {change.id || "路线图安排"}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!!result.affected_work_items?.length && (
+        <p>
+          受影响工作项候选：{result.affected_work_items.join("、")}
+          ；不代表已证明全部业务影响
+        </p>
+      )}
+      {!!result.unarranged_requirements?.length && (
+        <p>
+          未记录直接工作项目标的候选：
+          {result.unarranged_requirements.join("、")}；不等于未实施或已证明漏项
+        </p>
+      )}
+      {!!result.exceptions?.length && (
+        <details>
+          <summary>精确版本下的例外与延期 · {result.exceptions.length}</summary>
+          {result.exceptions.map((exception, index) => (
+            <div key={index}>
+              <p>
+                {exception.target} · {exception.disposition} ·{" "}
+                {exception.reason}
+              </p>
+              <ProductEvidence
+                sources={exception.sources}
+                product={product}
+                ownerKey={item.key}
+                open={context.open}
+              />
+            </div>
+          ))}
+        </details>
+      )}
+      {!!result.stale_exceptions?.length && (
+        <details>
+          <summary>
+            已不适用的历史例外 · {result.stale_exceptions.length}
+          </summary>
+          {result.stale_exceptions.map((exception, index) => (
+            <p key={index}>
+              {exception.target} · {exception.reason}
+            </p>
+          ))}
+        </details>
+      )}
+      <details>
+        <summary>核对基线、定义与上下文</summary>
+        <pre>
+          {JSON.stringify(
+            {
+              selector: result.scope?.selector,
+              definitions: result.scope?.definitions,
+              context: result.scope?.context,
+              arrangement: result.arrangement,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      </details>
+      <ProductEvidence
+        sources={item.metadata.planning_baseline?.sources}
+        product={product}
+        ownerKey={item.key}
+        open={context.open}
+      />
+    </section>
+  );
+}
+
 export function ProductDetail({
   item,
   context,
@@ -1120,8 +1256,9 @@ export function ProductDetail({
   const bindings = product.bindings.filter(
     (binding) => binding.ownerKey === item.key,
   );
-  const currentBindings =
-    item.version === 3 ? requirementBindings(product, item) : bindings;
+  const currentBindings = [3, 4, 5].includes(item.version || 0)
+    ? requirementBindings(product, item)
+    : bindings;
   const sources = product.sources.filter(
     (source) => source.ownerKey === item.key,
   );
@@ -1174,9 +1311,10 @@ export function ProductDetail({
           {item.type === "project" && (
             <Inventory item={item} context={context} />
           )}
-          {item.type === "requirement" && item.version !== 3 && (
-            <RequirementAssessment item={item} context={context} />
-          )}
+          {item.type === "requirement" &&
+            ![3, 4, 5].includes(item.version || 0) && (
+              <RequirementAssessment item={item} context={context} />
+            )}
           {item.type === "assessment" && (
             <>
               <p className="muted">
@@ -1258,6 +1396,9 @@ export function ProductDetail({
           )}
         </>
       )}
+      {item.type === "plan" && (
+        <RoadmapReconciliation item={item} context={context} />
+      )}
       <Body item={item} context={context} />
       {item.usable && (
         <>
@@ -1265,13 +1406,14 @@ export function ProductDetail({
           {(item.type === "goal" || item.type === "requirement") && (
             <section>
               <h3>关联任务与范围 · {currentBindings.length}</h3>
-              {item.version === 3 && item.type === "requirement" && (
-                <p className="muted">
-                  自身及当前组成子需求的有效关联；来源与角色分别保留，不表示父需求已交付。
-                </p>
-              )}
+              {[3, 4, 5].includes(item.version || 0) &&
+                item.type === "requirement" && (
+                  <p className="muted">
+                    自身及当前组成子需求的有效关联；来源与角色分别保留，不表示父需求已交付。
+                  </p>
+                )}
               {currentBindings.length ? (
-                item.version === 3 ? (
+                [3, 4, 5].includes(item.version || 0) ? (
                   <CompactTasks bindings={currentBindings} context={context} />
                 ) : (
                   bindings.map((binding) => (
@@ -1287,7 +1429,7 @@ export function ProductDetail({
                   未记录任务关联；不表示该业务范围未实现。
                 </p>
               )}
-              {item.version === 3 &&
+              {[3, 4, 5].includes(item.version || 0) &&
                 bindings.some((b) => b.binding.state === "dismissed") && (
                   <details>
                     <summary>自身已否定关联</summary>
@@ -2166,6 +2308,7 @@ export function ProductOverview({
               </button>
             </div>
           </section>
+          <CurrentWorkPanel work={overview.currentWork} context={context} />
           <section className="product-status">
             <h3>{productStatusLabels[overview.productStatus]}</h3>
             <p>{productStatusDetails[overview.productStatus]}</p>

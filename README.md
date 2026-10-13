@@ -121,7 +121,7 @@ npm run test:browser
 
 报告只沿 requirement.assessment_id 显示，实施／验证报告、对象版本、覆盖、定义摘要核对、旧原件可核验性与 pending_sources 同时保留。明确声明、推断、已否定关系可分别查看；来源读到了、计划 adopted、工作 included、任务关闭均不证明需求或项目完成。正文可在同快照原文中按绝对行号核对，刷新后旧来源请求返回 409。
 
-支持固定 vnext-product-manifest/v1、v2 和 vnext-product-doc/v1、v2、v3；不静默迁移。产品通路只枚举 managed_paths；source_paths 只按直接 SourceRef 读取 UTF-8 文本（含 Markdown/YAML/JSON/TXT、代码及无扩展名来源），不递归扫历史/raw，不联网获取 URI，不执行产品 helper 或 journal。PRODUCT glob 只支持 `*`、`**`、`?`，大小写敏感；文件缓存仍按运行平台路径规则去重。当前定义、源资料、坏项、读取覆盖、业务盘点及交付报告分别说明。
+支持固定 vnext-product-manifest/v1、v2 和 vnext-product-doc/v1、v2、v3、v4、v5；不静默迁移。产品通路只枚举 managed_paths；source_paths 只按直接 SourceRef 读取 UTF-8 文本（含 Markdown/YAML/JSON/TXT、代码及无扩展名来源），不递归扫历史/raw，不联网获取 URI，不执行产品 helper 或 journal。PRODUCT glob 只支持 `*`、`**`、`?`，大小写敏感；文件缓存仍按运行平台路径规则去重。当前定义、源资料、坏项、读取覆盖、业务盘点及交付报告分别说明。
 
 本次固定契约来自 KongXiangning/vibe-coding-workflow-system@813d3146561c974c1437fc4d116144dc800bc1ad。examples/product-comprehensive（综合12项9类）、product-e6（插入修复）、product-planning（无／多计划）全部为合成输入，不是真实项目交付证明。源文件和许可及固定 oracle 说明随代码保留。测试只在隔离副本修改夹具，生产只写 TraceLens 自己的登记配置。
 
@@ -168,3 +168,20 @@ Runtime 信任配置入口位于“项目设置”，Task 等内容页面不再�
 导航样式随页面入口加载，连接服务、读取快照及等待概览组件时均直接显示新版导航；其他页面按点击进入，保持同一导航外壳。
 
 Task 状态按明确绑定的真实身份去重，使用同副本查询或明确标识的降级快照中的生命周期；文档声明、来源核对和身份冲突分别展示。关闭 Task 不补成未开始 Step 已完成，也不改变需求范围结论。原有文档记录、产品读取与来源诊断保留在可展开区域，缺失产品入口时维持明确缺口提示。
+
+## 需求实施关联与聚焦总览（v5）
+
+支持固定生产 `vnext-product-doc/v4` / `v5`，保留原 v1～v3。v4 的 `planning_baseline` 和 v5 的贡献分类分别消费；v5 完整继承 v4 路线图字段，旧格式不接受新增 `contribution`。迁移格式或仅修改绑定不会改变需求业务定义摘要。升级会使旧工具派生缓存失效，不改业务文件。
+
+TaskBinding 可记录 `direct`（直接贡献）或 `supporting`（间接支撑）；旧缺字段保留待核对。角色、覆盖、原 owner、理由与来源在详情和图谱中分别显示。相同 owner、Task、role 和空白规范化覆盖的冲突分类不择胜；`reference + direct` 保留原值并诊断。父需求汇集保留子项 owner，不把子项工作升成父项自身直接贡献。统计区分关系条数、已记录 Task 身份与已匹配身份，未知身份不凑成已确认 Task，跨分组 Task 可重叠。`inferred` 不因有分类自动采纳。
+
+默认总览分为当前工作、最近确认的成果、近期安排和完整范围：
+
+- 当前工作保留 Runtime 的真实焦点、来源与读取时间。无绑定或分页外的当前 ID 仍可见。只有同批明确 `step_id`、采用 `plan_ref` 与执行来源匹配时才显示已记录的具体范围执行；准备、采用、active 或关闭不证明需求已开始或满足
+- 最近确认的成果复用范围化 Assessment 选择，按 `checked_at` 排列并保留目标、范围、对象与 revision。原报告已满足但当前适用性待核对时，只在历史／完整范围浏览中保留，不能进入当前成果。无需先补历史 Task
+- 近期安排来自实际 `plan.work_items`。单份已采用且可读的路线图可直接浏览；多份并存需选择，不按时间或文件顺序猜唯一计划。仅按当前 Task 的明确工作项关联显示邻近三项；没有可靠定位时只显示保存的安排，并注明下一项尚未确定。前置工作即使排列在窗口之前也单独列出，不自动视为完成
+- 完整范围保留原登记顺序、筛选、展开与报告入口。默认显示少量卡片，展开只改变工具视图，不表示隐藏项尚未开始。`requirement_order` 是展示顺序，不是路线图或实施顺序
+
+Roadmap 使用固定生产纯比较语义，文件读取由 TraceLens 的有界读取层提供，不执行被观察项目的 product-maintenance helper。注册身份覆盖、源读取或预算不完整时保留安排并显示 `unknown`；`current` 只表示材料与基线一致。详情显示成员、定义／上下文、工作副本、差异、延期、失效例外和来源，不认证工作完成、前置已就绪或自动选择下一 Task。
+
+总览继续通过轻量 `/overview` 摘要、revision、按需详情和同批版本守卫读取。筛选、返回、切项目和无变化同步不触发逐卡 Task／Step 请求；所有登记、偏好与缓存仅写在 TraceLens 自己的数据目录。

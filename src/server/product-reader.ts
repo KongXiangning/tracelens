@@ -185,6 +185,11 @@ function references(
   const many = (role: string, values?: ProductSource[]) =>
     values?.forEach((v, i) => one(`${role}[${i}]`, v));
   many("sources", m.sources);
+  many("planning_baseline.sources", m.planning_baseline?.sources);
+  many("planning_baseline.unread_sources", m.planning_baseline?.unread_sources);
+  m.planning_baseline?.exceptions.forEach((exception, i) =>
+    many(`planning_baseline.exceptions[${i}].sources`, exception.sources),
+  );
   many("pending_sources", m.pending_sources);
   one("target_basis", m.target_basis);
   one("goal_basis", m.goal_basis);
@@ -429,6 +434,7 @@ export async function readProduct(
     );
     return;
   }
+  product.coverage.registeredPaths = [...manifest.managed_paths];
   const selected = new Set<string>();
   let visits = 0;
   let stopped = false;

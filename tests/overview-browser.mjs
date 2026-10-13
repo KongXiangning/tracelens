@@ -429,7 +429,8 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
   await page.locator('[data-overview-card="S-GREEN"]').waitFor();
-  const filterBar = page.getByRole("region", { name: "需求路线图筛选" });
+  await page.getByRole("button", { name: /展开完整范围/ }).click();
+  const filterBar = page.getByRole("region", { name: "完整范围筛选" });
   const tasks = filterBar.getByRole("combobox", { name: "筛选 Task 关联情况" });
   const beforeFilterReads = fullReads.length;
   const originalPins = await page

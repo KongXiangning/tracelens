@@ -23,7 +23,8 @@
     "test:browser:p2": "node tests/p2-regression-browser.mjs",
     "test:browser:full-scope": "node tests/full-scope-browser.mjs",
     "test:browser:structure": "node tests/structure-browser.mjs",
-    "test:browser:overview": "node tests/overview-browser.mjs"
+    "test:browser:overview": "node tests/overview-browser.mjs",
+    "test:browser:focus": "node tests/binding-focus-browser.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.5",

@@ -1,8 +1,11 @@
+import { scopedProductVersion } from "../shared/product-roadmap.js";
+import { reconcileProductRoadmaps } from "./product-roadmap.js";
 import { documentPathKey } from "./config.js";
 import { stateKey } from "./parser.js";
 import type { SourceRef, Task } from "../shared/types.js";
 import type {
   ProductAssessmentView,
+  ProductBinding,
   ProductBindingView,
   ProductDiagnostic,
   ProductItem,
@@ -31,6 +34,28 @@ function canonical(value: unknown): string {
       .map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`)
       .join(",")}}`;
   return JSON.stringify(value) ?? "null";
+}
+
+/** Match producer duplicate candidates without using contribution or Task revisions as identity. */
+function bindingTaskIdentity(task: ProductTaskRef): unknown {
+  if (task.task_id !== null) return task.task_id;
+  const source = task.source;
+  if (source.kind === "file")
+    return {
+      kind: source.kind,
+      path: source.path,
+      ...(source.item_id ? { item_id: source.item_id } : {}),
+      ...(source.section ? { section: source.section } : {}),
+      ...(source.lines
+        ? { lines: { start: source.lines.start, end: source.lines.end } }
+        : {}),
+    };
+  if (source.kind === "text")
+    return {
+      kind: source.kind,
+      text: source.text.replace(/\r\n|\r/g, "\n").trim(),
+    };
+  return { kind: source.kind, uri: source.uri };
 }
 
 function sourceCheck(
@@ -225,7 +250,7 @@ function validDirection(
       return (
         (["requirement", "module"].includes(owner.type) &&
           target.type === "module") ||
-        (owner.version === 3 &&
+        (scopedProductVersion(owner.version) &&
           owner.type === target.type &&
           ["requirement", "goal"].includes(owner.type))
       );
@@ -234,7 +259,7 @@ function validDirection(
         [
           "requirement",
           "module",
-          ...(owner.version === 3 ? ["goal"] : []),
+          ...(scopedProductVersion(owner.version) ? ["goal"] : []),
         ].includes(owner.type) && target.type === "goal"
       );
     case "addresses":
@@ -278,6 +303,7 @@ export function buildProductIndex(
   product.relations = [];
   product.bindings = [];
   product.assessments = [];
+  product.roadmaps = [];
   if (!product.manifest) return;
   const report = (
     code: string,
@@ -516,7 +542,7 @@ export function buildProductIndex(
     }
 
     const bindingIds = new Set<string>();
-    const fingerprints = new Set<string>();
+    const fingerprints = new Map<string, ProductBinding[]>();
     for (const [index, binding] of (m.task_bindings || []).entries()) {
       if (bindingIds.has(binding.id))
         report(
@@ -533,20 +559,53 @@ export function buildProductIndex(
             `${binding.id}：真实任务身份未确认，仅按明确来源定位`,
             "info",
           );
+        if (!binding.contribution)
+          report(
+            "BINDING_CONTRIBUTION_UNCLASSIFIED",
+            item,
+            `${binding.id}：旧关联尚未分类；不根据 role 或 Task 状态推定直接贡献`,
+            "info",
+          );
+        if (
+          binding.contribution &&
+          (!binding.reason?.trim() || !binding.sources?.length)
+        )
+          report(
+            "BINDING_BASIS_MISSING",
+            item,
+            `${binding.id}：记录的分类缺少理由或来源，当前适用性待核对`,
+          );
+        if (binding.role === "reference" && binding.contribution === "direct")
+          report(
+            "BINDING_ROLE_CONTRIBUTION",
+            item,
+            `${binding.id}：reference + direct 语义不清，保留原值待核对`,
+          );
         const fingerprint = canonical([
-          binding.task.task_id ?? binding.task.source,
-          binding.task.plan_ref ?? null,
-          binding.task.step_id ?? null,
+          bindingTaskIdentity(binding.task),
           binding.role,
-          binding.coverage,
+          binding.coverage.replace(/\s+/g, " ").trim(),
         ]);
-        if (fingerprints.has(fingerprint))
+        const prior = fingerprints.get(fingerprint) ?? [];
+        if (prior.length)
           report(
             "DUPLICATE_BINDING_CANDIDATE",
             item,
             `${binding.id}：存在可能等价的绑定，保留各自覆盖和依据`,
           );
-        fingerprints.add(fingerprint);
+        if (
+          binding.contribution &&
+          prior.some(
+            (other) =>
+              other.contribution && other.contribution !== binding.contribution,
+          )
+        )
+          report(
+            "BINDING_CONTRIBUTION_CONFLICT",
+            item,
+            `${[...prior.map((other) => other.id), binding.id].join("、")}：相同 owner、Task、role 与覆盖范围存在冲突贡献分类；不择取直接或最新记录`,
+          );
+        fingerprints.set(fingerprint, [...prior, binding]);
       }
       const planItems: ProductBindingView["planItems"] = (
         binding.plan_items || []
@@ -601,7 +660,9 @@ export function buildProductIndex(
       const requirement = target(
         item,
         m.target || "",
-        item.version === 3 ? ["requirement", "goal"] : ["requirement"],
+        scopedProductVersion(item.version)
+          ? ["requirement", "goal"]
+          : ["requirement"],
         "交付摘要目标",
       );
       if (
@@ -722,4 +783,5 @@ export function buildProductIndex(
     }
     product.assessments.push(view);
   }
+  product.roadmaps = reconcileProductRoadmaps(product);
 }

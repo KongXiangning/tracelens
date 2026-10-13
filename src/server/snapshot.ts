@@ -560,6 +560,13 @@ export class SnapshotStore {
         completedAt: snapshot.completedAt,
         outcome: snapshot.outcome,
         phase: snapshot.phase,
+        runtimeObservation:
+          snapshot.runtime && snapshot.runtime.source !== "unavailable"
+            ? {
+                readAt: snapshot.runtime.readAt,
+                queryReadAt: snapshot.runtime.queryReadAt,
+              }
+            : undefined,
         revision: createHash("sha256")
           .update(JSON.stringify(overview))
           .digest("hex"),

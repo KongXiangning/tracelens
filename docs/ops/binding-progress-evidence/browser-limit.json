@@ -1,0 +1,25 @@
+{
+  "browser_ui": "not-run",
+  "local_chromium": {
+    "executable": "/usr/bin/chromium",
+    "result": "launch failed before UI assertions",
+    "diagnostic_lines": [
+      "browserType.launch: Target page, context or browser has been closed",
+      "[pid=31][err] [31:31:1014/040901.157131:FATAL:chrome/browser/process_singleton_posix.cc:297] Check failed: . socket() failed: Operation not permitted (1)",
+      "[pid=31][err] [1014/040901.157536:ERROR:third_party/crashpad/crashpad/util/linux/scoped_ptrace_attach.cc:27] ptrace: Operation not permitted (1)",
+      "\u001b[2m  - [pid=31][err] [31:31:1014/040901.157131:FATAL:chrome/browser/process_singleton_posix.cc:297] Check failed: . socket() failed: Operation not permitted (1)\u001b[22m",
+      "\u001b[2m  - [pid=31][err] [1014/040901.157536:ERROR:third_party/crashpad/crashpad/util/linux/scoped_ptrace_attach.cc:27] ptrace: Operation not permitted (1)\u001b[22m",
+      "\u001b[2m  - [pid=31] <process did exit: exitCode=null, signal=SIGABRT>\u001b[22m",
+      "    '  - [pid=31][err] [31:31:1014/040901.157131:FATAL:chrome/browser/process_singleton_posix.cc:297] Check failed: . socket() failed: Operation not permitted (1)',",
+      "    '  - [pid=31][err] [1014/040901.157536:ERROR:third_party/crashpad/crashpad/util/linux/scoped_ptrace_attach.cc:27] ptrace: Operation not permitted (1)',",
+      "    '  - [pid=31] <process did exit: exitCode=null, signal=SIGABRT>',"
+    ],
+    "full_log_sha256": "eef6f20443fa96a76024092908b3c92ef3cbe91769b8ef3b91232cacecd0c17b"
+  },
+  "supported_cloud_browser": {
+    "result": "ERR_CONNECTION_REFUSED",
+    "url": "http://127.0.0.1:4325",
+    "qualification": "The cloud browser could not reach the executor loopback server. No network-security changes or user-computer fallback were made."
+  },
+  "prepare_only": "API fixture preparation is tested; this is not a browser pass."
+}

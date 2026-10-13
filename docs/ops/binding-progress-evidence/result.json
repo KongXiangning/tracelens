@@ -1,0 +1,161 @@
+{
+  "result": "passed",
+  "root": "/workspace/shared/binding-progress-20261014/host-scenario",
+  "provenance": "Actual saved outputs of an independent Agent in an authorized isolated host; not a real business project",
+  "readOnly": {
+    "fileCount": 423,
+    "beforeDigest": "fc8fde069e223d1355d4f593a172461dcd58b938c98cfa2ee2bb6a1097f27171",
+    "afterDigest": "fc8fde069e223d1355d4f593a172461dcd58b938c98cfa2ee2bb6a1097f27171",
+    "helperExecuted": false,
+    "runtimeSource": "file-snapshot"
+  },
+  "assertions": [
+    "v3/v5 usable mixed documents",
+    "closed direct parser and supporting batch remain distinct",
+    "new adopted verification is not started and has no execution/test",
+    "current null preserved despite active task",
+    "legacy null identity and dismissed relation preserved",
+    "only PARSE-BASE applicable scoped outcome",
+    "no Roadmap produces no invented next item"
+  ],
+  "snapshotId": "e133b6f9-201b-4d31-a3b1-31e172eaf28b",
+  "currentWork": {
+    "taskId": null,
+    "detailState": "unavailable",
+    "source": "file-snapshot",
+    "freshness": "stale-or-unknown",
+    "complete": true,
+    "viewRevision": "0ae25a24061fdcae3da5460118b1dc53fe65d22c4f37d0f7d8033f07486a01b7",
+    "activityEvidence": [],
+    "bindingCount": 0,
+    "reasons": [
+      "当前性待核对，保留原读取时间与快照事实"
+    ]
+  },
+  "contributionSummary": {
+    "relations": 4,
+    "direct": 2,
+    "supporting": 1,
+    "unclassified": 1,
+    "conflict": 0,
+    "uniqueTasks": 2,
+    "confirmedTasks": 2,
+    "unconfirmedRelations": 1,
+    "overlappingTasks": 1,
+    "ownDirect": 2,
+    "descendantDirect": 0,
+    "issueCount": 0,
+    "inferredRelations": 0,
+    "owners": [
+      {
+        "ownerKey": "product:34138680f26dda9e47935350",
+        "relations": 1,
+        "direct": 0,
+        "supporting": 0,
+        "unclassified": 1,
+        "conflict": 0
+      },
+      {
+        "ownerKey": "product:d354537975dcd8c12f46eb0f",
+        "relations": 1,
+        "direct": 0,
+        "supporting": 1,
+        "unclassified": 0,
+        "conflict": 0
+      },
+      {
+        "ownerKey": "product:a62bffefbe3127781a62eed0",
+        "relations": 2,
+        "direct": 2,
+        "supporting": 0,
+        "unclassified": 0,
+        "conflict": 0
+      }
+    ]
+  },
+  "confirmedOutcomes": {
+    "total": 1,
+    "items": [
+      {
+        "requirementKey": "product:a62bffefbe3127781a62eed0",
+        "requirementId": "REQ-PARSE",
+        "requirementTitle": "固定格式文本解析",
+        "reportKey": "product:3cd3e54c9a798c876cb87a50",
+        "reportId": "AS-PARSE-BASE-HOST-20261013",
+        "conclusion": "satisfied",
+        "scopeId": "PARSE-BASE",
+        "coverage": "固定无引号两列文本解析与错误行号",
+        "goalId": "GOAL-RECORDS",
+        "subject": {
+          "kind": "working-copy",
+          "value": "/workspace/shared/binding-progress-20261014/host-scenario",
+          "revision": "parse.mjs-sha256:22668d3cdcad69a4de72a4b060388467a0138f5a5da427f64aa13b092e882e87",
+          "limitations": "版本身份固定本范围的纯解析函数；不是全项目代码快照。复用本轮初始化时两项实际Node输出与相同源码字节；本次维护未重跑测试，无独立代码审查，未执行新三类验证。"
+        },
+        "checkedAt": "2026-10-13T19:13:47.409199+00:00"
+      }
+    ]
+  },
+  "runtimeTasks": [
+    {
+      "task_id": "task-cf8aff235470d6f515e07e9b5bcbcf01",
+      "lifecycle": "active",
+      "plan_status": "adopted",
+      "steps": [
+        {
+          "id": "S-VERIFY-INPUTS",
+          "state": "not-started"
+        }
+      ],
+      "executions": 0,
+      "tests": 0
+    },
+    {
+      "task_id": "task-0102c3bd2813bcffa3e597e327d47300",
+      "lifecycle": "closed",
+      "plan_status": "adopted",
+      "steps": [
+        {
+          "id": "S-PARSE",
+          "state": "executed"
+        }
+      ],
+      "executions": 1,
+      "tests": 0
+    }
+  ],
+  "diagnostics": [
+    {
+      "origin": "index",
+      "code": "TASK_ID_UNCONFIRMED",
+      "message": "B-UNRESOLVED：真实任务身份未确认，仅按明确来源定位",
+      "severity": "info",
+      "path": "docs/product/ARCHIVE.md",
+      "line": 30,
+      "itemId": "REQ-ARCHIVE",
+      "source": {
+        "documentId": "isolated-agent-host-consumption:9b31975dc56769e861e3",
+        "path": "docs/product/ARCHIVE.md",
+        "line": 30,
+        "section": "[REQ-ARCHIVE] 历史归档检索",
+        "digest": "cc9b9975dbe534dce0c53113b8dfe940cade3dedbe3b9ef392d251defc1891ba"
+      }
+    },
+    {
+      "origin": "index",
+      "code": "BINDING_CONTRIBUTION_UNCLASSIFIED",
+      "message": "B-UNRESOLVED：旧关联尚未分类；不根据 role 或 Task 状态推定直接贡献",
+      "severity": "info",
+      "path": "docs/product/ARCHIVE.md",
+      "line": 30,
+      "itemId": "REQ-ARCHIVE",
+      "source": {
+        "documentId": "isolated-agent-host-consumption:9b31975dc56769e861e3",
+        "path": "docs/product/ARCHIVE.md",
+        "line": 30,
+        "section": "[REQ-ARCHIVE] 历史归档检索",
+        "digest": "cc9b9975dbe534dce0c53113b8dfe940cade3dedbe3b9ef392d251defc1891ba"
+      }
+    }
+  ]
+}

@@ -1,3 +1,7 @@
+import {
+  contributionLabel,
+  contributionDiagnostics,
+} from "../shared/product-contribution";
 import { useState } from "react";
 import {
   Background,
@@ -387,6 +391,7 @@ export function buildProductGraph(snapshot: Snapshot): ProductGraphModel {
     }
   }
 
+  const contributionIssues = contributionDiagnostics(product.bindings);
   for (const view of product.bindings) {
     const owner = itemsByKey.get(view.ownerKey);
     if (!owner || !owner.usable) continue;
@@ -398,12 +403,18 @@ export function buildProductGraph(snapshot: Snapshot): ProductGraphModel {
         from: owner.key,
         to: task,
         kind: "binding",
-        label: `任务范围关联 · ${binding.role}`,
+        label: `任务范围关联 · ${contributionLabel(binding)} · ${binding.role}`,
         coverage: binding.coverage,
         origin: binding.origin,
         state: binding.state,
         resolution: view.match.state,
-        reason: [binding.reason, view.match.detail].filter(Boolean).join(" · "),
+        reason: [
+          binding.reason,
+          view.match.detail,
+          ...(contributionIssues.get(view.key) || []),
+        ]
+          .filter(Boolean)
+          .join(" · "),
         sources: [binding.task.source, ...(binding.sources || [])],
         raw: binding,
       });
@@ -422,7 +433,7 @@ export function buildProductGraph(snapshot: Snapshot): ProductGraphModel {
           from: workKey,
           to: task,
           kind: "work-binding",
-          label: `工作项任务关联 · ${binding.role}`,
+          label: `工作项任务关联 · ${contributionLabel(binding)} · ${binding.role}`,
           coverage: binding.coverage,
           origin: binding.origin,
           state: binding.state,
@@ -431,6 +442,9 @@ export function buildProductGraph(snapshot: Snapshot): ProductGraphModel {
           sources: [binding.task.source, ...(binding.sources || [])],
           raw: {
             binding_id: binding.id,
+            contribution: binding.contribution,
+            owner_key: view.ownerKey,
+            role: binding.role,
             plan_item: work,
             task: binding.task,
             coverage: binding.coverage,

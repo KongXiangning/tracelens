@@ -1,3 +1,12 @@
+import {
+  contributionSummary,
+  type ContributionSummary,
+} from "./product-contribution.js";
+import {
+  currentWork,
+  confirmedOutcomes,
+  roadmapSummaries,
+} from "./overview-focus.js";
 import type { Snapshot } from "./types.js";
 import type {
   ProductItem,
@@ -24,6 +33,7 @@ export type OverviewReport = Pick<
 };
 export interface OverviewRequirement extends Item {
   description: string;
+  contributionSummary?: ContributionSummary;
   taskState: ReturnType<typeof overviewTaskStates>;
   firstTask?: string;
   dependencies: string[];
@@ -46,7 +56,12 @@ export interface OverviewData {
   manifestSource?: ProductSnapshot["manifestSource"];
   project?: Item;
   rootGoal?: Item;
+  /** Compatibility wire name: registered display order, never a Roadmap. */
   planned: OverviewRequirement[];
+  currentWork?: ReturnType<typeof currentWork>;
+  confirmedOutcomes?: ReturnType<typeof confirmedOutcomes>;
+  roadmapSummary?: ReturnType<typeof roadmapSummaries>;
+  contributionSummary?: ContributionSummary;
   unordered: OverviewRequirement[];
   taskCount: number;
   tasks: Pick<
@@ -68,6 +83,8 @@ export type OverviewSnapshot = Pick<
   | "phase"
 > & {
   revision: string;
+  /** Observation timing is transported outside the stable semantic revision. */
+  runtimeObservation?: { readAt: string; queryReadAt?: string };
   overview?: OverviewData;
 };
 export function isOverviewSnapshot(
@@ -127,6 +144,7 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
     return {
       ...itemSummary(item),
       description: requirementDescription(item),
+      contributionSummary: contributionSummary(rows, item.key),
       taskState: overviewTaskStates(snapshot, rows),
       firstTask: rows
         .flatMap((row) => row.match.taskIds)
@@ -162,7 +180,21 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
       ),
     };
   }
+  const focus = currentWork(snapshot);
+  // A new read epoch must not invalidate identical requirement/Task facts.
+  // Actual timing travels in the OverviewSnapshot envelope; batch identity is
+  // enforced while deriving activity, never used as a content change counter.
+  const {
+    readAt: _readAt,
+    queryReadAt: _queryReadAt,
+    batchId: _batchId,
+    ...stableFocus
+  } = focus;
   const data: OverviewData = {
+    currentWork: stableFocus,
+    confirmedOutcomes: confirmedOutcomes(product),
+    roadmapSummary: roadmapSummaries(product, focus),
+    contributionSummary: contributionSummary(product?.bindings || []),
     ready: Boolean(
       product?.manifest &&
       ["ready", "partial", "empty"].includes(product.status),
@@ -175,7 +207,7 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
     unordered: unordered.map(requirement),
     taskCount: overviewTaskStates(snapshot, [
       ...new Map(
-        planned
+        [...planned, ...unordered]
           .flatMap((item) => bindings.get(item.key)!)
           .map((row) => [row.key, row]),
       ).values(),

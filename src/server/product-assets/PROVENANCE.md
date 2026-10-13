@@ -64,3 +64,30 @@ The current independent offline reader is pinned separately in
 Both execute only against disposable test copies. TraceLens retains its own
 disclosed byte budgets and snapshot/source-resolution layer; neither oracle
 provides live task state or proves complete business inventory.
+
+## 2026-10-14 v4/v5 Roadmap and contribution consumption
+
+Source baseline: `dcf7b0af7a65c53bde7218eac3a3639921d59d31`.
+`product-doc-v4.json` is the unchanged production schema, SHA-256:
+`eca5e89455715bf25601c25d7599b75b743830ba1530d7e5a3027e283f582472`.
+Fixed producer implementation: [1c56bf5fbde5003a7a9aca314ad04bb6794f1b6d](https://github.com/KongXiangning/vibe-coding-workflow-system/commit/1c56bf5fbde5003a7a9aca314ad04bb6794f1b6d) (source version 0.24.10).
+`product-doc-v5.json` is the generated producer schema for BINDING-PROGRESS-v2, SHA-256:
+`a3797f92ba11e1b678c78b77d82a37e8501bb26cf8794b038cdaecbe0a9f3561`.
+It adds optional direct/supporting contribution only to v5 TaskBinding and inherits
+v4 planning_baseline. Old schema bytes remain unchanged. The verified source commit
+does not imply npm publication, deployment, or real project migration.
+
+`../product-roadmap.ts` adapts the pinned production `roadmaps.ts` pure comparison
+and `scoped.ts` graph rules. v4 and v5 are explicit known formats. Requirement/Goal
+and arrangement hashes retain the producer algorithms. TraceLens resolves sources
+only through its own bounded, same-snapshot reader; it never executes helpers from
+observed projects. Coverage has separate registered selector attestation because
+TraceLens coverage.paths lists files, whereas producer coverage.paths lists selected
+patterns. Missing attestation, incomplete enumeration, and unavailable baseline
+sources yield unknown; saved arrangements remain browseable. Business validity,
+delivery and Task operations are never evaluated by Roadmap reconciliation.
+
+The pinned test-only producer bundle in `tests/product-oracle/roadmap-v5/` supplies
+independent differential tests for all selectors, four statuses, membership,
+context, arrangements, working copies, sources and exact-version exceptions.
+All copied/adapted code remains under the accompanying MIT license.

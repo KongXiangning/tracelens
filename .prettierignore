@@ -3,3 +3,5 @@ tests/product-oracle/offline-reader.mjs
 tests/product-oracle/handoff-20261010/offline-reader.mjs
 tests/fixtures/runtime-vn05/*.mjs
 tests/fixtures/task-query-v1.json
+
+tests/product-oracle/roadmap-v5/offline-reader.mjs

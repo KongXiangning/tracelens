@@ -1,4 +1,5 @@
 // Deterministic VN-01 consumer, adapted from upstream scoped.ts (MIT).
+import { scopedProductVersion } from "./product-roadmap.js";
 import type {
   ProductItem,
   ProductMetadata,
@@ -161,7 +162,7 @@ export function selectAssessment(
   };
   const goal = unique(goalId),
     target = unique(targetId);
-  if (!goal || goal.type !== "goal" || goal.version !== 3)
+  if (!goal || goal.type !== "goal" || !scopedProductVersion(goal.version))
     return fail("scope-unavailable");
   if (
     !target ||
@@ -248,7 +249,7 @@ export function selectAssessment(
     )
   )
     reasons.push("conflict");
-  if (reports.some((i) => !i.usable || i.version !== 3))
+  if (reports.some((i) => !i.usable || !scopedProductVersion(i.version)))
     reasons.push("metadata-incomplete");
   if (reports.length > 1) reasons.push("multiple-reports");
   for (const report of reports) {

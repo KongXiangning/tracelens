@@ -2122,13 +2122,19 @@
 }
 .overview-task-summary .contribution-counts {
   margin-top: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-size: 10px;
 }
+.contribution-identity-count {
+  display: block;
+  margin-top: 4px;
+}
+.overview-lifecycle-heading {
+  margin-top: 10px;
+}
 .overview-route-body {
-  grid-template-rows: 78px 88px 116px 34px 44px;
+  grid-template-rows: 78px 88px minmax(170px, auto) 34px 44px;
 }
 .overview-full-range-toggle {
   display: block;
@@ -2138,6 +2144,73 @@
   padding: 12px;
   color: var(--overview-link);
   background: #edf1e9;
+}
+.overview-focus-tools {
+  position: relative;
+  margin: 20px 0;
+  padding: 16px 20px;
+  border: 1px solid var(--overview-rule);
+  border-radius: 10px;
+  background: #fdfdf9;
+}
+.overview-plan-control {
+  min-width: 0;
+}
+.overview-plan-control .overview-focus-heading {
+  margin: 0;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.overview-plan-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.overview-plan-control h2 {
+  font-size: 17px;
+  margin: 0;
+  line-height: 1.5;
+}
+.overview-plan-control label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.overview-plan-control select {
+  flex: 1;
+  min-width: 0;
+  padding: 9px;
+}
+.overview-plan-control > p,
+.overview-plan-control label + p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--overview-muted);
+}
+.overview-results-link {
+  align-self: start;
+  white-space: nowrap;
+}
+.overview-results-page {
+  border: 0;
+  border-radius: 0;
+}
+.overview-progress-filter select {
+  width: 240px;
+  min-width: 0;
+  max-width: 100%;
+}
+.overview-progress-tag {
+  margin-left: auto;
+  flex-shrink: 0;
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 10px;
+  color: #376549;
+  background: #e6eee3;
 }
 @media (max-width: 1000px) {
   .overview-hero:has(.overview-current-work),

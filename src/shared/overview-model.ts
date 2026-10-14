@@ -239,7 +239,14 @@ export function overviewTaskStates(
   bindings: ProductBindingView[],
 ) {
   const identities = new Map<string, ProductBindingView[]>();
-  for (const view of bindings) {
+  const active = [
+    ...new Map(
+      bindings
+        .filter((view) => view.binding.state === "active")
+        .map((view) => [view.key, view]),
+    ).values(),
+  ];
+  for (const view of active) {
     const identity = JSON.stringify(
       view.binding.task.task_id === null
         ? ["unconfirmed", view.key]
@@ -276,7 +283,8 @@ export function overviewTaskStates(
             view.match.taskIds.includes(task.id),
         ),
     );
-    if (trusted.length === 1) {
+    if (views[0].binding.task.task_id === null) label = "身份未确认";
+    else if (trusted.length === 1) {
       const declared = taskStates.find((s) =>
         s.pattern.test(trusted[0].runtimeLifecycle!),
       );
@@ -289,8 +297,6 @@ export function overviewTaskStates(
       observations.size > 1
     )
       label = "状态冲突";
-    else if (views.some((view) => view.binding.task.task_id === null))
-      label = "身份未确认";
     else if (
       views.every((view) => view.match.state === "matched") &&
       observations.size === 1
@@ -310,7 +316,7 @@ export function overviewTaskStates(
     total: [...identities.values()].filter(
       (views) => views[0].binding.task.task_id !== null,
     ).length,
-    unconfirmed: bindings.filter((view) => view.binding.task.task_id === null)
+    unconfirmed: active.filter((view) => view.binding.task.task_id === null)
       .length,
     associationPending: [...identities.values()].filter((views) =>
       views.some((view) => view.match.state !== "matched"),

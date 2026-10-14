@@ -8,6 +8,7 @@ import {
   defaultOverviewFilters,
   matchesOverviewFilters,
   overviewRequirementSignals,
+  overviewReportVerdict,
   type OverviewFilters,
 } from "../src/web/overview-card-state";
 import { OverviewDashboard } from "../src/web/overview-dashboard";
@@ -63,7 +64,7 @@ function matches(
   });
 }
 
-it("retains original report verdicts independently of applicability review", () => {
+it("filters current applicability and retains original verdicts only in report details", () => {
   const item = requirement([
     report("satisfied", true),
     report("partially-satisfied", true),
@@ -72,13 +73,13 @@ it("retains original report verdicts independently of applicability review", () 
   const signals = overviewRequirementSignals(item);
   expect(
     signals.verdicts.map((v) => [v.conclusion, v.symbol, v.label]),
-  ).toEqual([
-    ["satisfied", "✓", "原报告：已满足"],
-    ["partially-satisfied", "◐", "原报告：部分满足"],
-    ["undetermined", "?", "原报告：尚未判定"],
-  ]);
+  ).toEqual([["undetermined", "?", "适用性待核对"]]);
+  expect(signals.verdicts[0].count).toBe(3);
+  expect(overviewReportVerdict(item.assessmentRecords[0]).label).toBe(
+    "原报告：已满足",
+  );
   expect(matches(item, { conclusions: ["satisfied"], reviewOnly: true })).toBe(
-    true,
+    false,
   );
   expect(
     matches(requirement([report("undetermined")]), { reviewOnly: true }),
@@ -134,7 +135,7 @@ it("distinguishes no report, no Task and declared associations awaiting confirma
   expect(matches(pending, { reviewOnly: true })).toBe(false);
 });
 
-it("shows multi-verdict card stripes, symbols and an independent review marker using only overview data", () => {
+it("shows applicability review without stale satisfied stripes using only overview data", () => {
   const item = requirement([
     report("satisfied", true),
     report("partially-satisfied", true),
@@ -177,10 +178,9 @@ it("shows multi-verdict card stripes, symbols and an independent review marker u
   )![0];
   expect(card).toContain('data-review="true"');
   expect(card).toContain('class="overview-review-marker"');
-  for (const status of ["satisfied", "partially-satisfied", "undetermined"])
-    expect(card).toContain(`data-conclusion="${status}"`);
-  expect(card).toContain("原报告：已满足");
-  expect(card).toContain("原报告：部分满足");
-  expect(card).toContain("原报告：尚未判定");
+  expect(card).toContain('data-conclusion="undetermined"');
+  expect(card).not.toContain('data-conclusion="satisfied"');
+  expect(card).not.toContain('data-conclusion="partially-satisfied"');
+  expect(card).toContain("适用性待核对");
   expect(html).toContain('aria-label="完整范围筛选"');
 });

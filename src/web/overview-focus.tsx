@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { Modal } from "./components";
 import { isOverviewSnapshot, type OverviewData } from "../shared/overview-data";
 import type { CurrentWork, RoadmapSummary } from "../shared/overview-focus";
 import {
   contributionLabels,
+  workTypeLabels,
   type ContributionSummary,
 } from "../shared/product-contribution";
 import type { OverviewContext } from "./product";
@@ -16,10 +18,34 @@ export function ContributionCounts({
   compact?: boolean;
 }) {
   if (!summary) return null;
-  const text = `直接关系 ${summary.direct}${summary.descendantDirect ? `（子项 ${summary.descendantDirect}）` : ""} · 支撑 ${summary.supporting} · 未分类 ${summary.unclassified}${summary.conflict ? ` · 冲突 ${summary.conflict}` : ""}`;
+  const text = summary.workTypes
+    .filter(
+      (group) =>
+        !compact ||
+        group.relations > 0 ||
+        ["implementation", "verification", "supporting"].includes(group.type),
+    )
+    .map(
+      (group) =>
+        `${workTypeLabels[group.type]} ${group.uniqueTasks}${group.unknownIdentityRelations ? `（身份未知关系 ${group.unknownIdentityRelations}）` : ""}`,
+    )
+    .join(" · ");
   return (
-    <div className="contribution-counts" data-contribution-summary title={text}>
+    <div
+      className="contribution-counts"
+      data-contribution-summary
+      title={`${text}；各类按 Task 身份去重，同一 Task 可承担多类工作；共 ${summary.relations} 条关系，${summary.uniqueTasks} 个唯一 Task 身份`}
+    >
       <span>{text}</span>
+      {compact && (
+        <small className="contribution-identity-count">
+          唯一 Task {summary.uniqueTasks}
+          {summary.unconfirmedRelations
+            ? ` · 身份未知关系 ${summary.unconfirmedRelations}`
+            : ""}{" "}
+          · 各类可重叠
+        </small>
+      )}
       {!compact && (
         <>
           <p>
@@ -28,8 +54,9 @@ export function ContributionCounts({
             个已匹配；身份未知关系 {summary.unconfirmedRelations} 条
           </p>
           <p>
-            分组可重叠，不可相加为唯一 Task 数；关联性质与 Task
-            状态不证明需求满足
+            各类按 Task 身份去重，同一 Task
+            可承担多类工作，分组不可相加；重复关系保留范围与来源。身份未知关系不计作唯一
+            Task。工作类型与 Task 生命周期不证明需求已开始、已实现或已满足
           </p>
           {!!summary.inferredRelations && (
             <p>
@@ -43,6 +70,11 @@ export function ContributionCounts({
               owner；不改作父项自身直接贡献
             </p>
           )}
+          <p>
+            首次交付基线由用户配合 Agent 在项目中建立；后续由 vNext
+            正常工作流维护分类、范围与验收事实。TraceLens
+            消费已保存事实，不重新分析全部历史 Task，也不修改被观察项目。
+          </p>
         </>
       )}
     </div>
@@ -176,7 +208,6 @@ export function CurrentWorkPanel({
     </section>
   );
 }
-const storedPlans = new Map<string, string>();
 const statusLabels: Record<RoadmapSummary["status"], string> = {
   current: "材料与基线一致",
   "changes-pending": "存在待核对变化",
@@ -191,71 +222,86 @@ export function FocusResults({
   context: OverviewContext;
 }) {
   const plans = data.roadmapSummary || [];
-  const [requested, setRequested] = useState(
-    () => storedPlans.get(context.snapshot.projectId) || "",
-  );
-  useEffect(() => {
-    storedPlans.set(context.snapshot.projectId, requested);
-  }, [requested, context.snapshot.projectId]);
+  const [requested, setRequested] = useState("");
+  const [expanded, setExpanded] = useState(true);
+  const [resultsOpen, setResultsOpen] = useState(false);
   const adopted = plans.filter(
     (plan) => plan.readable && plan.intentState === "adopted",
   );
-  const selected =
-    plans.find((plan) => plan.planKey === requested) ||
-    (!requested && adopted.length === 1 ? adopted[0] : undefined);
+  const selected = plans.find((plan) => plan.planKey === requested);
   return (
-    <div className="overview-focus-grid">
-      <section className="overview-focus-panel" aria-label="最近确认的成果">
-        <div className="overview-focus-heading">
-          <h2>最近确认的成果</h2>
-          <small>按核对时间排列</small>
-        </div>
-        {data.confirmedOutcomes?.items.length ? (
-          data.confirmedOutcomes.items.map((outcome) => (
-            <article
-              key={`${outcome.requirementKey}:${outcome.reportKey}`}
-              className="overview-focus-row"
-              data-confirmed-outcome={outcome.reportId}
-            >
+    <section className="overview-focus-tools" aria-label="安排与成果">
+      {resultsOpen && (
+        <Modal title="最近确认的成果" close={() => setResultsOpen(false)}>
+          <div className="modal-body overview-focus-panel overview-results-page">
+            <div className="overview-focus-heading">
+              <small>按核对时间排列</small>
+            </div>
+            {data.confirmedOutcomes?.items.length ? (
+              data.confirmedOutcomes.items.map((outcome) => (
+                <article
+                  key={`${outcome.requirementKey}:${outcome.reportKey}`}
+                  className="overview-focus-row"
+                  data-confirmed-outcome={outcome.reportId}
+                >
+                  <button
+                    className="text-link"
+                    onClick={() => context.openProduct(outcome.reportKey)}
+                  >
+                    {outcome.requirementId} ·{" "}
+                    {outcome.conclusion === "satisfied"
+                      ? "该范围已满足"
+                      : "该范围部分满足"}{" "}
+                    ↗
+                  </button>
+                  <p>{outcome.coverage}</p>
+                  <small>
+                    目标 {outcome.goalId} / 范围 {outcome.scopeId}
+                  </small>
+                  <p>
+                    {outcome.subject.kind} · {outcome.subject.value}
+                    {outcome.subject.revision &&
+                      ` @ ${outcome.subject.revision}`}
+                  </p>
+                  <small>
+                    核对时间 {outcome.checkedAt || "未知"}；不是功能完成时间
+                  </small>
+                </article>
+              ))
+            ) : (
+              <p>
+                尚无当前适用且范围明确的满足报告；历史结论与待核对材料仍在完整范围中可查
+              </p>
+            )}
+            {(data.confirmedOutcomes?.total || 0) > 6 && (
+              <p>
+                另有 {data.confirmedOutcomes!.total - 6}{" "}
+                项适用成果，见完整范围与报告记录
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
+      <section className="overview-plan-control" aria-label="近期安排">
+        <div className="overview-plan-toolbar">
+          <div className="overview-focus-heading">
+            <h2>近期安排</h2>
+            {selected && (
               <button
                 className="text-link"
-                onClick={() => context.openProduct(outcome.reportKey)}
+                aria-expanded={expanded}
+                onClick={() => setExpanded(!expanded)}
               >
-                {outcome.requirementId} ·{" "}
-                {outcome.conclusion === "satisfied"
-                  ? "该范围已满足"
-                  : "该范围部分满足"}{" "}
-                ↗
+                {expanded ? "收起近期安排" : "展开近期安排"}
               </button>
-              <p>{outcome.coverage}</p>
-              <small>
-                目标 {outcome.goalId} / 范围 {outcome.scopeId}
-              </small>
-              <p>
-                {outcome.subject.kind} · {outcome.subject.value}
-                {outcome.subject.revision && ` @ ${outcome.subject.revision}`}
-              </p>
-              <small>
-                核对时间 {outcome.checkedAt || "未知"}；不是功能完成时间
-              </small>
-            </article>
-          ))
-        ) : (
-          <p>
-            尚无当前适用且范围明确的满足报告；历史结论与待核对材料仍在完整范围中可查
-          </p>
-        )}
-        {(data.confirmedOutcomes?.total || 0) > 6 && (
-          <p>
-            另有 {data.confirmedOutcomes!.total - 6}{" "}
-            项适用成果，见完整范围与报告记录
-          </p>
-        )}
-      </section>
-      <section className="overview-focus-panel" aria-label="近期安排">
-        <div className="overview-focus-heading">
-          <h2>近期安排</h2>
-          <small>Implementation Roadmap</small>
+            )}
+          </div>
+          <button
+            className="secondary overview-results-link"
+            onClick={() => setResultsOpen(true)}
+          >
+            最近确认的成果 · {data.confirmedOutcomes?.total || 0} ↗
+          </button>
         </div>
         {plans.length ? (
           <>
@@ -264,7 +310,10 @@ export function FocusResults({
               <select
                 aria-label="阅读路线图"
                 value={selected?.planKey || ""}
-                onChange={(event) => setRequested(event.target.value)}
+                onChange={(event) => {
+                  setRequested(event.target.value);
+                  setExpanded(true);
+                }}
               >
                 <option value="">
                   {adopted.length > 1
@@ -279,10 +328,8 @@ export function FocusResults({
                 ))}
               </select>
             </label>
-            {!selected && (
-              <p>尚未唯一选定适用路线图；不按时间或文件顺序选择全项目计划</p>
-            )}
-            {selected && (
+            {!selected && <p>选择路线图后展开近期安排；不自动选定全项目计划</p>}
+            {selected && expanded && (
               <div data-roadmap-plan={selected.planId}>
                 <p
                   className="overview-roadmap-status"
@@ -392,6 +439,6 @@ export function FocusResults({
           </p>
         )}
       </section>
-    </div>
+    </section>
   );
 }

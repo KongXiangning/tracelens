@@ -20,7 +20,13 @@ import {
   roadmapSummaries,
 } from "../src/shared/overview-focus.js";
 import { buildOverviewData } from "../src/shared/overview-data.js";
-import { CurrentWorkPanel, FocusResults } from "../src/web/overview-focus.js";
+import {
+  ContributionCounts,
+  CurrentWorkPanel,
+  FocusResults,
+} from "../src/web/overview-focus.js";
+import { OverviewDashboard } from "../src/web/overview-dashboard.js";
+import { overviewTaskStates } from "../src/shared/overview-model.js";
 import { requirementBindings } from "../src/shared/product-hierarchy.js";
 import { buildProductGraph } from "../src/web/product-graph.js";
 
@@ -195,6 +201,142 @@ it("counts relationship rows and real identities separately without treating sup
   expect(confirmedOutcomes(value.product).items).toEqual([]);
   expect(contributionSummary(rows)).not.toHaveProperty("completed");
 });
+it("shows four implementation and four verification Tasks instead of eight generic direct relations", () => {
+  const rows = ["implementation", "verification"].flatMap((role) =>
+    Array.from({ length: 4 }, (_, index) => {
+      const row = binding(
+        `${role}-${index}`,
+        "A",
+        "direct",
+        `${role}-task-${index}`,
+      );
+      row.binding.role = role;
+      return row;
+    }),
+  );
+  const summary = contributionSummary(rows);
+  const html = renderToStaticMarkup(
+    <ContributionCounts summary={summary} compact />,
+  );
+  expect(html).toContain("直接实施 4 · 直接验证 4 · 间接支撑 0");
+  expect(html).toContain("唯一 Task 8");
+  expect(html).not.toContain("直接关系");
+});
+it("deduplicates work types across coverage, owners and duplicate rows while retaining unknown and conflicting relations", () => {
+  const implementation = binding("implementation", "A", "direct");
+  const verification = binding("verification", "A", "direct");
+  verification.binding.role = "verification";
+  const repair = binding("repair", "B", "direct");
+  repair.binding.role = "repair";
+  const exploration = binding("exploration", "B", "direct");
+  exploration.binding.role = "exploration";
+  const duplicate = binding("duplicate", "A", "direct");
+  duplicate.binding.coverage = " Scope   A ";
+  const conflict = binding("conflict", "A", "supporting");
+  const unknown = binding("unknown", "B", "direct", null);
+  const old = binding("old", "B", undefined, "old-task");
+  const support = binding("support", "C", "supporting");
+  const dismissed = binding("dismissed", "C", "direct", "dismissed-task");
+  dismissed.binding.state = "dismissed";
+  const rows = [
+    implementation,
+    implementation,
+    duplicate,
+    verification,
+    repair,
+    exploration,
+    unknown,
+    old,
+    support,
+    dismissed,
+  ];
+  const summary = contributionSummary(rows);
+  expect(summary).toMatchObject({
+    relations: 8,
+    uniqueTasks: 2,
+    unconfirmedRelations: 1,
+  });
+  expect(summary.workTypes).toEqual(
+    expect.arrayContaining([
+      {
+        type: "implementation",
+        relations: 3,
+        uniqueTasks: 1,
+        unknownIdentityRelations: 1,
+      },
+      {
+        type: "verification",
+        relations: 1,
+        uniqueTasks: 1,
+        unknownIdentityRelations: 0,
+      },
+      {
+        type: "repair",
+        relations: 1,
+        uniqueTasks: 1,
+        unknownIdentityRelations: 0,
+      },
+      {
+        type: "exploration",
+        relations: 1,
+        uniqueTasks: 1,
+        unknownIdentityRelations: 0,
+      },
+      {
+        type: "supporting",
+        relations: 1,
+        uniqueTasks: 1,
+        unknownIdentityRelations: 0,
+      },
+      {
+        type: "unclassified",
+        relations: 1,
+        uniqueTasks: 1,
+        unknownIdentityRelations: 0,
+      },
+    ]),
+  );
+  const conflicted = contributionSummary([...rows, conflict]);
+  expect(
+    conflicted.workTypes.find((group) => group.type === "conflict"),
+  ).toMatchObject({ relations: 3, uniqueTasks: 1 });
+  expect(
+    conflicted.workTypes.find((group) => group.type === "implementation"),
+  ).toMatchObject({
+    relations: 1,
+    uniqueTasks: 0,
+    unknownIdentityRelations: 1,
+  });
+  expect(overviewTaskStates(snapshot(rows), rows)).toMatchObject({
+    total: 2,
+    unconfirmed: 1,
+  });
+});
+it("separates saved work type, closed lifecycle and absent acceptance on the requirement card", () => {
+  const row = binding("closed", "A", "direct");
+  const value = snapshot([row]);
+  value.tasks[0].runtimeLifecycle = "closed";
+  const project = item("PROJECT", "project");
+  project.metadata.requirement_order = ["A"];
+  project.source = { ...source, path: "docs/PRODUCT.md" };
+  value.product!.items.push(project);
+  value.product!.manifest = { entry: "docs/PRODUCT.md" } as NonNullable<
+    ProductSnapshot["manifest"]
+  >;
+  const html = renderToStaticMarkup(
+    <OverviewDashboard context={context(value)} requirements={() => {}} />,
+  );
+  const card = html.match(
+    /<article[^>]*data-overview-card="A"[^>]*>[\s\S]*?<\/article>/,
+  )![0];
+  expect(card).toContain("直接实施 1");
+  expect(card).toContain("Task 生命周期");
+  expect(card).toContain("已关闭");
+  expect(card).toContain("暂无范围验收记录");
+  expect(card).not.toContain("已满足");
+  expect(card).not.toContain("已实现");
+  expect(card).not.toContain("已开始");
+});
 it("retains conflicts across equivalent coverage and null source display/hash differences without a direct winner", () => {
   const a = binding("a", "A", "direct", null),
     b = binding("b", "A", "supporting", null);
@@ -342,7 +484,7 @@ it("reads arrangements from work_items and keeps multiple adopted plans unresolv
     <FocusResults data={buildOverviewData(value)} context={context(value)} />,
   );
   expect(html).toContain("多份已采用路线图，请选择");
-  expect(html).toContain("尚未唯一选定适用路线图");
+  expect(html).toContain("选择路线图后展开近期安排");
   expect(html).not.toContain('data-roadmap-plan="PLAN"');
 });
 it("adds contribution and original owner to graph edges without materializing downstream bindings", () => {

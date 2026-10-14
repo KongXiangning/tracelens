@@ -14,6 +14,7 @@ import { chromium } from "playwright";
 import { createApp } from "../dist/server/app.js";
 import { runtimeTasks } from "../dist/server/runtime-reader.js";
 import { buildProductIndex } from "../dist/server/product-index.js";
+import { contributionSummary } from "../dist/shared/product-contribution.js";
 
 // All disk writes are confined to disposable copies and the tool's registry.
 // The current Task projection below is explicitly synthetic test memory, not
@@ -188,7 +189,7 @@ try {
   await page.goto(base);
   await page.locator(`[data-project-id="${project.id}"]`).click();
   await page.locator('[data-overview-card="REQ-INPUT"]').waitFor();
-  for (const name of ["当前工作", "最近确认的成果", "近期安排", "完整范围"])
+  for (const name of ["当前工作", "近期安排", "当前进度"])
     await page.getByRole("heading", { name, exact: true }).waitFor();
   assert.match(
     await page
@@ -204,7 +205,7 @@ try {
   );
   assert.match(
     await page.locator('[data-overview-card="REQ-INPUT"]').innerText(),
-    /直接关系 1/,
+    /直接实施 1/,
   );
   assert.match(
     await page.locator('[data-overview-card="REQ-TENANT"]').innerText(),
@@ -212,7 +213,7 @@ try {
   );
   assert.match(
     await page.locator('[data-overview-card="REQ-AUDIT"]').innerText(),
-    /未分类 1/,
+    /未分类 0（身份未知关系 1）/,
   );
   assert.equal(
     requests.filter((request) => /\/snapshot(?:\?|$)/.test(request.url)).length,
@@ -256,7 +257,10 @@ try {
     .click();
   const inspector = page.getByRole("complementary", { name: "所选需求详情" });
   await inspector.getByRole("tab", { name: "Task", exact: true }).click();
-  await inspector.getByText("关联范围与来源 · 1", { exact: true }).click();
+  await inspector
+    .getByText("关联范围与来源 · 1", { exact: true })
+    .first()
+    .click();
   assert.match(await inspector.innerText(), /直接实施/);
   await inspector.getByRole("tab", { name: "依据", exact: true }).click();
   await inspector
@@ -272,7 +276,7 @@ try {
     .getByRole("button", { name: "概览", exact: false })
     .click();
   await chooser.waitFor();
-  assert.equal(await chooser.inputValue(), plan.key);
+  assert.equal(await chooser.inputValue(), "");
   assert.equal(
     await filter
       .getByRole("combobox", { name: "筛选 Task 关联情况" })
@@ -296,15 +300,16 @@ try {
   );
   await page.locator(`[data-project-id="${scoped.id}"]`).click();
   await page.locator('[data-overview-card="R-IMPORT"]').waitFor();
-  const outcomes = page.getByRole("region", {
-    name: "最近确认的成果",
-    exact: true,
+  await page.getByRole("button", { name: /最近确认的成果/ }).click();
+  const outcomes = page.getByRole("dialog").filter({
+    has: page.getByRole("heading", { name: "最近确认的成果", exact: true }),
   });
   assert.ok((await outcomes.locator("[data-confirmed-outcome]").count()) > 0);
   assert.match(await outcomes.innerText(), /核对时间/);
+  await outcomes.getByRole("button", { name: "关闭" }).click();
   await page.locator(`[data-project-id="${project.id}"]`).click();
   await chooser.waitFor();
-  assert.equal(await chooser.inputValue(), plan.key);
+  assert.equal(await chooser.inputValue(), "");
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     assert.equal(
@@ -315,6 +320,64 @@ try {
     );
     await screenshot(`03-focus-${width}`);
   }
+  // Synthetic overview transport, using the production classification selector.
+  const typedView = structuredClone(runtime.store.overview(project.id));
+  typedView.snapshot.revision = "synthetic-work-types";
+  const typedCard = typedView.snapshot.overview.planned.find(
+    (item) => item.id === "REQ-INPUT",
+  );
+  const template = snapshot.product.bindings.find(
+    (row) => row.binding.contribution === "direct",
+  );
+  const typedRows = ["implementation", "verification"].flatMap((role) =>
+    Array.from({ length: 4 }, (_, index) => ({
+      ...structuredClone(template),
+      key: `${role}-${index}`,
+      binding: {
+        ...structuredClone(template.binding),
+        role,
+        task: { ...template.binding.task, task_id: `${role}-${index}` },
+      },
+    })),
+  );
+  typedCard.contributionSummary = contributionSummary(typedRows);
+  typedCard.taskState = {
+    total: 8,
+    unconfirmed: 0,
+    associationPending: 0,
+    states: [{ label: "已关闭", tone: "slate", count: 8 }],
+  };
+  await page.route(`**/api/projects/${project.id}/overview*`, (route) =>
+    route.fulfill({ json: typedView }),
+  );
+  await page.reload();
+  const typed = page.locator('[data-overview-card="REQ-INPUT"]');
+  await typed.waitFor();
+  assert.match(await typed.innerText(), /直接实施 4 · 直接验证 4 · 间接支撑 0/);
+  assert.match(await typed.innerText(), /唯一 Task 8/);
+  assert.match(await typed.innerText(), /Task 生命周期[\s\S]*已关闭\s+8/);
+  assert.match(await typed.innerText(), /暂无范围验收记录/);
+  assert.doesNotMatch(await typed.innerText(), /直接关系|已实现|已满足|已开始/);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth + 1,
+      ),
+      false,
+    );
+    const lifecycle = await typed
+      .locator(".overview-task-states")
+      .boundingBox();
+    const footer = await typed
+      .locator(".overview-route-predecessor")
+      .boundingBox();
+    assert.ok(lifecycle.y + lifecycle.height <= footer.y);
+    await screenshot(`04-work-types-${width}`);
+  }
+  checks.push(
+    "Production work-type selector renders four implementation and four verification identities separately from closed lifecycle and absent acceptance at 1440/390 widths",
+  );
   assert.deepEqual(errors, []);
   assert.deepEqual(await Promise.all([tree(root), tree(scopedRoot)]), before);
   checks.push(

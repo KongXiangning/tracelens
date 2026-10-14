@@ -3,6 +3,7 @@ import { mergeProjectView } from "../src/web/view-state";
 import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
+import { gzipSync, gunzipSync } from "node:zlib";
 import {
   mkdir,
   mkdtemp,
@@ -169,6 +170,50 @@ it("restores persisted content after restart, detects new/changed/deleted files,
     expect(
       excluded.product!.sources.every((s) => s.readState === "excluded"),
     ).toBe(true);
+  } finally {
+    await f.runtime.app.close();
+  }
+});
+
+it("restores a v1 snapshot for display but rebuilds its index before writing v2", async () => {
+  const f = await fixture();
+  try {
+    await f.runtime.store.refresh(f.project.id);
+    const first = (await f.runtime.store.refresh(f.project.id)).snapshot!;
+    expect(first.treeFingerprint).toBeTruthy();
+    const filename = path.join(
+      f.dataDir,
+      "snapshots",
+      `${f.project.id}.json.gz`,
+    );
+    const saved = JSON.parse(gunzipSync(await readFile(filename)).toString());
+    saved.version = 1;
+    await writeFile(filename, gzipSync(JSON.stringify(saved)));
+
+    const cached = await new SnapshotCache(f.dataDir).load(f.project);
+    expect(cached?.files).toEqual([]);
+    expect(cached?.snapshot?.treeFingerprint).toBeUndefined();
+    const restarted = new SnapshotStore(f.runtime.registry);
+    await restarted.restore(f.project.id);
+    expect(restarted.view(f.project.id)).toMatchObject({
+      restored: true,
+      snapshot: { id: first.id },
+    });
+    expect(restarted.overview(f.project.id).snapshot?.overview).toBeTruthy();
+    const next = (await restarted.refresh(f.project.id)).snapshot!;
+    expect(next.metrics!.filesRead).toBeGreaterThan(0);
+    expect(next.metrics!.parsed).toBeGreaterThan(0);
+    expect(restarted.view(f.project.id).restored).toBe(false);
+    expect(
+      JSON.parse(gunzipSync(await readFile(filename)).toString()).version,
+    ).toBe(2);
+    const again = new SnapshotStore(f.runtime.registry);
+    await again.restore(f.project.id);
+    expect(again.view(f.project.id).snapshot?.id).toBe(next.id);
+
+    saved.version = 999;
+    await writeFile(filename, gzipSync(JSON.stringify(saved)));
+    expect(await new SnapshotCache(f.dataDir).load(f.project)).toBeNull();
   } finally {
     await f.runtime.app.close();
   }

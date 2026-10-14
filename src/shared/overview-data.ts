@@ -1,5 +1,6 @@
 import {
   contributionSummary,
+  contributionDiagnostics,
   type ContributionSummary,
 } from "./product-contribution.js";
 import {
@@ -8,6 +9,7 @@ import {
   roadmapSummaries,
 } from "./overview-focus.js";
 import type { Snapshot } from "./types.js";
+import { requirementWork, type RequirementWork } from "./overview-progress.js";
 import type {
   ProductItem,
   ProductMetadata,
@@ -32,6 +34,7 @@ export type OverviewReport = Pick<
   >;
 };
 export interface OverviewRequirement extends Item {
+  work?: RequirementWork;
   description: string;
   contributionSummary?: ContributionSummary;
   taskState: ReturnType<typeof overviewTaskStates>;
@@ -139,11 +142,13 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
       requirementBindings(product!, item),
     ]),
   );
+  const contributionIssues = contributionDiagnostics(product?.bindings || []);
   function requirement(item: ProductItem): OverviewRequirement {
     const rows = bindings.get(item.key)!;
     return {
       ...itemSummary(item),
       description: requirementDescription(item),
+      work: requirementWork(snapshot, rows, contributionIssues),
       contributionSummary: contributionSummary(rows, item.key),
       taskState: overviewTaskStates(snapshot, rows),
       firstTask: rows

@@ -242,10 +242,11 @@ it("keeps trusted Task lifecycle/navigation when another row conflicts, and reta
   const parentCard = overview.match(
     /<article[^>]*data-overview-card="A"[^>]*>[\s\S]*?<\/article>/,
   )![0];
-  expect(parentCard).toContain("共 3 个 Task，已关闭 1，身份未确认 2");
+  expect(parentCard).toContain("共 1 个唯一 Task 身份，已关闭 1");
+  expect(parentCard).toContain("身份未知关系 2");
   expect(parentCard).not.toContain("已完成");
   expect(parentCard).toContain("已关闭</span><b>1</b>");
-  expect(parentCard).toContain("身份未确认</span><b>2</b>");
+  expect(parentCard).not.toContain("身份未确认</span><b>2</b>");
   expect(parentCard).toContain("关联待核对 · 3");
 });
 it("extracts literal report sections with exact source lines, ignoring quoted/code headings", () => {

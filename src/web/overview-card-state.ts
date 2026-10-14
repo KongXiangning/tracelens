@@ -69,7 +69,15 @@ export function overviewReportVerdict({
 export function overviewRequirementSignals(item: OverviewRequirement) {
   const verdicts = new Map<string, OverviewVerdict>();
   for (const record of item.assessmentRecords) {
-    const verdict = overviewReportVerdict(record);
+    const original = overviewReportVerdict(record);
+    const verdict: OverviewVerdict = original.review
+      ? {
+          ...original,
+          conclusion: "undetermined",
+          label: "适用性待核对",
+          symbol: "?",
+        }
+      : original;
     const key = `${verdict.conclusion}:${verdict.review}`;
     const previous = verdicts.get(key);
     verdicts.set(key, {

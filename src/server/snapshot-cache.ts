@@ -44,7 +44,7 @@ export class SnapshotCache {
         ).toString("utf8"),
       );
       if (
-        value.version !== version ||
+        ![1, version].includes(value.version) ||
         value.root !== project.root ||
         value.configVersion !== project.configVersion ||
         value.config !== configFingerprint(project.config) ||
@@ -59,6 +59,16 @@ export class SnapshotCache {
           !Array.isArray(snapshot.tasks))
       )
         return null;
+      if (value.version !== version) {
+        // Legacy results remain readable while the UI refreshes them. Never
+        // reuse old parser results or the unchanged-tree shortcut after upgrade.
+        return {
+          snapshot: snapshot
+            ? { ...snapshot, treeFingerprint: undefined }
+            : null,
+          files: [],
+        };
+      }
       return { snapshot, files: value.files };
     } catch {
       // Missing/corrupt/old caches are disposable; project registration remains usable.

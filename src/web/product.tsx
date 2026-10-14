@@ -523,7 +523,7 @@ export function ProductSourceRow({
     </li>
   );
 }
-function ProductEvidence({
+export function ProductEvidence({
   sources,
   product,
   ownerKey,

@@ -5,6 +5,8 @@ import {
 } from "./overview-focus";
 import {
   contributionDiagnostics,
+  contributionClass,
+  contributionLabels,
   contributionLabel,
   contributionSummary,
 } from "../shared/product-contribution";
@@ -28,6 +30,7 @@ import {
 } from "./overview-card-state";
 import { OverviewFilterBar } from "./overview-filters";
 import { navigationScrollContainer } from "./navigation-scroll";
+import { progressWindow } from "../shared/overview-progress";
 import { useTemporaryNodePositions } from "./temporary-node-positions";
 import {
   ReactFlow,
@@ -60,6 +63,7 @@ import {
   ProductDetail,
   Body as ProductBody,
   ProductStatusPanel,
+  ProductEvidence,
   type ProductContext,
   type OverviewContext,
 } from "./product";
@@ -1238,6 +1242,7 @@ export function ScopedConclusion({
 }
 const storedOverviewFilters = new Map<string, OverviewFilters>();
 const storedFullRange = new Map<string, boolean>();
+const storedProgress = new Map<string, string>();
 export const OverviewV3 = memo(
   function OverviewV3({
     context,
@@ -1248,6 +1253,28 @@ export const OverviewV3 = memo(
     planning?: () => void;
   }) {
     const [assessmentKey, setAssessmentKey] = useState<string>();
+    const [progressAnchor, setProgressAnchor] = useState(() => {
+      const id = context.snapshot.projectId;
+      if (typeof window === "undefined") return storedProgress.get(id) || "";
+      try {
+        return (
+          window.localStorage.getItem(`tracelens-progress:${id}`) ||
+          storedProgress.get(id) ||
+          ""
+        );
+      } catch {
+        return storedProgress.get(id) || "";
+      }
+    });
+    useEffect(() => {
+      const id = context.snapshot.projectId;
+      storedProgress.set(id, progressAnchor);
+      try {
+        window.localStorage.setItem(`tracelens-progress:${id}`, progressAnchor);
+      } catch {
+        /* Reading preferences still work without storage. */
+      }
+    }, [progressAnchor, context.snapshot.projectId]);
     const [fullRange, setFullRange] = useState(
       () => storedFullRange.get(context.snapshot.projectId) || false,
     );
@@ -1276,18 +1303,56 @@ export const OverviewV3 = memo(
         ),
       [data],
     );
-    const roadmap = planned.map((item, index) => ({ item, index }));
+    const locatedPlans =
+      data.roadmapSummary?.filter(
+        (plan) =>
+          plan.intentState === "adopted" &&
+          plan.readable &&
+          plan.status === "current" &&
+          plan.location === "current-task-binding",
+      ) || [];
+    const schedule = locatedPlans.length === 1 ? locatedPlans[0] : undefined;
+    const focusWindow = progressWindow(
+      planned,
+      progressAnchor,
+      schedule
+        ? {
+            planId: schedule.planId,
+            targets: schedule.workItems
+              .filter((work) => work.state === "included")
+              .flatMap(
+                (work) => work.targets?.map((target) => target.target) || [],
+              ),
+          }
+        : undefined,
+    );
+    const roadmap = planned.map((item, index) => ({ item, index })).reverse();
     const visibleRoadmap = roadmap.filter(({ item }) =>
       matchesOverviewFilters(signals.get(item.key)!, filters),
     );
     const visibleUnordered = unordered
       .map((item, index) => ({ item, index }))
+      .reverse()
       .filter(({ item }) =>
         matchesOverviewFilters(signals.get(item.key)!, filters),
       );
     const filtersActive = overviewFiltersActive(filters);
+    const focusedRoadmap = visibleRoadmap.filter(({ item }) =>
+      focusWindow.keys.has(item.key),
+    );
     const displayedRoadmap =
-      fullRange || filtersActive ? visibleRoadmap : visibleRoadmap.slice(0, 4);
+      fullRange || filtersActive ? visibleRoadmap : focusedRoadmap;
+    const progressLabels = {
+      selected: "按所选位置",
+      current: "按当前直接实施任务",
+      schedule: "按当前路线图工作项",
+      recorded: "按最近直接工作记录",
+      unlocated: "",
+    };
+    const progressMessage =
+      focusWindow.basis === "unlocated"
+        ? "尚无可靠的直接工作定位，先预览登记起点；历史项目可选择进度位置。"
+        : `${progressLabels[focusWindow.basis]}聚焦 ${focusWindow.anchor?.id} 附近；${focusWindow.planId ? `接下来按 ${focusWindow.planId} 的明确安排展示。` : "相邻需求为顺序预览，具体下一步以近期安排为准。"}`;
     const conclusionCounts = Object.fromEntries(
       overviewConclusionOptions.map((option) => [
         option.value,
@@ -1308,9 +1373,17 @@ export const OverviewV3 = memo(
       const { taskState, assessmentRecords, dependencies, childCount } = item;
       const total = taskState.total + taskState.unconfirmed;
       const { verdicts, conclusions, review } = signals.get(item.key)!;
-      const taskSummary = taskState.states
+      const lifecycleStates = taskState.states.filter(
+        (state) => state.label !== "身份未确认",
+      );
+      const taskSummary = lifecycleStates
         .map((state) => `${state.label} ${state.count}`)
         .join("，");
+      let progressTag = "近期范围";
+      if (focusWindow.anchor?.key === item.key) progressTag = "关注位置";
+      else if (focusWindow.next.has(item.key))
+        progressTag = focusWindow.planId ? "近期安排" : "相邻预览";
+      else if (item.work?.current) progressTag = "当前关联";
       return (
         <article
           className="overview-route-card"
@@ -1321,7 +1394,7 @@ export const OverviewV3 = memo(
           <div
             className="overview-card-verdict-strip"
             role="img"
-            aria-label={`报告结论：${verdicts.map((verdict) => verdict.label).join("、") || "无验收记录"}${review ? "；待核对" : ""}`}
+            aria-label={`当前适用的范围结论：${verdicts.map((verdict) => verdict.label).join("、") || "无验收记录"}${review ? "；待核对" : ""}`}
           >
             {conclusions.map((conclusion) => (
               <span key={conclusion} data-conclusion={conclusion} />
@@ -1337,6 +1410,9 @@ export const OverviewV3 = memo(
             <span className="overview-route-code" title={item.id}>
               {item.id}
             </span>
+            {!fullRange && !filtersActive && (
+              <span className="overview-progress-tag">{progressTag}</span>
+            )}
             {review && (
               <span
                 className="overview-review-marker"
@@ -1369,7 +1445,7 @@ export const OverviewV3 = memo(
             >
               <div className="overview-card-section-heading">
                 <span>
-                  验收记录 <small>按报告范围</small>
+                  范围验收 <small>当前适用结论</small>
                 </span>
                 {assessmentRecords.length > 0 && (
                   <button
@@ -1413,39 +1489,50 @@ export const OverviewV3 = memo(
             </div>
             <div
               className="overview-task-summary"
-              aria-label={`共 ${total} 个 Task${taskSummary ? `，${taskSummary}` : ""}`}
+              aria-label={`共 ${taskState.total} 个唯一 Task 身份${taskSummary ? `，${taskSummary}` : ""}`}
             >
               <div className="overview-card-section-heading">
-                <span>关联 Task</span>
-                <strong>{total}</strong>
+                <span>
+                  工作类型 <small>按 Task 身份</small>
+                </span>
               </div>
               <ContributionCounts summary={item.contributionSummary} compact />
+              <div className="overview-card-section-heading overview-lifecycle-heading">
+                <span>Task 生命周期</span>
+                <strong>{taskState.total}</strong>
+              </div>
               <div className="overview-task-bar" aria-hidden="true">
-                {taskState.states.map((state) => (
+                {lifecycleStates.map((state) => (
                   <span
                     key={state.label}
                     data-tone={state.tone}
-                    style={{ width: `${(state.count / total) * 100}%` }}
+                    style={{
+                      width: `${(state.count / taskState.total) * 100}%`,
+                    }}
                   />
                 ))}
               </div>
-              {total ? (
+              {taskState.total ? (
                 <div className="overview-task-states" title={taskSummary}>
-                  {taskState.states.slice(0, 3).map((state) => (
+                  {lifecycleStates.slice(0, 3).map((state) => (
                     <span key={state.label}>
                       <i data-tone={state.tone} />
                       <span>{state.label}</span>
                       <b>{state.count}</b>
                     </span>
                   ))}
-                  {taskState.states.length > 3 && (
+                  {lifecycleStates.length > 3 && (
                     <button onClick={() => context.openProduct(item.key)}>
-                      另 {taskState.states.length - 3} 种状态 ↗
+                      另 {lifecycleStates.length - 3} 种状态 ↗
                     </button>
                   )}
                 </div>
               ) : (
-                <p className="overview-task-empty">尚未记录 Task 关联</p>
+                <p className="overview-task-empty">
+                  {total
+                    ? "Task 身份待确认，生命周期待核对"
+                    : "尚未记录 Task 关联"}
+                </p>
               )}
             </div>
             <div className="overview-route-predecessor">
@@ -1512,11 +1599,13 @@ export const OverviewV3 = memo(
         <FocusResults data={data} context={context} />
         <section className="overview-route-heading" aria-label="完整范围标题">
           <div>
-            <h2>
-              完整范围
+            <h2
+              aria-label={fullRange || filtersActive ? "完整范围" : "当前进度"}
+            >
+              {fullRange || filtersActive ? "完整范围" : "当前进度"}
               <span className="overview-semantic-label">需求全景</span>
             </h2>
-            <p>已登记需求按原展示顺序浏览；折叠不表示尚未开始</p>
+            <p>需求按登记序号倒序展示 · 收起远期需求，随时查看完整范围</p>
           </div>
           <div className="overview-route-count">
             已登记需求 <b>{String(planned.length).padStart(2, "0")}</b>
@@ -1525,13 +1614,39 @@ export const OverviewV3 = memo(
           </div>
         </section>
         <OverviewFilterBar
+          progress={{
+            description: progressMessage,
+            control: (
+              <label className="overview-task-filter overview-progress-filter">
+                进度定位
+                <select
+                  aria-label="进度定位"
+                  value={progressAnchor}
+                  onChange={(event) => {
+                    setProgressAnchor(event.target.value);
+                    setFullRange(false);
+                  }}
+                >
+                  <option value="">自动：当前任务或最近直接工作</option>
+                  {planned.map((item, index) => (
+                    <option key={item.key} value={item.key}>
+                      {String(index + 1).padStart(2, "0")} · {item.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ),
+          }}
           filters={filters}
           change={setFilters}
           counts={conclusionCounts}
           reviewCount={
             [...signals.values()].filter((value) => value.review).length
           }
-          shown={visibleRoadmap.length + visibleUnordered.length}
+          shown={
+            displayedRoadmap.length +
+            (filtersActive ? visibleUnordered.length : 0)
+          }
           total={planned.length + unordered.length}
         />
         <section className="overview-route-grid" aria-label="完整需求范围">
@@ -1556,7 +1671,7 @@ export const OverviewV3 = memo(
             </div>
           )}
         </section>
-        {!filtersActive && visibleRoadmap.length > 4 && (
+        {!filtersActive && visibleRoadmap.length > focusedRoadmap.length && (
           <button
             className="overview-full-range-toggle"
             aria-expanded={fullRange}
@@ -1564,7 +1679,7 @@ export const OverviewV3 = memo(
           >
             {fullRange
               ? "收起完整范围"
-              : `展开完整范围 · 另 ${visibleRoadmap.length - 4} 项`}
+              : `展开完整范围 · 另 ${visibleRoadmap.length - focusedRoadmap.length} 项`}
           </button>
         )}
         {filtersActive && visibleUnordered.length > 0 ? (
@@ -1591,9 +1706,12 @@ export const OverviewV3 = memo(
               {() =>
                 unordered.length ? (
                   <div className="overview-unordered-grid">
-                    {unordered.map((item, index) =>
-                      card(item, roadmap.length + index),
-                    )}
+                    {unordered
+                      .map((item, index) => ({ item, index }))
+                      .reverse()
+                      .map(({ item, index }) =>
+                        card(item, roadmap.length + index),
+                      )}
                   </div>
                 ) : (
                   <p>当前没有未指定顺序的需求。</p>
@@ -1606,7 +1724,7 @@ export const OverviewV3 = memo(
           <span>
             <b>阅读方式</b>　目标 → 需求 → Task → Step
           </span>
-          <span>验收结论保留报告范围；Task 数量与状态单独展示</span>
+          <span>工作类型与 Task 生命周期不推导需求已开始、已实现或已满足</span>
           <span>TraceLens 仅读取与展示，不决定需求顺序</span>
         </footer>
         <AssessmentOverview
@@ -1847,7 +1965,7 @@ function TaskReadingPanel({
       <section className="requirements-v3-section">
         <div className="requirements-v3-section-heading">
           <h3>承接这部分要求的工作</h3>
-          <span className="requirements-v3-meta">{rows.length} 个去重身份</span>
+          <span className="requirements-v3-meta">{rows.length} 组工作记录</span>
         </div>
         <p className="requirements-v3-note">
           {sourceText}
@@ -1948,8 +2066,15 @@ function TaskReadingPanel({
                           ：{binding.binding.coverage}
                         </p>
                         <p>
-                          <strong>{contributionLabel(binding.binding)}</strong>{" "}
-                          · {binding.binding.role} · {binding.binding.origin}
+                          <strong>
+                            {contributionClass(binding, contributionIssues) ===
+                            "conflict"
+                              ? contributionLabels.conflict
+                              : contributionLabel(binding.binding)}
+                          </strong>{" "}
+                          · 已保存 {binding.binding.role} +{" "}
+                          {binding.binding.contribution || "未分类"} ·{" "}
+                          {binding.binding.origin}
                         </p>
                         {binding.binding.reason && (
                           <p>理由：{binding.binding.reason}</p>
@@ -1962,6 +2087,15 @@ function TaskReadingPanel({
                         <p className="requirements-v3-meta">
                           {binding.match.detail}
                         </p>
+                        <ProductEvidence
+                          sources={[
+                            binding.binding.task.source,
+                            ...(binding.binding.sources || []),
+                          ]}
+                          product={context.snapshot.product!}
+                          ownerKey={binding.ownerKey}
+                          open={context.open}
+                        />
                         <SourceButton
                           source={
                             context.snapshot.product!.items.find(
@@ -2053,7 +2187,10 @@ function RequirementOverviewPanel({
   const children = directChildren(product, item);
   const points = acceptancePoints(item);
   const isAssessable = ["goal", "requirement"].includes(item.type);
-  const taskCount = taskRowsForSnapshot(context.snapshot, item).length;
+  const taskSummary = contributionSummary(
+    requirementBindings(product, item),
+    item.key,
+  );
   return (
     <div className="requirements-v3-panel-content">
       {isAssessable ? (
@@ -2139,7 +2276,12 @@ function RequirementOverviewPanel({
         <p>{boundarySummary(item)}</p>
       </section>
       <div className="requirements-v3-tab-cta">
-        <span>关联 {taskCount} 个 Task</span>
+        <span>
+          关联 {taskSummary.uniqueTasks} 个唯一 Task 身份
+          {taskSummary.unconfirmedRelations
+            ? ` · 身份未知关系 ${taskSummary.unconfirmedRelations}`
+            : ""}
+        </span>
         <button className="text-link" onClick={() => openTab("tasks")}>
           查看 Task →
         </button>

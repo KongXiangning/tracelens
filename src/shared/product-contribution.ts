@@ -88,6 +88,7 @@ export function contributionDiagnostics(
   return issues;
 }
 export interface ContributionSummary {
+  workTypes: WorkTypeCount[];
   relations: number;
   direct: number;
   supporting: number;
@@ -110,6 +111,35 @@ export interface ContributionSummary {
     conflict: number;
   }[];
 }
+export const workTypeLabels = {
+  implementation: "直接实施",
+  verification: "直接验证",
+  repair: "直接修复",
+  exploration: "直接探索",
+  supporting: "间接支撑",
+  unclassified: "未分类",
+  conflict: "分类冲突",
+};
+export type WorkType = keyof typeof workTypeLabels;
+export interface WorkTypeCount {
+  type: WorkType;
+  relations: number;
+  uniqueTasks: number;
+  unknownIdentityRelations: number;
+}
+/** Saved classification only; missing basis is diagnosed separately. */
+export function contributionClass(
+  row: ProductBindingView,
+  issues: Map<string, string[]>,
+): ContributionClass {
+  const invalid = issues
+    .get(row.key)
+    ?.some(
+      (issue) =>
+        issue.includes("冲突贡献分类") || issue.includes("reference + direct"),
+    );
+  return invalid ? "conflict" : row.binding.contribution || "unclassified";
+}
 /** Counts saved relationship rows, never started/completed requirements. */
 export function contributionSummary(
   rows: ProductBindingView[],
@@ -126,7 +156,25 @@ export function contributionSummary(
   const tasks = new Map<string, Set<ContributionClass>>();
   const confirmed = new Set<string>();
   const owners = new Map<string, ContributionSummary["owners"][number]>();
+  const workTypes = new Map<
+    WorkType,
+    { count: WorkTypeCount; tasks: Set<string> }
+  >(
+    (Object.keys(workTypeLabels) as WorkType[]).map((type) => [
+      type,
+      {
+        count: {
+          type,
+          relations: 0,
+          uniqueTasks: 0,
+          unknownIdentityRelations: 0,
+        },
+        tasks: new Set<string>(),
+      },
+    ]),
+  );
   const result: ContributionSummary = {
+    workTypes: [],
     relations: active.length,
     direct: 0,
     supporting: 0,
@@ -144,16 +192,16 @@ export function contributionSummary(
     owners: [],
   };
   for (const row of active) {
-    const invalid = issues
-      .get(row.key)
-      ?.some(
-        (issue) =>
-          issue.includes("冲突贡献分类") ||
-          issue.includes("reference + direct"),
-      );
-    const classification: ContributionClass = invalid
-      ? "conflict"
-      : row.binding.contribution || "unclassified";
+    const classification = contributionClass(row, issues);
+    const workType =
+      classification === "direct"
+        ? (row.binding.role as WorkType)
+        : classification;
+    const work = workTypes.get(workType) || workTypes.get("conflict")!;
+    work.count.relations++;
+    if (row.binding.task.task_id === null)
+      work.count.unknownIdentityRelations++;
+    else work.tasks.add(row.binding.task.task_id);
     result[classification]++;
     if (classification === "direct") {
       if (!ownerKey || row.ownerKey === ownerKey) result.ownDirect++;
@@ -185,5 +233,9 @@ export function contributionSummary(
     (classes) => classes.size > 1,
   ).length;
   result.owners = [...owners.values()];
+  result.workTypes = [...workTypes.values()].map(({ count, tasks }) => ({
+    ...count,
+    uniqueTasks: tasks.size,
+  }));
   return result;
 }

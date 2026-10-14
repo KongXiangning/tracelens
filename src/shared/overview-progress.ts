@@ -13,14 +13,13 @@ export interface RequirementWork {
   reasons?: string[];
   historical?: HistoricalWorkEvidence[];
 }
-export function isDirectWorkBinding(
+export function isDirectWorkCandidate(
   row: ProductBindingView,
   issues: Map<string, string[]>,
 ): boolean {
   const binding = row.binding;
   return (
     binding.state === "active" &&
-    binding.origin === "declared" &&
     binding.contribution === "direct" &&
     ["implementation", "repair", "verification", "exploration"].includes(
       binding.role,
@@ -28,6 +27,14 @@ export function isDirectWorkBinding(
     row.match.state === "matched" &&
     binding.task.task_id !== null &&
     !issues.get(row.key)?.some((issue) => !issue.includes("重复关联"))
+  );
+}
+export function isDirectWorkBinding(
+  row: ProductBindingView,
+  issues: Map<string, string[]>,
+): boolean {
+  return (
+    row.binding.origin === "declared" && isDirectWorkCandidate(row, issues)
   );
 }
 export function isWorkBinding(
@@ -91,19 +98,22 @@ export function requirementWork(
     const binding = row.binding;
     if (binding.contribution === "supporting" || binding.role === "reference")
       continue;
+    const historical = isDirectWorkCandidate(row, issues)
+      ? snapshot.historicalWork?.find(
+          (entry) =>
+            entry.bindingKey === row.key &&
+            entry.taskId === binding.task.task_id,
+        )
+      : undefined;
+    if (historical) {
+      result.recorded = true;
+      result.historical!.push(historical);
+      continue;
+    }
     if (!isDirectWorkBinding(row, issues)) {
       if (binding.origin === "inferred")
         pending("推断关联尚未采纳，进展待核对");
       else pending("关联分类、身份或范围依据不足，不能确认工作进展");
-      continue;
-    }
-    const historical = snapshot.historicalWork?.find(
-      (entry) =>
-        entry.bindingKey === row.key && entry.taskId === binding.task.task_id,
-    );
-    if (historical) {
-      result.recorded = true;
-      result.historical!.push(historical);
       continue;
     }
     if (!isWorkBinding(row, issues)) {

@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parse, stringify } from "yaml";
@@ -6,6 +7,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { OverviewV3, ScopedConclusion } from "../src/web/product-v3.js";
 import { buildSnapshot } from "../src/server/snapshot.js";
+import { reconcileAssessmentScopes } from "../src/server/assessment-scopes.js";
 import {
   productView,
   goalRequirements,
@@ -47,7 +49,26 @@ async function fixture() {
       `---\n${stringify(value)}---${raw.slice(end + 4)}`,
     );
   };
-  return { root, read, readSnapshot, mutate };
+  const captureGoalBasis = async () => {
+    const raw = await readFile(
+      path.join(root, "docs/product/PROJECT.md"),
+      "utf8",
+    );
+    await writeFile(path.join(root, "docs/product/GOAL-BEFORE.md"), raw);
+    const manifestFile = path.join(root, ".workflow-system/PRODUCT.yaml");
+    const manifest = parse(await readFile(manifestFile, "utf8"));
+    manifest.source_paths.push("docs/product/GOAL-BEFORE.md");
+    await writeFile(manifestFile, stringify(manifest));
+    await mutate("ASSESSMENTS.md", (items) => {
+      items[0].goal_basis = {
+        kind: "file",
+        path: "docs/product/GOAL-BEFORE.md",
+        item_id: "G-DEMO",
+        sha256: createHash("sha256").update(raw).digest("hex"),
+      };
+    });
+  };
+  return { root, read, readSnapshot, mutate, captureGoalBasis };
 }
 const subject = {
   kind: "working-copy" as const,
@@ -220,6 +241,121 @@ it("degrades changed definitions, scopes and cross-object supersedes without hid
   });
   expect(productView(await f.read()).rootReason).toBe("ROOT_GOAL_UNSPECIFIED");
 });
+
+it("keeps a verified requirement scope applicable when another target's scope is added, changed or removed", async () => {
+  const f = await fixture();
+  await f.captureGoalBasis();
+  await f.mutate("PROJECT.md", (items) => {
+    items
+      .find((i) => i.id === "G-DEMO")
+      .assessment_scopes.push({
+        target: "R-PIPELINE",
+        scope_id: "OTHER",
+        coverage: "independent scope",
+      });
+  });
+  let p = await f.read();
+  expect(selection(p)).toMatchObject({ conclusion: "satisfied", reasons: [] });
+  const check = p.sources.find(
+    (s) =>
+      s.ownerKey === p.items.find((i) => i.id === "A-DEMO")!.key &&
+      s.role === "goal_basis",
+  )!;
+  expect(check.goalScopeComparison).toMatchObject({
+    target: "R-IMPORT",
+    same: true,
+  });
+  expect(check.goalScopeComparison!.basisDefinitionSha256).not.toBe(
+    check.goalScopeComparison!.currentDefinitionSha256,
+  );
+  await f.mutate("PROJECT.md", (items) => {
+    items.find((i) => i.id === "G-DEMO").assessment_scopes.at(-1).coverage =
+      "changed independent scope";
+  });
+  p = await f.read();
+  expect(selection(p)).toMatchObject({ conclusion: "satisfied", reasons: [] });
+  await f.mutate("PROJECT.md", (items) => {
+    items.find((i) => i.id === "G-DEMO").assessment_scopes.pop();
+  });
+  expect(selection(await f.read())).toMatchObject({
+    conclusion: "satisfied",
+    reasons: [],
+  });
+});
+
+it.each(["body", "relation", "goal-kind", "scope"])(
+  "does not ignore a relevant goal %s change alongside an unrelated scope",
+  async (change) => {
+    const f = await fixture();
+    await f.captureGoalBasis();
+    await f.mutate("PROJECT.md", (items) => {
+      const goal = items.find((i) => i.id === "G-DEMO");
+      goal.assessment_scopes.push({
+        target: "R-PIPELINE",
+        scope_id: "OTHER",
+        coverage: "independent",
+      });
+      if (change === "relation")
+        goal.links = [
+          {
+            id: "changed",
+            relation: "supports",
+            target: "G-LIVE",
+            origin: "declared",
+            state: "active",
+          },
+        ];
+      if (change === "goal-kind")
+        goal.goal_kind = goal.goal_kind === "stage" ? "outcome" : "stage";
+      if (change === "scope")
+        goal.assessment_scopes[0].coverage = "changed own coverage";
+    });
+    if (change === "body") {
+      const file = path.join(f.root, "docs/product/PROJECT.md");
+      const raw = await readFile(file, "utf8");
+      await writeFile(file, raw.replace("## [G-DEMO]", "## [G-DEMO] Changed"));
+    }
+    const result = selection(await f.read());
+    expect(result.conclusion).toBe("undetermined");
+    expect(result.reasons).toContain("goal-definition-changed");
+  },
+);
+
+it.each(["changed", "missing", "identity", "digest", "algorithm"])(
+  "keeps scope applicability pending for %s goal basis evidence",
+  async (condition) => {
+    const f = await fixture();
+    await f.captureGoalBasis();
+    await f.mutate("PROJECT.md", (items) => {
+      items
+        .find((i) => i.id === "G-DEMO")
+        .assessment_scopes.push({
+          target: "R-PIPELINE",
+          scope_id: "OTHER",
+          coverage: "independent",
+        });
+    });
+    const snapshot = await f.readSnapshot();
+    const product = snapshot.product!;
+    const report = product.items.find((i) => i.id === "A-DEMO")!;
+    const check = product.sources.find(
+      (s) => s.ownerKey === report.key && s.role === "goal_basis",
+    )!;
+    if (condition === "changed") check.byteState = "changed";
+    if (condition === "missing")
+      snapshot.documents = snapshot.documents.filter(
+        (d) => d.id !== check.source!.documentId,
+      );
+    if (condition === "identity" && check.reference.kind === "file")
+      check.reference.item_id = "G-LIVE";
+    if (condition === "digest") check.definitionSha256 = "invalid";
+    if (condition === "algorithm") check.definitionAlgorithm = "unknown";
+    reconcileAssessmentScopes(product, snapshot.documents);
+    expect(check.goalScopeComparison).toBeUndefined();
+    expect(selection(product).conclusion).toBe("undetermined");
+    expect(selection(product).reasons).toContain("goal-definition-changed");
+  },
+);
 it("matches production assessment metadata and separate-storage checks for the three cloud reproductions", async () => {
   for (const variant of ["unfixed", "invalid-time", "mixed-storage"]) {
     const f = await fixture();

@@ -3,7 +3,7 @@ import type { RootContent } from "mdast";
 import type { Document, HistoricalWorkEvidence } from "../shared/types.js";
 import type { ProductSnapshot } from "../shared/product-types.js";
 import { contributionDiagnostics } from "../shared/product-contribution.js";
-import { isDirectWorkBinding } from "../shared/overview-progress.js";
+import { isDirectWorkCandidate } from "../shared/overview-progress.js";
 import { parseMarkdown } from "./parser.js";
 
 /** Consume explicit saved archive fields, not status, proposed work or quoted snapshots. */
@@ -87,7 +87,10 @@ export function readHistoricalWork(
   const result: HistoricalWorkEvidence[] = [];
   const parsed = new Map<string, HistoricalWorkEvidence | undefined>();
   for (const row of product.bindings) {
-    if (!isDirectWorkBinding(row, issues) || row.binding.task.step_id) continue;
+    // Origin describes the association's provenance, not whether archived work happened.
+    // Verified historical work never adopts an inferred association or creates current work.
+    if (!isDirectWorkCandidate(row, issues) || row.binding.task.step_id)
+      continue;
     const reference = row.binding.task.source;
     if (reference.kind !== "file" || !reference.sha256) continue;
     const check = product.sources.find(

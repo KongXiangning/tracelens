@@ -265,6 +265,20 @@ export function selectAssessment(
       const algorithm = m[`${prefix}_definition_algorithm`],
         digest = m[`${prefix}_definition_sha256`],
         basis = m[`${prefix}_basis`];
+      const checked = product.sources.find(
+        (s) => s.ownerKey === report.key && s.role === `${prefix}_basis`,
+      );
+      const comparison = checked?.goalScopeComparison;
+      // A verified captured goal may differ only in other assessment scopes.
+      // Its original whole-definition digest remains checked against the source below.
+      const sameGoalScope =
+        prefix === "goal" &&
+        target !== goal &&
+        comparison?.same &&
+        comparison.target === target.id &&
+        comparison.scopeId === scope.scope_id &&
+        comparison.basisDefinitionSha256 === digest &&
+        comparison.currentDefinitionSha256 === definition.definitionSha256;
       if (
         [
           "vnext-product-definition/v1",
@@ -276,12 +290,10 @@ export function selectAssessment(
       if (
         algorithm === definition.definitionAlgorithm &&
         digest &&
-        digest !== definition.definitionSha256
+        digest !== definition.definitionSha256 &&
+        !sameGoalScope
       )
         reasons.push(`${name}-changed`);
-      const checked = product.sources.find(
-        (s) => s.ownerKey === report.key && s.role === `${prefix}_basis`,
-      );
       if (
         !digest ||
         !basis ||

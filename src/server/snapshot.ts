@@ -49,6 +49,7 @@ import { RuntimeReader, runtimeTasks } from "./runtime-reader.js";
 import { readTaskTimes } from "./task-times.js";
 import { readRequirementWork } from "./requirement-work.js";
 import { readHistoricalWork } from "./historical-work.js";
+import { reconcileAssessmentScopes } from "./assessment-scopes.js";
 import type { TaskTimes } from "../shared/runtime-types.js";
 const runtimeReader = new RuntimeReader();
 interface BuildContext {
@@ -426,6 +427,7 @@ export async function buildSnapshot(
       })),
     );
   }
+  reconcileAssessmentScopes(scan.product, documents);
   return {
     phase: runtimeContext.scan?.coreOnly ? "core" : "complete",
     metrics: {
@@ -475,6 +477,7 @@ export class SnapshotStore {
   private cache: SnapshotCache;
   private indexes = new Map<string, { version: number; index: FileIndex }>();
   private restored = new Set<string>();
+  private derivedSnapshots = new WeakSet<Snapshot>();
   private loaded = new Map<string, Promise<void>>();
   private overviewCache = new WeakMap<Snapshot, OverviewSnapshot>();
   private isCurrent(project: Project): boolean {
@@ -523,11 +526,14 @@ export class SnapshotStore {
   view(id: string): SnapshotView {
     const project = this.registry.get(id);
     const snapshot = this.snapshots.get(id) || null;
-    if (snapshot)
-      snapshot.historicalWork ??= readHistoricalWork(
+    if (snapshot && !this.derivedSnapshots.has(snapshot)) {
+      reconcileAssessmentScopes(snapshot.product, snapshot.documents);
+      snapshot.historicalWork = readHistoricalWork(
         snapshot.product,
         snapshot.documents,
       );
+      this.derivedSnapshots.add(snapshot);
+    }
     return {
       restored: this.restored.has(id),
       snapshot,

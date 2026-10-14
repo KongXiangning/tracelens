@@ -175,6 +175,13 @@ export interface ProductManifest {
   extensions?: Record<string, unknown>;
 }
 export interface ProductSourceCheck {
+  goalScopeComparison?: {
+    target: string;
+    scopeId: string;
+    basisDefinitionSha256: string;
+    currentDefinitionSha256: string;
+    same: boolean;
+  };
   definitionAlgorithm?: string | null;
   definitionSha256?: string | null;
   id: string;

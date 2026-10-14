@@ -114,7 +114,6 @@ it.each([
   },
 );
 it.each([
-  "inferred",
   "supporting",
   "changed",
   "unread",
@@ -123,7 +122,6 @@ it.each([
   "source-missing",
 ])("keeps %s historical evidence pending", (condition) => {
   const f = fixture();
-  if (condition === "inferred") f.row.binding.origin = "inferred";
   if (condition === "supporting") f.row.binding.contribution = "supporting";
   if (condition === "changed") f.check.byteState = "changed";
   if (condition === "unread") f.check.readState = "not-read";
@@ -132,6 +130,37 @@ it.each([
   if (condition === "identity-mismatch")
     f.row.binding.task.task_id = "different-task";
   if (condition === "source-missing") f.product.sources = [];
+  expect(readHistoricalWork(f.product, [f.document])).toEqual([]);
+});
+
+it("records inferred direct historical work only with captured delivery and identity proof, retaining provenance", () => {
+  const f = fixture();
+  f.row.binding.origin = "inferred";
+  const history = readHistoricalWork(f.product, [f.document]);
+  expect(history).toHaveLength(1);
+  expect(
+    requirementWork(
+      {
+        product: f.product,
+        historicalWork: history,
+        tasks: [],
+      } as unknown as Snapshot,
+      [f.row],
+    ),
+  ).toMatchObject({ recorded: true, current: false, pending: false });
+  expect(f.row.binding.origin).toBe("inferred");
+  expect(readHistoricalWork(f.product, [])).toEqual([]);
+  const unsupported = fixture(
+    "## 验收记录\n\n- status: closed\n- conclusion: partially-satisfied\n",
+  );
+  unsupported.row.binding.origin = "inferred";
+  expect(
+    readHistoricalWork(unsupported.product, [unsupported.document]),
+  ).toEqual([]);
+  const conflicting = structuredClone(f.row);
+  conflicting.key = "conflicting";
+  conflicting.binding.contribution = "supporting";
+  f.product.bindings.push(conflicting);
   expect(readHistoricalWork(f.product, [f.document])).toEqual([]);
 });
 

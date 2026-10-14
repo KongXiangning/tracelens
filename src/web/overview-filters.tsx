@@ -3,6 +3,8 @@ import {
   overviewConclusionOptions,
   overviewFiltersActive,
   overviewTaskOptions,
+  requirementVisibilityOptions,
+  type RequirementVisibility,
   type ConclusionFilter,
   type OverviewFilters,
 } from "./overview-card-state";
@@ -14,6 +16,7 @@ export function OverviewFilterBar({
   reviewCount,
   shown,
   total,
+  visibility,
 }: {
   filters: OverviewFilters;
   change: (next: OverviewFilters) => void;
@@ -21,6 +24,11 @@ export function OverviewFilterBar({
   reviewCount: number;
   shown: number;
   total: number;
+  visibility: {
+    value: RequirementVisibility;
+    change: (value: RequirementVisibility) => void;
+    counts: Record<RequirementVisibility, number>;
+  };
 }) {
   function toggleConclusion(value: ConclusionFilter) {
     const conclusions = filters.conclusions.includes(value)
@@ -30,6 +38,26 @@ export function OverviewFilterBar({
   }
   return (
     <section className="overview-filters" aria-label="完整范围筛选">
+      <fieldset className="overview-visibility-filters">
+        <legend>需求显示范围</legend>
+        <div role="group" aria-label="需求显示范围">
+          {requirementVisibilityOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-label={`显示${option.label}`}
+              aria-pressed={visibility.value === option.value}
+              onClick={() => visibility.change(option.value)}
+            >
+              {option.label}
+              <b>{visibility.counts[option.value]}</b>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <p>
+        已开展只显示已有直接工作依据的需求；进展待核对可包含已有局部工作、但其他范围依据仍待确认的需求。
+      </p>
       <fieldset className="overview-conclusion-filters">
         <legend>
           当前适用的范围结论 <span>可多选</span>

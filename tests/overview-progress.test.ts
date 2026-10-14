@@ -104,6 +104,26 @@ it("does not hide older execution records or include neighbouring/scheduled requ
 it("hides every card without actual scope evidence instead of previewing the first few", () => {
   expect(requirements().filter(hasRequirementWork)).toEqual([]);
 });
+it("separates explicit not-started steps from unknown or unadopted evidence", () => {
+  const row = binding("direct");
+  const value = snapshot(row);
+  value.runtime!.tasks[0].steps = [{ id: "S1", state: "not-started" }];
+  expect(requirementWork(value, [row])).toMatchObject({
+    recorded: false,
+    pending: false,
+    notStarted: true,
+  });
+  delete row.binding.task.step_id;
+  expect(requirementWork(value, [row])).toMatchObject({
+    recorded: false,
+    pending: true,
+    notStarted: false,
+  });
+  row.binding.origin = "inferred";
+  expect(requirementWork(value, [row]).reasons!.join()).toContain(
+    "推断关联尚未采纳",
+  );
+});
 it("keeps drafts, inferred and conflicting classifications out of automatic work evidence", () => {
   const row = binding("direct");
   const value = snapshot(row);

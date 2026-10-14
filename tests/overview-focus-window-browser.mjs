@@ -252,6 +252,27 @@ const snapshot = {
 };
 delete snapshot.product;
 delete snapshot.documents;
+const otherProject = await runtime.registry.add({
+  name: "独立显示选择",
+  root: await (async () => {
+    const directory = path.join(run, "other-project");
+    await cp(root, directory, { recursive: true });
+    return directory;
+  })(),
+  config: defaultConfig(),
+});
+const otherBefore = await tree(otherProject.root);
+const otherData = {
+  ...structuredClone(data),
+  planned: [structuredClone(data.planned[0]), structuredClone(data.planned[5])],
+  unordered: [],
+  currentWork: undefined,
+};
+const otherSnapshot = {
+  ...snapshot,
+  projectId: otherProject.id,
+  overview: otherData,
+};
 const errors = [],
   writes = [];
 let browser;
@@ -268,10 +289,17 @@ try {
   page.on("request", (request) => {
     if (request.method() !== "GET") writes.push(request.url());
   });
-  await page.route("**/api/projects/*/overview*", (route) =>
-    route.fulfill({ json: { ...view, snapshot } }),
-  );
+  await page.route("**/api/projects/*/overview*", (route) => {
+    const projectId = new URL(route.request().url()).pathname.split("/")[3];
+    return route.fulfill({
+      json: {
+        ...view,
+        snapshot: projectId === otherProject.id ? otherSnapshot : snapshot,
+      },
+    });
+  });
   await page.goto(base);
+  await page.locator(`[data-project-id="${project.id}"]`).click();
   const cards = () =>
     page
       .locator("[data-overview-card]")
@@ -372,6 +400,61 @@ try {
     "Closed Tasks without an execution never enter the cards",
   );
   await filter.selectOption("all");
+  await filter.selectOption("active");
+  await page.getByRole("button", { name: "显示全部需求", exact: true }).click();
+  assert.equal(
+    await filter.inputValue(),
+    "all",
+    "Visibility changes clear secondary filters",
+  );
+  assert.equal(
+    (await cards()).length,
+    25,
+    "All requirements appear inline without a limit",
+  );
+  assert.match(
+    await page.locator('[data-overview-card="R06"]').innerText(),
+    /未开始/,
+  );
+  assert.match(
+    await page.locator('[data-overview-card="R10"]').innerText(),
+    /进展待核对/,
+  );
+  await page.reload();
+  await page.locator('[data-overview-card="R24"]').waitFor();
+  assert.equal((await cards()).length, 25);
+  assert.equal(
+    await page
+      .getByRole("button", { name: "显示全部需求", exact: true })
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+  await page
+    .getByRole("button", { name: "显示进展待核对", exact: true })
+    .click();
+  assert.deepEqual(
+    await cards(),
+    ["R10", "R09"],
+    "Unclassified/supporting facts cannot establish scope execution",
+  );
+  await page.locator(`[data-project-id="${otherProject.id}"]`).click();
+  await page.locator('[data-overview-card="R01"]').waitFor();
+  assert.deepEqual(
+    await cards(),
+    ["R01"],
+    "Another project starts with its own default",
+  );
+  await page.getByRole("button", { name: "显示全部需求", exact: true }).click();
+  assert.equal((await cards()).length, 2);
+  await page.locator(`[data-project-id="${project.id}"]`).click();
+  await page.locator('[data-overview-card="R10"]').waitFor();
+  assert.deepEqual(
+    await cards(),
+    ["R10", "R09"],
+    "Project-specific selection survives switching",
+  );
+  await page.getByRole("button", { name: "显示已开展", exact: true }).click();
+  assert.deepEqual(await cards(), expectedCards);
   await page.evaluate(() =>
     localStorage.setItem(
       `tracelens-progress:${document.querySelector("[data-project-id]").dataset.projectId}`,
@@ -401,7 +484,7 @@ try {
   );
   assert.match(
     await page.locator(".overview-empty").innerText(),
-    /尚未读到需求范围的直接执行记录/,
+    /当前显示范围没有需求/,
   );
   [...data.planned, ...data.unordered].forEach((item, index) => {
     item.work = savedWork[index];
@@ -446,6 +529,7 @@ try {
   assert.deepEqual(writes, []);
   assert.deepEqual(errors, []);
   assert.deepEqual(await tree(root), before);
+  assert.deepEqual(await tree(otherProject.root), otherBefore);
   await writeFile(
     path.join(run, "result.json"),
     JSON.stringify(
@@ -457,6 +541,7 @@ try {
           "plan explicit selection and collapse",
           "queued, closed-without-execution, supporting and unclassified scopes remain hidden under filters",
           "no card collapse, no manual progress anchor, no neighbouring-window fallback",
+          "all/pending visibility, secondary-filter reset, reload persistence and project isolation",
           "responsive without overflow",
           "no write requests",
         ],

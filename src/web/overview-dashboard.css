@@ -2210,6 +2210,31 @@
   color: #376549;
   background: #e6eee3;
 }
+.overview-progress-tag[data-pending="true"] {
+  color: #805317;
+  background: #fff2d6;
+}
+.overview-progress-tag[data-not-started="true"] {
+  color: var(--overview-muted);
+  background: #edf0eb;
+}
+.overview-visibility-filters {
+  margin: 0 0 14px;
+  padding: 0 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--overview-rule);
+}
+.overview-visibility-filters legend {
+  margin-bottom: 8px;
+  color: var(--overview-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.overview-visibility-filters > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 @media (max-width: 1000px) {
   .overview-hero:has(.overview-current-work),
   .overview-focus-grid {

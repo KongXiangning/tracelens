@@ -9,6 +9,7 @@ import {
   matchesOverviewFilters,
   overviewRequirementSignals,
   overviewReportVerdict,
+  matchesRequirementVisibility,
   type OverviewFilters,
 } from "../src/web/overview-card-state";
 import { OverviewDashboard } from "../src/web/overview-dashboard";
@@ -85,6 +86,40 @@ it("filters current applicability and retains original verdicts only in report d
   expect(
     matches(requirement([report("undetermined")]), { reviewOnly: true }),
   ).toBe(false);
+});
+it("switches between progressed, all and pending requirements without inventing execution", () => {
+  const progressed = requirement();
+  const pending = requirement();
+  pending.work = {
+    current: false,
+    recorded: false,
+    latestTask: "",
+    pending: true,
+    notStarted: false,
+  };
+  const queued = requirement();
+  queued.work = {
+    current: false,
+    recorded: false,
+    latestTask: "",
+    pending: false,
+    notStarted: true,
+  };
+  expect(
+    [progressed, pending, queued].filter((item) =>
+      matchesRequirementVisibility(item, "progress"),
+    ),
+  ).toEqual([progressed]);
+  expect(
+    [progressed, pending, queued].filter((item) =>
+      matchesRequirementVisibility(item, "all"),
+    ),
+  ).toHaveLength(3);
+  expect(
+    [progressed, pending, queued].filter((item) =>
+      matchesRequirementVisibility(item, "pending"),
+    ),
+  ).toEqual([pending]);
 });
 
 it("matches any selected verdict and combines review and Task conditions", () => {

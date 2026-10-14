@@ -48,6 +48,7 @@ import type { ProjectRegistry } from "./registry.js";
 import { RuntimeReader, runtimeTasks } from "./runtime-reader.js";
 import { readTaskTimes } from "./task-times.js";
 import { readRequirementWork } from "./requirement-work.js";
+import { readHistoricalWork } from "./historical-work.js";
 import type { TaskTimes } from "../shared/runtime-types.js";
 const runtimeReader = new RuntimeReader();
 interface BuildContext {
@@ -451,6 +452,7 @@ export async function buildSnapshot(
     navigation: scan.navigation,
     effectiveRules: scan.effectiveRules,
     product: scan.product,
+    historicalWork: readHistoricalWork(scan.product, documents),
     runtime,
   };
 }
@@ -521,6 +523,11 @@ export class SnapshotStore {
   view(id: string): SnapshotView {
     const project = this.registry.get(id);
     const snapshot = this.snapshots.get(id) || null;
+    if (snapshot)
+      snapshot.historicalWork ??= readHistoricalWork(
+        snapshot.product,
+        snapshot.documents,
+      );
     return {
       restored: this.restored.has(id),
       snapshot,
@@ -707,6 +714,10 @@ export class SnapshotStore {
                 previous.runtime,
               );
               if (!this.isCurrent(project)) return this.view(id);
+              next.historicalWork = readHistoricalWork(
+                next.product,
+                next.documents,
+              );
             }
             this.snapshots.set(id, next);
             this.restored.delete(id);
@@ -898,6 +909,7 @@ export class SnapshotStore {
       );
       if (this.view(id).snapshot?.id !== snapshotId || !this.isCurrent(project))
         throw new AppError("范围执行续读期间上下文已变化", 409);
+      next.historicalWork = readHistoricalWork(next.product, next.documents);
     }
     this.snapshots.set(id, next);
     await this.cache.save(

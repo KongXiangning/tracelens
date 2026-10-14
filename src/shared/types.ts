@@ -134,6 +134,7 @@ export interface ScanFile {
   detail?: string;
 }
 export interface Snapshot {
+  historicalWork?: HistoricalWorkEvidence[];
   treeFingerprint?: string;
   phase?: "core" | "complete";
   metrics?: {
@@ -162,6 +163,12 @@ export interface Snapshot {
   navigation: NavigationReport;
   effectiveRules: Record<DocumentKind, string[]>;
   product?: ProductSnapshot;
+}
+export interface HistoricalWorkEvidence {
+  bindingKey: string;
+  taskId: string;
+  summary: string;
+  source: SourceRef;
 }
 export interface RefreshAttempt {
   phase?: string;

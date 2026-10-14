@@ -21,6 +21,9 @@ import { LazyDetails, PagedItems } from "./lazy-details";
 import {
   defaultOverviewFilters,
   matchesOverviewFilters,
+  matchesRequirementVisibility,
+  requirementVisibilityOptions,
+  type RequirementVisibility,
   overviewConclusionOptions,
   overviewFiltersActive,
   overviewReportVerdict,
@@ -30,7 +33,11 @@ import {
 } from "./overview-card-state";
 import { OverviewFilterBar } from "./overview-filters";
 import { navigationScrollContainer } from "./navigation-scroll";
-import { hasRequirementWork } from "../shared/overview-progress";
+import {
+  hasRequirementWork,
+  requirementProgressPending,
+  requirementWork,
+} from "../shared/overview-progress";
 import { useTemporaryNodePositions } from "./temporary-node-positions";
 import {
   ReactFlow,
@@ -1241,6 +1248,22 @@ export function ScopedConclusion({
   );
 }
 const storedOverviewFilters = new Map<string, OverviewFilters>();
+const storedRequirementVisibility = new Map<string, RequirementVisibility>();
+function readRequirementVisibility(projectId: string): RequirementVisibility {
+  try {
+    const value =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(
+            `tracelens-requirement-visibility:${projectId}`,
+          )
+        : null;
+    if (requirementVisibilityOptions.some((option) => option.value === value))
+      return value as RequirementVisibility;
+  } catch {
+    /* In-memory preferences remain available when storage is blocked. */
+  }
+  return storedRequirementVisibility.get(projectId) || "progress";
+}
 export const OverviewV3 = memo(
   function OverviewV3({
     context,
@@ -1255,6 +1278,21 @@ export const OverviewV3 = memo(
       ? context.snapshot.overview!
       : buildOverviewData(context.snapshot);
     const { planned, unordered, rootGoal } = data;
+    const [visibility, setVisibility] = useState(() =>
+      readRequirementVisibility(context.snapshot.projectId),
+    );
+    useEffect(() => {
+      const id = context.snapshot.projectId;
+      storedRequirementVisibility.set(id, visibility);
+      try {
+        window.localStorage.setItem(
+          `tracelens-requirement-visibility:${id}`,
+          visibility,
+        );
+      } catch {
+        /* Keep the choice for this session. */
+      }
+    }, [visibility, context.snapshot.projectId]);
     const [filters, setFilters] = useState<OverviewFilters>(
       () =>
         storedOverviewFilters.get(context.snapshot.projectId) ||
@@ -1266,16 +1304,17 @@ export const OverviewV3 = memo(
     const signals = useMemo(
       () =>
         new Map(
-          [...data.planned, ...data.unordered]
-            .filter(hasRequirementWork)
-            .map((item) => [item.key, overviewRequirementSignals(item)]),
+          [...data.planned, ...data.unordered].map((item) => [
+            item.key,
+            overviewRequirementSignals(item),
+          ]),
         ),
       [data],
     );
     const roadmap = planned.map((item, index) => ({ item, index })).reverse();
     const visibleRoadmap = roadmap.filter(
       ({ item }) =>
-        hasRequirementWork(item) &&
+        matchesRequirementVisibility(item, visibility) &&
         matchesOverviewFilters(signals.get(item.key)!, filters),
     );
     const visibleUnordered = unordered
@@ -1283,16 +1322,31 @@ export const OverviewV3 = memo(
       .reverse()
       .filter(
         ({ item }) =>
-          hasRequirementWork(item) &&
+          matchesRequirementVisibility(item, visibility) &&
           matchesOverviewFilters(signals.get(item.key)!, filters),
       );
     const filtersActive = overviewFiltersActive(filters);
-    const hiddenCount = planned.length + unordered.length - signals.size;
+    const requirementsInView = [...planned, ...unordered].filter((item) =>
+      matchesRequirementVisibility(item, visibility),
+    );
+    const visibilityCounts = Object.fromEntries(
+      requirementVisibilityOptions.map((option) => [
+        option.value,
+        [...planned, ...unordered].filter((item) =>
+          matchesRequirementVisibility(item, option.value),
+        ).length,
+      ]),
+    ) as Record<RequirementVisibility, number>;
+    const hiddenCount =
+      planned.length +
+      unordered.length -
+      visibleRoadmap.length -
+      visibleUnordered.length;
     const conclusionCounts = Object.fromEntries(
       overviewConclusionOptions.map((option) => [
         option.value,
-        [...signals.values()].filter((value) =>
-          value.conclusions.includes(option.value),
+        requirementsInView.filter((item) =>
+          signals.get(item.key)!.conclusions.includes(option.value),
         ).length,
       ]),
     ) as Record<ConclusionFilter, number>;
@@ -1314,7 +1368,10 @@ export const OverviewV3 = memo(
       const taskSummary = lifecycleStates
         .map((state) => `${state.label} ${state.count}`)
         .join("，");
-      const progressTag = item.work?.current ? "正在进行" : "已进行";
+      let progressTag = "进展待核对";
+      if (item.work?.current) progressTag = "正在进行";
+      else if (hasRequirementWork(item)) progressTag = "已进行";
+      else if (item.work?.notStarted) progressTag = "未开始";
       return (
         <article
           className="overview-route-card"
@@ -1343,7 +1400,20 @@ export const OverviewV3 = memo(
             </span>
             <span
               className="overview-progress-tag"
-              title="按直接关联范围的步骤执行事实展示；验收结论单独核对"
+              data-pending={
+                (!hasRequirementWork(item) &&
+                  requirementProgressPending(item)) ||
+                undefined
+              }
+              data-not-started={item.work?.notStarted || undefined}
+              title={[
+                "工作进展与范围验收分别核对",
+                ...(item.work?.reasons || []),
+                ...(item.work?.historical || []).map(
+                  (entry) =>
+                    `历史工作：${entry.summary} · ${entry.source.path}:${entry.source.line}`,
+                ),
+              ].join("；")}
             >
               {progressTag}
             </span>
@@ -1537,12 +1607,11 @@ export const OverviewV3 = memo(
               当前进度
               <span className="overview-semantic-label">需求全景</span>
             </h2>
-            <p>
-              显示已进行及正在进行的需求，按登记序号倒序排列；以直接范围的步骤执行记录为依据。
-            </p>
+            <p>按登记序号倒序排列；切换显示范围只改变卡片的显示与隐藏。</p>
           </div>
           <div className="overview-route-count">
-            有进展需求 <b>{String(signals.size).padStart(2, "0")}</b>
+            有进展需求{" "}
+            <b>{String(visibilityCounts.progress).padStart(2, "0")}</b>
             <span>/</span>
             已登记需求{" "}
             <b>{String(planned.length + unordered.length).padStart(2, "0")}</b>
@@ -1551,20 +1620,31 @@ export const OverviewV3 = memo(
           </div>
         </section>
         <OverviewFilterBar
+          visibility={{
+            value: visibility,
+            counts: visibilityCounts,
+            change: (value) => {
+              setVisibility(value);
+              setFilters(defaultOverviewFilters());
+            },
+          }}
           filters={filters}
           change={setFilters}
           counts={conclusionCounts}
           reviewCount={
-            [...signals.values()].filter((value) => value.review).length
+            requirementsInView.filter((item) => signals.get(item.key)!.review)
+              .length
           }
           shown={visibleRoadmap.length + visibleUnordered.length}
-          total={signals.size}
+          total={requirementsInView.length}
         />
         <p className="overview-progress-note">
-          已隐藏 {hiddenCount} 项尚未开始或范围执行依据待核对的需求。有 Task
-          关联、Task 已关闭或已有路线图安排，均不作为已进行的依据。
+          当前显示 {visibleRoadmap.length + visibleUnordered.length} /{" "}
+          {planned.length + unordered.length} 项，隐藏 {hiddenCount}{" "}
+          项。缺少进展依据保留为待核对；Task
+          关联、关闭或计划安排不作为已进行的依据。
           <button className="text-link" onClick={requirements}>
-            查看全部需求 ↗
+            查看需求图与详情 ↗
           </button>
         </p>
         <section className="overview-route-grid" aria-label="完整需求范围">
@@ -1572,23 +1652,23 @@ export const OverviewV3 = memo(
             visibleRoadmap.map(({ item, index }) => card(item, index))
           ) : !visibleUnordered.length && filtersActive ? (
             <div className="overview-empty overview-filter-empty">
-              <p>有进展的需求中没有匹配项。</p>
+              <p>当前显示范围中没有匹配项。</p>
               <button onClick={() => setFilters(defaultOverviewFilters())}>
                 清除筛选
               </button>
             </div>
           ) : !visibleUnordered.length ? (
             <div className="overview-empty">
-              尚未读到需求范围的直接执行记录。未开始或依据待核对的需求暂不展示，可在需求视图查看全部范围。
+              当前显示范围没有需求。可切换“全部需求”或“进展待核对”；缺少进展依据不表示未开始。
             </div>
           ) : null}
         </section>
         {visibleUnordered.length > 0 && (
           <section
             className="overview-unordered-details"
-            aria-label="未指定顺序的有进展需求"
+            aria-label="未指定顺序的需求"
           >
-            <h3>未指定顺序 · 有进展 {visibleUnordered.length} 项</h3>
+            <h3>未指定顺序 · 显示 {visibleUnordered.length} 项</h3>
             <div className="overview-unordered-grid">
               {visibleUnordered.map(({ item, index }) =>
                 card(item, planned.length + index),
@@ -1827,6 +1907,11 @@ function TaskReadingPanel({
   const contributionIssues = contributionDiagnostics(
     context.snapshot.product!.bindings,
   );
+  const work = requirementWork(
+    context.snapshot,
+    contributionRows,
+    contributionIssues,
+  );
   const visible = rows.filter((row) => taskMatchesFilter(row, filter));
   const runtime = context.snapshot.runtime;
   const sourceText = runtime
@@ -1850,6 +1935,28 @@ function TaskReadingPanel({
         <ContributionCounts
           summary={contributionSummary(contributionRows, item.key)}
         />
+        {(work.historical?.length || work.pending) && (
+          <section
+            className="requirements-v3-section"
+            aria-label="工作进展依据"
+          >
+            <h4>工作进展依据</h4>
+            {work.historical?.map((entry) => (
+              <div key={entry.bindingKey}>
+                <p>历史已保存的实际工作：{entry.summary}</p>
+                <SourceButton source={entry.source} open={context.open} />
+              </div>
+            ))}
+            {work.reasons?.map((reason) => (
+              <p key={reason} className="requirements-v3-meta">
+                {reason}
+              </p>
+            ))}
+            <p className="requirements-v3-meta">
+              记录的局部工作不代表整个需求已实现或当前范围验收通过。
+            </p>
+          </section>
+        )}
         <div
           className="requirements-v3-segmented"
           role="group"

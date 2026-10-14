@@ -100,7 +100,7 @@ it("keeps scoped acceptance in outcomes without inferring performed work from re
   );
   expect(html).not.toContain("data-overview-card");
   expect(html).toContain("最近确认的成果 · 2");
-  expect(html).toContain("尚未读到需求范围的直接执行记录");
+  expect(html).toContain("缺少进展依据不表示未开始");
   expect(html).not.toContain("overview-donut");
   expect(html.indexOf('class="overview-hero"')).toBeLessThan(
     html.indexOf('class="overview-assessments"'),
@@ -186,7 +186,7 @@ it("keeps all known requirements without a plan and distinguishes plans sharing 
     />,
   );
   expect(html).toContain("需求全景");
-  expect(html).toContain("查看全部需求");
+  expect(html).toContain('aria-label="显示全部需求"');
   expect(html).not.toContain("data-overview-card");
   expect(html).not.toContain("选择要查看的计划");
   expect(html).not.toContain("overview-road-arrow");

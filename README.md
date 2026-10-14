@@ -112,7 +112,6 @@ npm run test:browser
 
 2026-10-03 通用发现修复通过 `npm run check`（39 项测试、类型检查和构建）、`npm run format:check` 及 `npm run test:browser`。浏览器结果见 [acceptance-M7oKgv/result.json](output/playwright/acceptance-M7oKgv/result.json)，覆盖候选搜索、项目 agent 整理提示词、records 开关、自定义盘点目录、保存后手动刷新及 1440/390 候选布局。使用原登记配置只读核对 LawAgent 与 TermLink-rust-source-resolution-codex，分别收录 61/135 份文档并列出 32/66 个候选；已读取原件摘要与读取后磁盘一致，项目登记文件字节未变。真实断链、格式错误及触及 3 层导航上限仍报告，不将收录数量当成项目文档完整度。本次未改被观察项目，也未重跑旧的 10 文件副本脚本。
 
-
 ## 标准产品文档阅读（v0.7）
 
 默认自动读取 vNext 的 Profile、文档中心与 `.workflow-system/PRODUCT.yaml`，无需勾选 PRODUCT。新项目选择后预览文档与产品条目摘要，添加时扫描；项目设置使用“保存并刷新”。旧项目登记在服务启动时一次性升级为自动读取，保留身份、已有规则和排除路径。高级设置默认折叠，明确启用“使用自定义读取配置”后可兼容另一个精确 YAML 入口或手动范围；每次只读取一份 manifest。maintenance paused 仍可阅读。缺失入口、登记文件缺失和读取问题通过“交给 vNext 整理”回到项目中的 maintain-project 讨论、维护，无需用户选择文件或维护文档结构。
@@ -129,11 +128,9 @@ npm run test:browser
 
 浏览器回归仍采用原生产服务方式；`npm run test:browser` 顺序运行旧功能与 PRODUCT 闭环，`npm run test:browser:product` 可单独运行新增场景。默认使用 Playwright Chromium（Windows 默认 Edge），也可设置 `TRACELENS_BROWSER_EXECUTABLE` 指向本机已安装且获准使用的浏览器。`TRACELENS_PREFLIGHT_ONLY=1 node tests/product-browser.mjs` 只准备并核对隔离合成夹具与快照；`TRACELENS_PREPARE_ONLY=1` 则只准备夹具。两者都不算浏览器验收。
 
-
 ### 2026-10-08 独立审查后的范围修复
 
 在本地交付 c46b5a2 上继续修复四项已复现问题：PRODUCT 的排除约束统一覆盖通用导航／手动范围／候选盘点／adopted-plan 和缓存；失败 UTF-8、二进制及后置检查消耗的实际读取字节纳入预算；标准文档的普通 Markdown 引用恢复到旧关联依据；条目分段正文可使用同快照其他条目或文末的引用式定义，保持原文绝对行号。原有真实任务身份、历史依据条目、契约 glob、手动启用及选择失效守卫不变。最新结果见 [交付报告](docs/product-visibility-delivery.md)；浏览器、Windows 和真实外部样本仍按报告保留未验证项。
-
 
 ### 2026-10-09 vNext 自动读取与界面简化
 
@@ -180,7 +177,10 @@ TaskBinding 可记录 `direct`（直接贡献）或 `supporting`（间接支撑�
 - 当前工作保留 Runtime 的真实焦点、来源与读取时间。无绑定或分页外的当前 ID 仍可见。只有同批明确 `step_id`、采用 `plan_ref` 与执行来源匹配时才显示已记录的具体范围执行；准备、采用、active 或关闭不证明需求已开始或满足
 - 最近确认的成果复用范围化 Assessment 选择，按 `checked_at` 排列并保留目标、范围、对象与 revision。原报告已满足但当前适用性待核对时，只在历史／完整范围浏览中保留，不能进入当前成果。无需先补历史 Task
 - 近期安排来自实际 `plan.work_items`。单份已采用且可读的路线图可直接浏览；多份并存需选择，不按时间或文件顺序猜唯一计划。仅按当前 Task 的明确工作项关联显示邻近三项；没有可靠定位时只显示保存的安排，并注明下一项尚未确定。前置工作即使排列在窗口之前也单独列出，不自动视为完成
-- 完整范围保留原登记顺序、筛选、展开与报告入口。默认显示少量卡片，展开只改变工具视图，不表示隐藏项尚未开始。`requirement_order` 是展示顺序，不是路线图或实施顺序
+- 需求卡片提供“已开展（默认）／全部需求／进展待核对”三个显示范围，只隐藏或显示卡片，不折叠、不截取最早几项。“全部需求”在当前总览直接显示全部卡片，切换时清除验收／Task 子筛选；显示范围按项目记忆，刷新后恢复。卡片按登记序号倒序展示，`requirement_order` 不是路线图或实施顺序
+- 历史工作只消费已登记的直接关联及其已读取、身份明确、SHA-256 一致的归档实际改动／实际交付字段，不要求历史 Task 补现代 plan/step 引用。没有工作证据标为“进展待核对”，只有明确范围步骤为 not-started 才标“未开始”。已有局部工作与其他依据待核对可以同时成立；工作进展、Task 生命周期与适用范围验收分别展示，详情保留工作依据与来源
+
+首次交付基线由用户配合 Agent 建立，后续由 vNext 正常工作流维护。TraceLens 只消费已保存事实，不重新分析全部历史 Task，不执行维护脚本或修改被观察项目。
 
 Roadmap 使用固定生产纯比较语义，文件读取由 TraceLens 的有界读取层提供，不执行被观察项目的 product-maintenance helper。注册身份覆盖、源读取或预算不完整时保留安排并显示 `unknown`；`current` 只表示材料与基线一致。详情显示成员、定义／上下文、工作副本、差异、延期、失效例外和来源，不认证工作完成、前置已就绪或自动选择下一 Task。
 

@@ -88,7 +88,7 @@ it.each(["kind", "value", "revision", "limitations"])(
     expect(html).toContain("需求全景");
     // Reports and Task association alone never make a requirement appear as worked on.
     expect(html).not.toContain("data-overview-card");
-    expect(html).toContain("查看全部需求");
+    expect(html).toContain('aria-label="显示全部需求"');
     expect(
       goalRequirements(product).some((item) => item.id === "R-PIPELINE"),
     ).toBe(true);

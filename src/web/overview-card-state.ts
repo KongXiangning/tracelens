@@ -1,5 +1,26 @@
 import type { OverviewRequirement } from "../shared/overview-data";
 import { conclusionLabels } from "../shared/product-view";
+import {
+  hasRequirementWork,
+  requirementProgressPending,
+} from "../shared/overview-progress";
+
+export const requirementVisibilityOptions = [
+  { value: "progress", label: "已开展" },
+  { value: "all", label: "全部需求" },
+  { value: "pending", label: "进展待核对" },
+] as const;
+export type RequirementVisibility =
+  (typeof requirementVisibilityOptions)[number]["value"];
+export function matchesRequirementVisibility(
+  item: OverviewRequirement,
+  visibility: RequirementVisibility,
+): boolean {
+  if (visibility === "all") return true;
+  return visibility === "progress"
+    ? hasRequirementWork(item)
+    : requirementProgressPending(item);
+}
 
 type Conclusion = keyof typeof conclusionLabels;
 export type ConclusionFilter = Conclusion | "unreported";

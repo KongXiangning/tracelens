@@ -499,31 +499,52 @@ describe("pinned production Roadmap reconciliation", () => {
     plan.metadata.work_items![0].scope += "新安排";
     expect(arrangementSnapshot(plan)).not.toEqual(before);
   });
-  it("invalidates old derived caches and leaves observed files untouched", async () => {
-    const f = await fixture(),
-      directory = await mkdtemp(path.join(os.tmpdir(), "tracelens-cache-v2-"));
-    roots.push(directory);
-    const before = await files(f.root);
-    const cache = new SnapshotCache(directory);
-    await mkdir(path.join(directory, "snapshots"));
-    await writeFile(
-      path.join(directory, "snapshots", `${f.project.id}.json.gz`),
-      gzipSync(
-        JSON.stringify({
-          version: 1,
-          root: f.root,
-          configVersion: 1,
-          config: configFingerprint(f.project.config),
-          snapshot: null,
-          files: [],
-        }),
-      ),
-    );
-    expect(await cache.load(f.project)).toBeNull();
-    await cache.save(f.project, { snapshot: null, files: [] }, () => true);
-    expect(await cache.load(f.project)).toEqual({ snapshot: null, files: [] });
-    expect(await files(f.root)).toEqual(before);
-  });
+  it.each(["empty", "snapshot"])(
+    "preserves v1 display data but invalidates derived caches (%s)",
+    async (kind) => {
+      const f = await fixture(),
+        directory = await mkdtemp(
+          path.join(os.tmpdir(), "tracelens-cache-v2-"),
+        );
+      roots.push(directory);
+      const before = await files(f.root);
+      const legacySnapshot =
+        kind === "snapshot"
+          ? {
+              ...(await buildSnapshot(f.project, "2026-10-14T00:00:00Z")),
+              treeFingerprint: "legacy-fingerprint",
+            }
+          : null;
+      const cache = new SnapshotCache(directory);
+      await mkdir(path.join(directory, "snapshots"));
+      await writeFile(
+        path.join(directory, "snapshots", `${f.project.id}.json.gz`),
+        gzipSync(
+          JSON.stringify({
+            version: 1,
+            root: f.root,
+            configVersion: 1,
+            config: configFingerprint(f.project.config),
+            snapshot: legacySnapshot,
+            files: [
+              { path: "docs/product/PROJECT.md", parsed: { legacy: true } },
+            ],
+          }),
+        ),
+      );
+      const restored = await cache.load(f.project);
+      expect(restored).toEqual({
+        snapshot: legacySnapshot
+          ? { ...legacySnapshot, treeFingerprint: undefined }
+          : null,
+        files: [],
+      });
+      expect(restored?.snapshot?.treeFingerprint).toBeUndefined();
+      await cache.save(f.project, restored!, () => true);
+      expect(await cache.load(f.project)).toEqual(restored);
+      expect(await files(f.root)).toEqual(before);
+    },
+  );
   it("retains production contribution diagnostics and normalized duplicate candidates", async () => {
     const f = await fixture({ kind: "project-current" }, 5);
     const req = f.defs.find((i) => i.id === "R1")!;

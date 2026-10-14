@@ -86,10 +86,12 @@ it.each(["kind", "value", "revision", "limitations"])(
       }),
     );
     expect(html).toContain("需求全景");
-    // The composed child is folded; malformed reports must retain the parent
-    // and its expansion entry. Browser checks cover reaching the child.
-    expect(html).toContain('data-overview-card="R-PIPELINE"');
-    expect(html).toContain("展开子需求 · R-PIPELINE");
+    // Reports and Task association alone never make a requirement appear as worked on.
+    expect(html).not.toContain("data-overview-card");
+    expect(html).toContain("查看全部需求");
+    expect(
+      goalRequirements(product).some((item) => item.id === "R-PIPELINE"),
+    ).toBe(true);
   },
 );
 it("renders an invalid report's original fields without changing the current undetermined conclusion", async () => {

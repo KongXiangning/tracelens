@@ -47,6 +47,7 @@ import {
 import type { ProjectRegistry } from "./registry.js";
 import { RuntimeReader, runtimeTasks } from "./runtime-reader.js";
 import { readTaskTimes } from "./task-times.js";
+import { readRequirementWork } from "./requirement-work.js";
 import type { TaskTimes } from "../shared/runtime-types.js";
 const runtimeReader = new RuntimeReader();
 interface BuildContext {
@@ -164,7 +165,7 @@ export async function buildSnapshot(
   runtimeContext.scan?.progress?.(
     runtimeContext.scan.coreOnly ? "发布需求与报告" : "更新 Task 状态",
   );
-  const runtime = runtimeContext.scan?.coreOnly
+  let runtime = runtimeContext.scan?.coreOnly
     ? undefined
     : await runtimeContext.reader.refresh(project);
   const tasks = runtime ? runtimeTasks(project, runtime) : [];
@@ -385,6 +386,18 @@ export async function buildSnapshot(
   }
   if (scan.product) {
     buildProductIndex(scan.product, [...tasks, ...documentTasks]);
+    if (runtime) {
+      runtime = await readRequirementWork(
+        project,
+        scan.product,
+        runtime,
+        runtimeContext.reader,
+        runtimeContext.isCurrent,
+        previous?.runtime,
+      );
+      if (!runtimeContext.isCurrent())
+        throw new AppError("范围执行查询上下文已过期", 409);
+    }
     for (const diagnostic of scan.product.diagnostics) {
       const document =
         diagnostic.path && byPath.get(documentPathKey(diagnostic.path));
@@ -680,11 +693,21 @@ export class SnapshotStore {
                 reusedParses: 0,
               },
             };
-            if (next.product)
+            if (next.product) {
               buildProductIndex(next.product, [
                 ...next.tasks,
                 ...(next.taskObservations || []),
               ]);
+              next.runtime = await readRequirementWork(
+                project,
+                next.product,
+                runtime,
+                this.reader,
+                () => this.isCurrent(project),
+                previous.runtime,
+              );
+              if (!this.isCurrent(project)) return this.view(id);
+            }
             this.snapshots.set(id, next);
             this.restored.delete(id);
             await checkpoint();
@@ -864,6 +887,17 @@ export class SnapshotStore {
           }
         });
       buildProductIndex(next.product, [...next.tasks, ...observations]);
+      next.runtime = await readRequirementWork(
+        project,
+        next.product,
+        runtime,
+        this.reader,
+        () =>
+          this.isCurrent(project) && this.view(id).snapshot?.id === snapshotId,
+        snapshot.runtime,
+      );
+      if (this.view(id).snapshot?.id !== snapshotId || !this.isCurrent(project))
+        throw new AppError("范围执行续读期间上下文已变化", 409);
     }
     this.snapshots.set(id, next);
     await this.cache.save(

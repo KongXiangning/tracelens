@@ -101,6 +101,11 @@ const scoped = await runtime.registry.add({
 const snapshot = (await runtime.store.refresh(project.id)).snapshot;
 await runtime.store.refresh(scoped.id);
 assert.ok(snapshot.product.items.every((item) => item.usable));
+const inputBinding = snapshot.product.items.find(
+  (item) => item.id === "REQ-INPUT",
+).metadata.task_bindings[0];
+inputBinding.task.plan_ref = "synthetic-adopted-plan";
+inputBinding.task.step_id = "S1";
 snapshot.runtime = {
   source: "memory-snapshot",
   workflowHome: "docs/workflow",
@@ -116,6 +121,14 @@ snapshot.runtime = {
       task_id: "TASK-SAMPLE-PARSER",
       title: "合成历史解析工作",
       lifecycle: "closed",
+      adopted_plan_ref: "synthetic-adopted-plan",
+      steps: [
+        {
+          id: "S1",
+          state: "finished",
+          execution_ref: "synthetic-saved-execution",
+        },
+      ],
     },
     {
       task_id: "TASK-UNBOUND",
@@ -207,13 +220,13 @@ try {
     await page.locator('[data-overview-card="REQ-INPUT"]').innerText(),
     /直接实施 1/,
   );
-  assert.match(
-    await page.locator('[data-overview-card="REQ-TENANT"]').innerText(),
-    /支撑 1/,
+  assert.equal(
+    await page.locator('[data-overview-card="REQ-TENANT"]').count(),
+    0,
   );
-  assert.match(
-    await page.locator('[data-overview-card="REQ-AUDIT"]').innerText(),
-    /未分类 0（身份未知关系 1）/,
+  assert.equal(
+    await page.locator('[data-overview-card="REQ-AUDIT"]').count(),
+    0,
   );
   assert.equal(
     requests.filter((request) => /\/snapshot(?:\?|$)/.test(request.url)).length,
@@ -249,7 +262,7 @@ try {
   await filter
     .getByRole("combobox", { name: "筛选 Task 关联情况" })
     .selectOption("closed");
-  assert.equal(await page.locator("[data-overview-card]").count(), 2);
+  assert.equal(await page.locator("[data-overview-card]").count(), 1);
   assert.equal(fullReadCount(), beforeFilters);
   await page
     .locator('[data-overview-card="REQ-INPUT"]')
@@ -299,7 +312,8 @@ try {
     false,
   );
   await page.locator(`[data-project-id="${scoped.id}"]`).click();
-  await page.locator('[data-overview-card="R-IMPORT"]').waitFor();
+  await page.getByRole("heading", { name: "当前进度", exact: true }).waitFor();
+  assert.equal(await page.locator("[data-overview-card]").count(), 0);
   await page.getByRole("button", { name: /最近确认的成果/ }).click();
   const outcomes = page.getByRole("dialog").filter({
     has: page.getByRole("heading", { name: "最近确认的成果", exact: true }),

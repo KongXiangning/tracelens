@@ -316,6 +316,7 @@ it("separates saved work type, closed lifecycle and absent acceptance on the req
   const row = binding("closed", "A", "direct");
   const value = snapshot([row]);
   value.tasks[0].runtimeLifecycle = "closed";
+  value.runtime!.tasks[0].lifecycle = "closed";
   const project = item("PROJECT", "project");
   project.metadata.requirement_order = ["A"];
   project.source = { ...source, path: "docs/PRODUCT.md" };

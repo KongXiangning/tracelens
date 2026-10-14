@@ -14,7 +14,6 @@ export function OverviewFilterBar({
   reviewCount,
   shown,
   total,
-  progress,
 }: {
   filters: OverviewFilters;
   change: (next: OverviewFilters) => void;
@@ -22,7 +21,6 @@ export function OverviewFilterBar({
   reviewCount: number;
   shown: number;
   total: number;
-  progress?: { control: ReactNode; description: string };
 }) {
   function toggleConclusion(value: ConclusionFilter) {
     const conclusions = filters.conclusions.includes(value)
@@ -92,7 +90,6 @@ export function OverviewFilterBar({
             ))}
           </select>
         </label>
-        {progress?.control}
         <div
           className="overview-filter-result"
           role="status"
@@ -112,7 +109,6 @@ export function OverviewFilterBar({
       <p>
         按当前适用的范围结论筛选；待核对报告的原结论见详情。多份范围报告可命中多个类别，待核对可与
         Task 条件组合。
-        {progress && <> {progress.description}</>}
       </p>
     </section>
   );

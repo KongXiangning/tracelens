@@ -2031,6 +2031,8 @@
    and the complete registered scope. No completion cursor or percentage. */
 .overview-hero:has(.overview-current-work) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  height: auto;
+  min-height: 269px;
 }
 .overview-focus-grid {
   display: grid;
@@ -2136,14 +2138,15 @@
 .overview-route-body {
   grid-template-rows: 78px 88px minmax(170px, auto) 34px 44px;
 }
-.overview-full-range-toggle {
-  display: block;
-  width: 100%;
-  border: 1px solid var(--overview-rule);
-  border-radius: 6px;
-  padding: 12px;
-  color: var(--overview-link);
-  background: #edf1e9;
+.overview-progress-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--overview-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0;
 }
 .overview-focus-tools {
   position: relative;
@@ -2197,11 +2200,6 @@
 .overview-results-page {
   border: 0;
   border-radius: 0;
-}
-.overview-progress-filter select {
-  width: 240px;
-  min-width: 0;
-  max-width: 100%;
 }
 .overview-progress-tag {
   margin-left: auto;

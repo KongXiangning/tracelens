@@ -70,7 +70,7 @@ it("keeps the reordered plan, explicit dependencies and B's binding without crea
   expect(snapshot.tasks).toEqual([]);
 });
 
-it("shows scoped acceptance without inventing a completed Task and keeps report inventory below the roadmap", async () => {
+it("keeps scoped acceptance in outcomes without inferring performed work from reports", async () => {
   const snapshot = await fixture("product-scoped", "examples");
   const product = snapshot.product!;
   const requirement = product.items.find((item) => item.id === "R-IMPORT")!;
@@ -98,15 +98,10 @@ it("shows scoped acceptance without inventing a completed Task and keeps report 
       planning={() => {}}
     />,
   );
-  const card = html.match(
-    /<article[^>]*data-overview-card="R-IMPORT"[^>]*>[\s\S]*?<\/article>/,
-  )![0];
-  expect(card).toContain("已满足 1");
-  expect(card).toContain("部分满足 1");
-  expect(card).toContain("查看验收记录 · R-IMPORT");
-  expect(card).not.toContain("固定知识集全量入库；排除持续更新及失败恢复");
-  expect(card).toContain("尚未记录 Task 关联");
-  expect(card).not.toContain("overview-donut");
+  expect(html).not.toContain("data-overview-card");
+  expect(html).toContain("最近确认的成果 · 2");
+  expect(html).toContain("尚未读到需求范围的直接执行记录");
+  expect(html).not.toContain("overview-donut");
   expect(html.indexOf('class="overview-hero"')).toBeLessThan(
     html.indexOf('class="overview-assessments"'),
   );
@@ -191,7 +186,8 @@ it("keeps all known requirements without a plan and distinguishes plans sharing 
     />,
   );
   expect(html).toContain("需求全景");
-  expect(html).toContain("未指定顺序");
+  expect(html).toContain("查看全部需求");
+  expect(html).not.toContain("data-overview-card");
   expect(html).not.toContain("选择要查看的计划");
   expect(html).not.toContain("overview-road-arrow");
 });

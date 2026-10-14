@@ -30,7 +30,7 @@ import {
 } from "./overview-card-state";
 import { OverviewFilterBar } from "./overview-filters";
 import { navigationScrollContainer } from "./navigation-scroll";
-import { progressWindow } from "../shared/overview-progress";
+import { hasRequirementWork } from "../shared/overview-progress";
 import { useTemporaryNodePositions } from "./temporary-node-positions";
 import {
   ReactFlow,
@@ -1241,8 +1241,6 @@ export function ScopedConclusion({
   );
 }
 const storedOverviewFilters = new Map<string, OverviewFilters>();
-const storedFullRange = new Map<string, boolean>();
-const storedProgress = new Map<string, string>();
 export const OverviewV3 = memo(
   function OverviewV3({
     context,
@@ -1253,34 +1251,6 @@ export const OverviewV3 = memo(
     planning?: () => void;
   }) {
     const [assessmentKey, setAssessmentKey] = useState<string>();
-    const [progressAnchor, setProgressAnchor] = useState(() => {
-      const id = context.snapshot.projectId;
-      if (typeof window === "undefined") return storedProgress.get(id) || "";
-      try {
-        return (
-          window.localStorage.getItem(`tracelens-progress:${id}`) ||
-          storedProgress.get(id) ||
-          ""
-        );
-      } catch {
-        return storedProgress.get(id) || "";
-      }
-    });
-    useEffect(() => {
-      const id = context.snapshot.projectId;
-      storedProgress.set(id, progressAnchor);
-      try {
-        window.localStorage.setItem(`tracelens-progress:${id}`, progressAnchor);
-      } catch {
-        /* Reading preferences still work without storage. */
-      }
-    }, [progressAnchor, context.snapshot.projectId]);
-    const [fullRange, setFullRange] = useState(
-      () => storedFullRange.get(context.snapshot.projectId) || false,
-    );
-    useEffect(() => {
-      storedFullRange.set(context.snapshot.projectId, fullRange);
-    }, [context.snapshot.projectId, fullRange]);
     const data = isOverviewSnapshot(context.snapshot)
       ? context.snapshot.overview!
       : buildOverviewData(context.snapshot);
@@ -1296,63 +1266,28 @@ export const OverviewV3 = memo(
     const signals = useMemo(
       () =>
         new Map(
-          [...data.planned, ...data.unordered].map((item) => [
-            item.key,
-            overviewRequirementSignals(item),
-          ]),
+          [...data.planned, ...data.unordered]
+            .filter(hasRequirementWork)
+            .map((item) => [item.key, overviewRequirementSignals(item)]),
         ),
       [data],
     );
-    const locatedPlans =
-      data.roadmapSummary?.filter(
-        (plan) =>
-          plan.intentState === "adopted" &&
-          plan.readable &&
-          plan.status === "current" &&
-          plan.location === "current-task-binding",
-      ) || [];
-    const schedule = locatedPlans.length === 1 ? locatedPlans[0] : undefined;
-    const focusWindow = progressWindow(
-      planned,
-      progressAnchor,
-      schedule
-        ? {
-            planId: schedule.planId,
-            targets: schedule.workItems
-              .filter((work) => work.state === "included")
-              .flatMap(
-                (work) => work.targets?.map((target) => target.target) || [],
-              ),
-          }
-        : undefined,
-    );
     const roadmap = planned.map((item, index) => ({ item, index })).reverse();
-    const visibleRoadmap = roadmap.filter(({ item }) =>
-      matchesOverviewFilters(signals.get(item.key)!, filters),
+    const visibleRoadmap = roadmap.filter(
+      ({ item }) =>
+        hasRequirementWork(item) &&
+        matchesOverviewFilters(signals.get(item.key)!, filters),
     );
     const visibleUnordered = unordered
       .map((item, index) => ({ item, index }))
       .reverse()
-      .filter(({ item }) =>
-        matchesOverviewFilters(signals.get(item.key)!, filters),
+      .filter(
+        ({ item }) =>
+          hasRequirementWork(item) &&
+          matchesOverviewFilters(signals.get(item.key)!, filters),
       );
     const filtersActive = overviewFiltersActive(filters);
-    const focusedRoadmap = visibleRoadmap.filter(({ item }) =>
-      focusWindow.keys.has(item.key),
-    );
-    const displayedRoadmap =
-      fullRange || filtersActive ? visibleRoadmap : focusedRoadmap;
-    const progressLabels = {
-      selected: "按所选位置",
-      current: "按当前直接实施任务",
-      schedule: "按当前路线图工作项",
-      recorded: "按最近直接工作记录",
-      unlocated: "",
-    };
-    const progressMessage =
-      focusWindow.basis === "unlocated"
-        ? "尚无可靠的直接工作定位，先预览登记起点；历史项目可选择进度位置。"
-        : `${progressLabels[focusWindow.basis]}聚焦 ${focusWindow.anchor?.id} 附近；${focusWindow.planId ? `接下来按 ${focusWindow.planId} 的明确安排展示。` : "相邻需求为顺序预览，具体下一步以近期安排为准。"}`;
+    const hiddenCount = planned.length + unordered.length - signals.size;
     const conclusionCounts = Object.fromEntries(
       overviewConclusionOptions.map((option) => [
         option.value,
@@ -1379,11 +1314,7 @@ export const OverviewV3 = memo(
       const taskSummary = lifecycleStates
         .map((state) => `${state.label} ${state.count}`)
         .join("，");
-      let progressTag = "近期范围";
-      if (focusWindow.anchor?.key === item.key) progressTag = "关注位置";
-      else if (focusWindow.next.has(item.key))
-        progressTag = focusWindow.planId ? "近期安排" : "相邻预览";
-      else if (item.work?.current) progressTag = "当前关联";
+      const progressTag = item.work?.current ? "正在进行" : "已进行";
       return (
         <article
           className="overview-route-card"
@@ -1410,9 +1341,12 @@ export const OverviewV3 = memo(
             <span className="overview-route-code" title={item.id}>
               {item.id}
             </span>
-            {!fullRange && !filtersActive && (
-              <span className="overview-progress-tag">{progressTag}</span>
-            )}
+            <span
+              className="overview-progress-tag"
+              title="按直接关联范围的步骤执行事实展示；验收结论单独核对"
+            >
+              {progressTag}
+            </span>
             {review && (
               <span
                 className="overview-review-marker"
@@ -1599,126 +1533,68 @@ export const OverviewV3 = memo(
         <FocusResults data={data} context={context} />
         <section className="overview-route-heading" aria-label="完整范围标题">
           <div>
-            <h2
-              aria-label={fullRange || filtersActive ? "完整范围" : "当前进度"}
-            >
-              {fullRange || filtersActive ? "完整范围" : "当前进度"}
+            <h2 aria-label="当前进度">
+              当前进度
               <span className="overview-semantic-label">需求全景</span>
             </h2>
-            <p>需求按登记序号倒序展示 · 收起远期需求，随时查看完整范围</p>
+            <p>
+              显示已进行及正在进行的需求，按登记序号倒序排列；以直接范围的步骤执行记录为依据。
+            </p>
           </div>
           <div className="overview-route-count">
-            已登记需求 <b>{String(planned.length).padStart(2, "0")}</b>
+            有进展需求 <b>{String(signals.size).padStart(2, "0")}</b>
+            <span>/</span>
+            已登记需求{" "}
+            <b>{String(planned.length + unordered.length).padStart(2, "0")}</b>
             <span>/</span>
             关联 Task <b>{String(totalTaskCount).padStart(2, "0")}</b>
           </div>
         </section>
         <OverviewFilterBar
-          progress={{
-            description: progressMessage,
-            control: (
-              <label className="overview-task-filter overview-progress-filter">
-                进度定位
-                <select
-                  aria-label="进度定位"
-                  value={progressAnchor}
-                  onChange={(event) => {
-                    setProgressAnchor(event.target.value);
-                    setFullRange(false);
-                  }}
-                >
-                  <option value="">自动：当前任务或最近直接工作</option>
-                  {planned.map((item, index) => (
-                    <option key={item.key} value={item.key}>
-                      {String(index + 1).padStart(2, "0")} · {item.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ),
-          }}
           filters={filters}
           change={setFilters}
           counts={conclusionCounts}
           reviewCount={
             [...signals.values()].filter((value) => value.review).length
           }
-          shown={
-            displayedRoadmap.length +
-            (filtersActive ? visibleUnordered.length : 0)
-          }
-          total={planned.length + unordered.length}
+          shown={visibleRoadmap.length + visibleUnordered.length}
+          total={signals.size}
         />
+        <p className="overview-progress-note">
+          已隐藏 {hiddenCount} 项尚未开始或范围执行依据待核对的需求。有 Task
+          关联、Task 已关闭或已有路线图安排，均不作为已进行的依据。
+          <button className="text-link" onClick={requirements}>
+            查看全部需求 ↗
+          </button>
+        </p>
         <section className="overview-route-grid" aria-label="完整需求范围">
           {visibleRoadmap.length ? (
-            displayedRoadmap.map(({ item, index }) => card(item, index))
-          ) : filtersActive ? (
+            visibleRoadmap.map(({ item, index }) => card(item, index))
+          ) : !visibleUnordered.length && filtersActive ? (
             <div className="overview-empty overview-filter-empty">
-              <p>
-                已登记需求中没有匹配项
-                {visibleUnordered.length
-                  ? `；下方有 ${visibleUnordered.length} 项未指定顺序的匹配需求。`
-                  : "。"}
-              </p>
+              <p>有进展的需求中没有匹配项。</p>
               <button onClick={() => setFilters(defaultOverviewFilters())}>
                 清除筛选
               </button>
             </div>
-          ) : (
+          ) : !visibleUnordered.length ? (
             <div className="overview-empty">
-              当前项目没有已登记的需求顺序，请先在项目文档中声明
-              requirement_order。
+              尚未读到需求范围的直接执行记录。未开始或依据待核对的需求暂不展示，可在需求视图查看全部范围。
             </div>
-          )}
+          ) : null}
         </section>
-        {!filtersActive && visibleRoadmap.length > focusedRoadmap.length && (
-          <button
-            className="overview-full-range-toggle"
-            aria-expanded={fullRange}
-            onClick={() => setFullRange(!fullRange)}
-          >
-            {fullRange
-              ? "收起完整范围"
-              : `展开完整范围 · 另 ${visibleRoadmap.length - focusedRoadmap.length} 项`}
-          </button>
-        )}
-        {filtersActive && visibleUnordered.length > 0 ? (
+        {visibleUnordered.length > 0 && (
           <section
             className="overview-unordered-details"
-            aria-label="未指定顺序的筛选结果"
+            aria-label="未指定顺序的有进展需求"
           >
-            <h3>
-              未指定顺序 · 匹配 {visibleUnordered.length} / {unordered.length}{" "}
-              项
-            </h3>
+            <h3>未指定顺序 · 有进展 {visibleUnordered.length} 项</h3>
             <div className="overview-unordered-grid">
               {visibleUnordered.map(({ item, index }) =>
                 card(item, planned.length + index),
               )}
             </div>
           </section>
-        ) : (
-          !filtersActive && (
-            <LazyDetails
-              className="overview-unordered-details"
-              summary={<>未指定顺序 · {unordered.length} 项（ID 定位排序）</>}
-            >
-              {() =>
-                unordered.length ? (
-                  <div className="overview-unordered-grid">
-                    {unordered
-                      .map((item, index) => ({ item, index }))
-                      .reverse()
-                      .map(({ item, index }) =>
-                        card(item, roadmap.length + index),
-                      )}
-                  </div>
-                ) : (
-                  <p>当前没有未指定顺序的需求。</p>
-                )
-              }
-            </LazyDetails>
-          )
         )}
         <footer className="overview-bottom-note">
           <span>

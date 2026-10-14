@@ -42,6 +42,7 @@ function requirement(
     title: "需求",
     type: "requirement",
     description: "需求范围",
+    work: { current: false, recorded: true, latestTask: "test-task" },
     dependencies: [],
     childCount: 0,
     assessmentRecords: records,

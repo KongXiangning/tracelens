@@ -227,6 +227,33 @@ it("keeps trusted Task lifecycle/navigation when another row conflicts, and reta
   });
   product.manifest = { entry: source.path } as ProductSnapshot["manifest"];
   product.bindings = rows;
+  rows[0].binding.contribution = "direct";
+  rows[0].binding.reason = "明确范围执行依据";
+  rows[0].binding.sources = [
+    { kind: "text", text: "saved scope execution", label: "测试依据" },
+  ];
+  rows[0].binding.task.plan_ref = "plan";
+  rows[0].binding.task.step_id = "S1";
+  snapshot.runtime = {
+    source: "memory-snapshot",
+    freshness: "stale-or-unknown",
+    workflowHome: "docs/workflow",
+    viewRevision: "test",
+    readAt: "test",
+    complete: true,
+    total: 1,
+    batchId: "test",
+    issues: [],
+    diagnostics: [],
+    tasks: [
+      {
+        task_id: "one",
+        lifecycle: "closed",
+        adopted_plan_ref: "plan",
+        steps: [{ id: "S1", state: "finished", execution_ref: "executed" }],
+      },
+    ],
+  };
   const overview = renderToStaticMarkup(
     <OverviewV3
       context={{

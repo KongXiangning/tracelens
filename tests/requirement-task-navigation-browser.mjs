@@ -148,6 +148,106 @@ for (const state of ["identity-unknown", "unresolved", "conflict"]) {
     repairs: [],
   });
 }
+const featurePlan = {
+  ...requirement,
+  key: "detail-plan",
+  id: "DETAIL-PLAN",
+  type: "plan",
+  title: "详情功能拆分",
+  metadata: {
+    id: "DETAIL-PLAN",
+    type: "plan",
+    work_items: ["入口导航", "功能聚合", "关联追踪", "尚未关联"].map(
+      (title, index) => ({
+        id: `F${index + 1}`,
+        title,
+        outcome: `真实结构化功能 ${title}`,
+        scope: title,
+        targets: [{ target: requirement.id, coverage: title }],
+        state: "included",
+        origin: "initial",
+      }),
+    ),
+  },
+};
+snapshot.product.items.push(featurePlan);
+for (const [name, workId] of [
+  ["a", "F1"],
+  ["b", "F2"],
+]) {
+  const row = snapshot.product.bindings.find(
+    (entry) => entry.key === `synthetic-binding-${name}`,
+  );
+  Object.assign(row.binding, {
+    contribution: "direct",
+    reason: "范围直接实现",
+    sources: [row.binding.task.source],
+    coverage: workId,
+  });
+  Object.assign(row.binding.task, { plan_ref: `plan-${name}`, step_id: "S1" });
+  row.planItems = [
+    {
+      planId: featurePlan.id,
+      workItemId: workId,
+      key: `${featurePlan.key}:work:${workId}`,
+      state: "resolved",
+    },
+  ];
+  const task = snapshot.runtime.tasks.find(
+    (entry) => entry.task_id === `task-${name}`,
+  );
+  Object.assign(task, {
+    adopted_plan_ref: `plan-${name}`,
+    current_step_id: "S1",
+    steps: [
+      {
+        id: "S1",
+        title: workId,
+        state: name === "a" ? "executed" : "in-progress",
+        execution_ref: `execution-${name}`,
+      },
+    ],
+  });
+}
+const thirdFeature = structuredClone(
+  snapshot.product.bindings.find(
+    (entry) => entry.key === "synthetic-binding-b",
+  ),
+);
+thirdFeature.key = "synthetic-binding-third";
+thirdFeature.binding.id = "binding-third";
+thirdFeature.binding.coverage = "F3";
+thirdFeature.binding.task.step_id = "S2";
+thirdFeature.planItems = [
+  {
+    planId: featurePlan.id,
+    workItemId: "F3",
+    key: `${featurePlan.key}:work:F3`,
+    state: "resolved",
+  },
+];
+snapshot.product.bindings.push(thirdFeature);
+snapshot.runtime.tasks
+  .find((entry) => entry.task_id === "task-b")
+  .steps.push({ id: "S2", state: "not-started" });
+snapshot.runtime.currentTaskId = "task-b";
+snapshot.tasks.find((entry) => entry.realTaskId === "task-b").runtimeBatchId =
+  snapshot.runtime.batchId;
+pendingRequirement.body +=
+  "\n### 功能点与输入输出\n\n- 来源快照。\n- 稳定身份。\n- 专业域。\n- 版本分离。\n- 领域关系。\n- 标签审计。\n\n输入 → 输出：不是功能点\n\n### 异常恢复\n- 不是功能点";
+snapshot.product.items.push({
+  ...pendingRequirement,
+  key: "body-feature-report",
+  id: "BODY-FEATURE-REPORT",
+  type: "assessment",
+  title: "正文逐点实施核对",
+  metadata: {
+    id: "BODY-FEATURE-REPORT",
+    type: "assessment",
+    target: pendingRequirement.id,
+  },
+  body: `### 交付与验证依据\n\n| 功能点 | 实施状态 | 验证状态 | 具体缺口 |\n|---|---|---|---|\n| ${pendingRequirement.id}/F1 来源快照。 | 已实施 | 本轮仅静态核对 | 未重新执行运行验证 |`,
+});
 const overview = {
   ...snapshot,
   revision: "synthetic-revision",
@@ -251,47 +351,174 @@ try {
     path: path.join(run, "association-review-entry.png"),
   });
   await page.getByRole("button", { name: "概览", exact: true }).click();
+  await page.getByRole("button", { name: "显示全部需求", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "筛选 Task 关联情况" })
+    .selectOption("associated");
   for (let pass = 0; pass < 2; pass++) {
-    await card.getByRole("button", { name: "查看需求", exact: true }).click();
-    await page
-      .locator('.requirements-v3-inspector[data-product-id="R-IMPORT"]')
-      .waitFor();
-    await page.waitForFunction(() => {
-      const node = document.querySelector(
-        '.requirements-v3-node.is-selected [data-node-id="R-IMPORT"]',
-      );
-      const canvas = document.querySelector(".requirements-v3-graph");
-      if (!node || !canvas) return false;
-      const a = node.getBoundingClientRect(),
-        b = canvas.getBoundingClientRect();
-      return (
-        a.top >= b.top &&
-        a.bottom <= b.bottom &&
-        a.left >= b.left &&
-        a.right <= b.right
-      );
-    });
-    await page.getByRole("tab", { name: "完整正文", exact: true }).click();
-    const panel = page.locator(".requirements-v3-panel");
-    assert.match(await panel.innerText(), /需求正文起点/);
-    assert.match(await panel.innerText(), /需求正文终点/);
-    await panel.evaluate(
-      (element) => (element.scrollTop = element.scrollHeight),
+    const entry =
+      pass === 0
+        ? card.getByRole("button", { name: "查看需求", exact: true })
+        : card.locator("h3 button");
+    await entry.scrollIntoViewIfNeeded();
+    const originalScroll = await page.evaluate(
+      () => document.scrollingElement.scrollTop,
     );
+    assert.ok(
+      originalScroll > 0,
+      "The originating overview has a real scroll position",
+    );
+    await entry.click();
+    const detail = page.locator(
+      '.requirement-detail-page[data-requirement-id="R-IMPORT"]',
+    );
+    await detail.waitFor();
+    assert.equal(await detail.locator(".rd-feature").count(), 4);
+    assert.match(await detail.locator(".rd-count").innerText(), /1 \/ 4/);
     assert.equal(
-      await panel
-        .locator(":scope > .requirements-v3-panel-content")
-        .getByText("需求正文终点", { exact: true })
+      await detail.getByRole("progressbar").getAttribute("aria-valuenow"),
+      "25",
+    );
+    await detail.locator("#rd-body summary").click();
+    assert.match(await detail.locator("#rd-body").innerText(), /需求正文起点/);
+    assert.match(await detail.locator("#rd-body").innerText(), /需求正文终点/);
+    await detail.locator("#rd-body summary").click();
+    const functionalFeature = detail
+      .locator(".rd-feature")
+      .filter({ hasText: "功能聚合" });
+    if (pass === 0) {
+      assert.equal(
+        await functionalFeature.locator(".rd-feature-description").isVisible(),
+        false,
+        "Feature details are collapsed by default",
+      );
+      await functionalFeature.locator(".rd-feature-heading").click();
+    }
+    assert.equal(
+      await detail
+        .locator(".rd-feature")
+        .filter({ hasText: "功能聚合" })
+        .locator(".rd-feature-description")
         .isVisible(),
       true,
+      "One expansion shows the complete feature description",
     );
-    if (pass === 0)
-      await page
-        .getByRole("button", { name: "展开子需求 · R-PIPELINE", exact: true })
+    await page.evaluate(() => {
+      document.scrollingElement.scrollTop = 0;
+    });
+    await page.screenshot({
+      path: path.join(run, `requirement-detail-${pass}.png`),
+      fullPage: true,
+    });
+    if (pass === 0) {
+      await detail
+        .getByRole("group", { name: "功能点筛选" })
+        .getByRole("button", { name: "进行中 1", exact: true })
         .click();
-    await page.getByRole("button", { name: "概览", exact: true }).click();
+      await detail
+        .locator(".rd-feature .rd-bound-task button.text-link")
+        .click();
+      await page.locator(".tasks-page").waitFor();
+      await page.goBack();
+      await detail.waitFor();
+      assert.equal(await detail.locator(".rd-feature").count(), 1);
+      assert.equal(
+        await detail.locator(".rd-feature .rd-feature-body").isVisible(),
+        true,
+      );
+      await detail
+        .getByRole("group", { name: "功能点筛选" })
+        .getByRole("button", { name: "全部 4", exact: true })
+        .click();
+    }
+    await detail.locator(".rd-back").click();
     await card.waitFor();
+    await page
+      .waitForFunction(
+        (scroll) => Math.abs(document.scrollingElement.scrollTop - scroll) < 3,
+        originalScroll,
+      )
+      .catch(async (error) => {
+        await writeFile(
+          path.join(run, "scroll-restoration-failure.json"),
+          JSON.stringify(
+            {
+              expected: originalScroll,
+              observed: await page.evaluate(() => ({
+                scroll: document.scrollingElement.scrollTop,
+                state: history.state,
+                height: document.scrollingElement.scrollHeight,
+                viewport: innerHeight,
+              })),
+            },
+            null,
+            2,
+          ),
+        );
+        throw error;
+      });
+    assert.equal(
+      await page
+        .getByRole("button", { name: "显示全部需求", exact: true })
+        .getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(
+      await page
+        .getByRole("combobox", { name: "筛选 Task 关联情况" })
+        .inputValue(),
+      "associated",
+    );
   }
+  await page
+    .getByRole("combobox", { name: "筛选 Task 关联情况" })
+    .selectOption("all");
+  await page.getByRole("button", { name: "需求视图", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "搜索需求图", exact: true })
+    .fill("内容入库");
+  const goalBefore = await page
+    .getByRole("combobox", { name: "所选目标", exact: true })
+    .inputValue();
+  const node = page.locator('.goal-graph-node[data-node-id="R-IMPORT"]');
+  await node.click();
+  const detailFromGraph = page.locator(
+    '.requirement-detail-page[data-requirement-id="R-IMPORT"]',
+  );
+  await detailFromGraph.waitFor();
+  await page.setViewportSize({ width: 760, height: 900 });
+  await page.evaluate(() => {
+    document.scrollingElement.scrollTop = 0;
+  });
+  await page.screenshot({
+    path: path.join(run, "requirement-detail-narrow.png"),
+    fullPage: true,
+  });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    true,
+    "Narrow layout has no horizontal overflow",
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await detailFromGraph.locator(".rd-back").click();
+  await page
+    .getByRole("textbox", { name: "搜索需求图", exact: true })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("textbox", { name: "搜索需求图", exact: true })
+      .inputValue(),
+    "内容入库",
+  );
+  assert.equal(
+    await page
+      .getByRole("combobox", { name: "所选目标", exact: true })
+      .inputValue(),
+    goalBefore,
+  );
+  await page.getByRole("button", { name: "概览", exact: true }).click();
   await card.getByRole("button", { name: "Task ↗", exact: true }).click();
   const tasks = page.locator(".task-card");
   await tasks.first().waitFor();
@@ -344,6 +571,7 @@ try {
   await page
     .locator(".task-requirement-title")
     .filter({ hasText: "R-IMPORT" })
+    .first()
     .waitFor();
   await page.screenshot({ path: path.join(run, "scoped-task-step.png") });
   await page.getByRole("button", { name: "查看全部任务", exact: true }).click();
@@ -363,6 +591,71 @@ try {
   assert.equal(await page.locator(".task-pending-binding").count(), 2);
   assert.equal(await page.locator(".requirements-v3").count(), 0);
   await page.screenshot({ path: path.join(run, "pending-task-scope.png") });
+  await page.getByRole("button", { name: "概览", exact: true }).click();
+  await page
+    .locator('[data-overview-card="R-DELTA"]')
+    .getByRole("button", { name: "查看需求", exact: true })
+    .click();
+  const bodyDetail = page.locator(
+    '.requirement-detail-page[data-requirement-id="R-DELTA"]',
+  );
+  await bodyDetail.waitFor();
+  assert.equal(await bodyDetail.locator(".rd-feature").count(), 6);
+  assert.equal(
+    await bodyDetail.getByRole("progressbar").getAttribute("aria-valuenow"),
+    null,
+    "Missing per-point execution must not be reported as 0% completed",
+  );
+  const bodyFeature = bodyDetail.locator(".rd-feature").first();
+  assert.equal(
+    await bodyFeature.locator(".rd-feature-body").isVisible(),
+    false,
+  );
+  await bodyFeature.locator(".rd-feature-heading").click();
+  assert.equal(
+    await bodyFeature.locator(".rd-bound-task").count(),
+    0,
+    "Requirement-level bindings must not leak to a body feature",
+  );
+  assert.match(
+    await bodyFeature.locator(".rd-feature-heading").innerText(),
+    /原报告：已实施/,
+  );
+  assert.equal(
+    await bodyFeature
+      .locator(".rd-feature-report dd")
+      .filter({ hasText: "本轮仅静态核对" })
+      .isVisible(),
+    true,
+    "Per-point reports are visible after opening the feature, with no second expansion",
+  );
+  await bodyFeature.locator(".rd-feature-heading").click();
+  assert.equal(
+    await bodyFeature.locator(".rd-feature-body").isVisible(),
+    false,
+    "An opened feature can be collapsed again",
+  );
+  await bodyFeature.locator(".rd-feature-heading").click();
+  assert.equal(
+    await bodyFeature.locator(".rd-feature-description").count(),
+    0,
+    "A title-only definition is not repeated as its detailed explanation",
+  );
+  assert.match(
+    await bodyFeature.locator(".rd-feature-report").innerText(),
+    /本轮仅静态核对/,
+  );
+  assert.match(
+    await bodyFeature.locator(".rd-feature-report").innerText(),
+    /未重新执行运行验证/,
+  );
+  await page.evaluate(() => {
+    document.scrollingElement.scrollTop = 0;
+  });
+  await page.screenshot({
+    path: path.join(run, "body-features-with-records.png"),
+    fullPage: true,
+  });
   assert.deepEqual(errors, []);
   await writeFile(
     path.join(run, "result.json"),
@@ -371,7 +664,15 @@ try {
         result: "passed",
         errors,
         checks: [
-          "focus already visible and folded requirement",
+          "title and view-requirement actions enter the same detail page",
+          "exact feature execution, unassociated scopes and unique Task identities",
+          "return restores overview filters and actual document scroll",
+          "return restores requirement graph search and selected goal",
+          "Task round-trip restores feature filters with explanations visible",
+          "narrow layout without horizontal overflow",
+          "explicit body feature inventory and per-point implementation/verification records",
+          "feature details start collapsed, toggle closed again, and show reports with one expansion",
+          "unknown execution is not a zero-percent completion result",
           "complete omitted-document body",
           "scope Tasks to requirement",
           "preserve scope on Task selection",

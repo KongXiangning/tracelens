@@ -6,6 +6,7 @@ export type NavigationState = {
   page:
     | "overview"
     | "requirements"
+    | "requirement-detail"
     | "planning"
     | "tasks"
     | "documents"
@@ -25,11 +26,12 @@ export type NavigationState = {
     work?: string;
   };
 };
-type Entry = { route: NavigationState; scroll: number };
+type Entry = { route: NavigationState; scroll: number; previous?: boolean };
 const key = "tracelensNavigation";
 const pages = new Set([
   "overview",
   "requirements",
+  "requirement-detail",
   "planning",
   "tasks",
   "documents",
@@ -63,6 +65,24 @@ function routeKey(route: NavigationState): string {
   if (!selection.doc) delete selection.line;
   else selection.line ??= 1;
   return JSON.stringify({ ...route, selection });
+}
+
+/** Capture the originating viewport before React replaces its content. */
+export function saveNavigationScroll() {
+  const entry = readEntry(window.history.state);
+  if (!entry) return;
+  window.history.replaceState(
+    {
+      ...window.history.state,
+      [key]: { ...entry, scroll: navigationScrollContainer()?.scrollTop || 0 },
+    },
+    "",
+  );
+}
+
+export function returnFromDetail(fallback: () => void) {
+  if (readEntry(window.history.state)?.previous) window.history.back();
+  else fallback();
 }
 
 export function useNavigationHistory(
@@ -113,8 +133,18 @@ export function useNavigationHistory(
     if (!ready) return;
     const next = routeKey(route);
     if (recorded.current === next) return;
-    const entry: Entry = { route, scroll: 0 };
+    const entry: Entry = {
+      route,
+      scroll: 0,
+      previous: recorded.current !== undefined,
+    };
     if (recorded.current === undefined) {
+      const existing = readEntry(window.history.state);
+      if (existing && routeKey(existing.route) === next) {
+        recorded.current = next;
+        pendingScroll.current = existing.scroll;
+        return;
+      }
       window.history.replaceState(
         { ...window.history.state, [key]: entry },
         "",
@@ -123,6 +153,7 @@ export function useNavigationHistory(
       window.history.pushState({ [key]: entry }, "");
     }
     recorded.current = next;
+    if (route.page === "requirement-detail") pendingScroll.current = 0;
   }, [route.active, route.page, route.selection, ready]);
   useEffect(() => {
     if (!contentReady || pendingScroll.current === undefined) return;

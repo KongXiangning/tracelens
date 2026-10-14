@@ -37,6 +37,8 @@ import { RuntimeStatus } from "./runtime";
 import {
   initialNavigation,
   useNavigationHistory,
+  saveNavigationScroll,
+  returnFromDetail,
   type NavigationState,
 } from "./navigation-history";
 import type {
@@ -52,6 +54,11 @@ const RelationsPage = lazy(() =>
 );
 const RequirementsPage = lazy(() =>
   import("./product").then((module) => ({ default: module.RequirementsPage })),
+);
+const RequirementDetailPage = lazy(() =>
+  import("./requirement-detail").then((module) => ({
+    default: module.RequirementDetailPage,
+  })),
 );
 const PlanningPage = lazy(() =>
   import("./product").then((module) => ({ default: module.PlanningPage })),
@@ -397,6 +404,7 @@ export function App() {
     }
   }
   function openSource(source: SourceRef) {
+    saveNavigationScroll();
     setSelection((s) => ({ ...s, doc: source.documentId, line: source.line }));
     setPage("documents");
   }
@@ -405,6 +413,7 @@ export function App() {
     requirementKey?: string,
     reviewAssociations = false,
   ) {
+    saveNavigationScroll();
     setSelection((s) => ({
       ...s,
       task: id,
@@ -428,6 +437,7 @@ export function App() {
     setPage("relations");
   }
   function openProduct(key: string, workItemId?: string) {
+    saveNavigationScroll();
     const type =
       fullSnapshot?.product?.items.find((entry) => entry.key === key)?.type ||
       overview?.itemTypes[key];
@@ -436,7 +446,7 @@ export function App() {
       setPage("planning");
     } else {
       setSelection((s) => ({ ...s, product: key }));
-      setPage("requirements");
+      setPage(type === "requirement" ? "requirement-detail" : "requirements");
     }
   }
   const navigationRef = useRef({
@@ -541,6 +551,17 @@ export function App() {
     if (isOverviewSnapshot(snapshot)) return <ProductLoading />;
     const context = { snapshot, ...navigation };
     switch (page) {
+      case "requirement-detail":
+        return (
+          <Suspense fallback={<ProductLoading />}>
+            <RequirementDetailPage
+              key={`${active}:${selection.product}`}
+              context={context}
+              selected={selection.product}
+              back={() => returnFromDetail(() => setPage("requirements"))}
+            />
+          </Suspense>
+        );
       case "requirements":
         return (
           <Suspense fallback={<ProductLoading />}>
@@ -548,7 +569,14 @@ export function App() {
               key={active}
               {...context}
               selected={selection.product}
-              select={(key) => setSelection((s) => ({ ...s, product: key }))}
+              select={(key) => {
+                if (
+                  snapshot.product?.items.find((item) => item.key === key)
+                    ?.type === "requirement"
+                )
+                  openProduct(key);
+                else setSelection((s) => ({ ...s, product: key }));
+              }}
               configure={() => setForm("edit")}
             />
           </Suspense>
@@ -635,7 +663,7 @@ export function App() {
   const overviewVisual = page === "overview";
   return (
     <div
-      className={`app-shell modern-shell overview-theme${page === "requirements" ? " requirements-theme" : ""}${page === "tasks" ? " task-view-shell" : ""}`}
+      className={`app-shell modern-shell overview-theme${page === "requirements" || page === "requirement-detail" ? " requirements-theme" : ""}${page === "tasks" ? " task-view-shell" : ""}`}
     >
       <aside className="sidebar">
         <div className="brand overview-brand">
@@ -653,7 +681,7 @@ export function App() {
             <button
               key={p.id}
               aria-label={p.id === "overview" ? "概览" : p.name}
-              className={`${page === p.id ? "active" : ""}${p.id === "guide" ? " overview-guide-link" : ""}`}
+              className={`${page === p.id || (page === "requirement-detail" && p.id === "requirements") ? "active" : ""}${p.id === "guide" ? " overview-guide-link" : ""}`}
               onClick={() => setPage(p.id as Page)}
             >
               <p.icon size={18} />

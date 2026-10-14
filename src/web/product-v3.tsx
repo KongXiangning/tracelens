@@ -95,6 +95,14 @@ type ViewState = {
   scroll: number;
 };
 const stored = new Map<string, ViewState>();
+export function requirementViewSelection(projectId: string) {
+  const state = stored.get(projectId);
+  return {
+    goal: state?.goal || "",
+    subject: state?.subject || "",
+    scope: state?.scope || {},
+  };
+}
 const initial = (): ViewState => ({
   goal: "",
   subject: "",
@@ -112,7 +120,7 @@ const initial = (): ViewState => ({
   taskFilter: "all",
   scroll: 0,
 });
-function SubjectPicker({
+export function SubjectPicker({
   product,
   value,
   set,
@@ -939,7 +947,7 @@ function compactReadingText(text: string, limit = 190) {
   return value.length > limit ? `${value.slice(0, limit).trim()}…` : value;
 }
 
-function businessSummary(item: ProductItem) {
+export function businessSummary(item: ProductItem) {
   const text = sectionText(
     item,
     item.type === "goal"
@@ -959,7 +967,7 @@ function boundarySummary(item: ProductItem) {
   );
 }
 
-function acceptancePoints(item: ProductItem) {
+export function acceptancePoints(item: ProductItem) {
   const section = readingSections(item).find((entry) =>
     /验收|具体要求|行为条件|业务规则/i.test(entry.heading),
   );
@@ -1054,7 +1062,7 @@ function directChildren(
   );
 }
 
-function itemPath(
+export function itemPath(
   product: NonNullable<ProductContext["snapshot"]["product"]>,
   item: ProductItem,
 ) {
@@ -2273,7 +2281,7 @@ function RequirementOverviewPanel({
   );
 }
 
-function EvidencePanel({
+export function EvidencePanel({
   item,
   goal,
   subject,

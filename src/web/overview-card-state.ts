@@ -9,6 +9,7 @@ export const requirementVisibilityOptions = [
   { value: "progress", label: "已开展" },
   { value: "all", label: "全部需求" },
   { value: "pending", label: "进展待核对" },
+  { value: "reviewed", label: "已有核对结果" },
 ] as const;
 export type RequirementVisibility =
   (typeof requirementVisibilityOptions)[number]["value"];
@@ -17,6 +18,7 @@ export function matchesRequirementVisibility(
   visibility: RequirementVisibility,
 ): boolean {
   if (visibility === "all") return true;
+  if (visibility === "reviewed") return Boolean(item.work?.reviews?.length);
   return visibility === "progress"
     ? hasRequirementWork(item)
     : requirementProgressPending(item);
@@ -78,7 +80,10 @@ export function overviewReportVerdict({
     conclusion,
     label: review
       ? `原报告：${conclusionLabels[conclusion]}`
-      : conclusionLabels[conclusion],
+      : conclusion === "undetermined" &&
+          report.metadata.conclusion === "undetermined"
+        ? "已评估 · 无法判定"
+        : conclusionLabels[conclusion],
     symbol: overviewConclusionOptions.find(
       (option) => option.value === conclusion,
     )!.symbol,

@@ -8,7 +8,12 @@ import {
   featureExecution,
   featureReportRows,
   requirementFeatures,
+  featureAssessmentView,
+  featureReportDetail,
+  featureReportContext,
+  featureDefinition,
 } from "../src/shared/requirement-detail.js";
+import type { AssessmentSelection } from "../src/shared/product-view.js";
 
 function fixture() {
   const item = {
@@ -239,4 +244,230 @@ it("does not inflate the body functional inventory with overlapping plan work", 
   expect(
     requirementFeatures(snapshot, item).map((feature) => feature.kind),
   ).toEqual(["正文功能点", "正文功能点"]);
+});
+
+function reportFixture(body: string, key = "current") {
+  const { item, snapshot } = fixture();
+  item.body = "### 功能点\n- 身份\n- 版本";
+  const report: ProductItem = {
+    ...item,
+    key,
+    id: key,
+    type: "assessment",
+    body,
+    metadata: { id: key, type: "assessment", target: item.id },
+  };
+  snapshot.product!.items.push(report);
+  return { item, snapshot, report };
+}
+
+function selection(
+  report: ProductItem,
+  reasons: string[] = [],
+): AssessmentSelection {
+  return {
+    conclusion: reasons.length ? "undetermined" : "partially-satisfied",
+    assessment: reasons.length ? null : report,
+    reports: [report],
+    historical: [],
+    pending: [],
+    reasons,
+  };
+}
+
+it("reads new and old feature column names with verbatim judgment and boundary fields", () => {
+  for (const header of ["功能点", "原功能点", "功能点编号"]) {
+    const { report } = reportFixture(
+      `| ${header} | 核对结果 | 具体依据与边界 |\n|---|---|---|\n| **REQ/F1 身份** | 基础已实现，归并未闭合 | 本轮解析测试；数据库未重验 |\n| OTHER/F1 身份 | 已实现 | 错误目标 |`,
+    );
+    const rows = featureReportRows(report, "REQ");
+    expect(rows.size).toBe(1);
+    expect(rows.get("F1")![0].source.line).toBe(3);
+    expect(featureReportDetail(rows.get("F1")![0])).toMatchObject({
+      state: "partial",
+      judgment: "基础已实现，归并未闭合",
+      evidence: "本轮解析测试；数据库未重验",
+    });
+  }
+});
+
+it("does not turn combined prose or verification PASS into an implementation verdict", () => {
+  const { report } = reportFixture(
+    "| 功能点 | 实现和验证 | 剩余、发现与边界 |\n|---|---|---|\n| F1 身份 | 表结构已实现；历史 PASS | 姓名类型误判；当前库未知 |",
+  );
+  expect(
+    featureReportDetail(featureReportRows(report, "REQ").get("F1")![0]),
+  ).toMatchObject({
+    state: "recorded",
+    judgment: "",
+    remaining: "姓名类型误判；当前库未知",
+  });
+  report.body =
+    "| 功能点 | 实现判断 |\n|---|---|\n| F1 身份 | 基础路径已实现，身份确认有明确边界 |";
+  expect(
+    featureReportDetail(featureReportRows(report, "REQ").get("F1")![0]).state,
+  ).toBe("recorded");
+});
+
+it("reads evidence-report aliases and keeps unfamiliar columns visible as quoted facts", () => {
+  const { report } = reportFixture(
+    "| 功能点 | 已实施及验证依据 | 完整范围剩余与限制 | 新增核查记录 |\n|---|---|---|---|\n| F1 身份 | 旧 PG PASS | 可信等级未接入 | 本轮没有重验 |",
+  );
+  expect(
+    featureReportDetail(featureReportRows(report, "REQ").get("F1")![0]),
+  ).toMatchObject({
+    state: "recorded",
+    evidence: "旧 PG PASS",
+    remaining: "可信等级未接入",
+    otherFields: [{ label: "新增核查记录", text: "本轮没有重验" }],
+  });
+});
+
+it("uses the scope/object-selected report instead of aggregating old and current rows or Task closure", () => {
+  const { item, snapshot, report } = reportFixture(
+    "| 原功能点 | 核对结果 |\n|---|---|\n| F1 身份 | 已实现，归并未闭合 |\n| F2 版本 | 版本快照已实现 |",
+  );
+  snapshot.product!.items.push({
+    ...report,
+    key: "old",
+    id: "old",
+    metadata: { ...report.metadata, id: "old" },
+    body: "| 功能点 | 实施状态 |\n|---|---|\n| F1 身份 | 已实施 |",
+  });
+  const points = requirementFeatures(snapshot, item);
+  const current = featureAssessmentView(points, selection(report));
+  expect(current.applicable).toBe(true);
+  expect(
+    current.points.map((point) => [point.state, point.report?.reportId]),
+  ).toEqual([
+    ["partial", "current"],
+    ["implemented", "current"],
+  ]);
+  expect(current.points[0].otherReports[0].reportId).toBe("old");
+  expect(points.every((point) => point.bindings.length === 0)).toBe(true);
+  snapshot.runtime!.tasks = [];
+  expect(
+    featureAssessmentView(
+      requirementFeatures(snapshot, item),
+      selection(report),
+    ).points.map((point) => point.state),
+  ).toEqual(["partial", "implemented"]);
+  expect(
+    featureAssessmentView(points, selection(report, ["definition-changed"]))
+      .applicable,
+  ).toBe(false);
+  expect(
+    featureAssessmentView(points, selection(report), "old").applicable,
+  ).toBe(false);
+});
+
+it("never expands a report without point rows into a complete inventory verdict", () => {
+  const { item, snapshot, report } = reportFixture(
+    "| 功能点 | 实施状态 |\n|---|---|\n| F1 身份 | 已实施 |",
+  );
+  const scoped = {
+    ...report,
+    key: "c5",
+    id: "c5",
+    body: "### 覆盖范围\nC5 仅覆盖固定集，已满足。",
+  };
+  const view = featureAssessmentView(
+    requirementFeatures(snapshot, item),
+    selection(scoped),
+  );
+  expect(view.points.every((point) => point.state === "unassessed")).toBe(true);
+  expect(view.points[0].otherReports).toHaveLength(1);
+});
+
+it("retains supplementary context and rejects duplicate point rows as conflicting records", () => {
+  const { item, snapshot, report } = reportFixture(
+    "### 交付与验证依据\n历史验证；本轮静态核对。\n\n| 功能点 | 实施状态 |\n|---|---|\n| F1 身份 | 已实施 |\n| F1 身份 | 部分实施 |\n\n### 2026-10-14 补充\n正式域未接入，不扩大旧 PASS。\n\n| 范围 | 本次判定 |\n|---|---|\n| 标签 | 未实现 |",
+  );
+  const view = featureAssessmentView(
+    requirementFeatures(snapshot, item),
+    selection(report),
+  );
+  expect(view.points[0].state).toBe("conflict");
+  expect(view.points[0].otherReports).toHaveLength(2);
+  expect(featureReportContext(report)).toEqual([
+    { title: "交付与验证依据", text: "历史验证；本轮静态核对。" },
+    { title: "2026-10-14 补充", text: "正式域未接入，不扩大旧 PASS。" },
+  ]);
+});
+
+it("reads obligation tables by explicit original feature number and exact wording, without positional guessing", () => {
+  const { item, snapshot, report } = reportFixture(
+    "| 功能义务 | 实现与已知成果 | 既有验证及边界 | 明确剩余 | 未知/未核对 | 来源 |\n|---|---|---|---|---|---|\n| 原功能1 / REQ-CHILD：身份关联 | 已记录身份 | 静态比对 | 缺拒绝审计 | 真机未验 | evidence.md |\n| 版本 | 已记录版本 | 原报告验证 | 无已知缺口 | 无 | version.md |\n| 另一个义务 | 未知 | 无 | 未知 | 未知 | other.md |",
+  );
+  const points = requirementFeatures(snapshot, item);
+  expect(points.map((point) => point.reports?.length)).toEqual([1, 1]);
+  const detail = featureReportDetail(points[0].reports![0]);
+  expect(detail).toMatchObject({
+    state: "recorded",
+    implementation: "已记录身份",
+    verification: "静态比对",
+    remaining: "缺拒绝审计",
+  });
+  expect(detail.otherFields).toContainEqual({
+    label: "未知/未核对",
+    text: "真机未验",
+  });
+  expect(featureReportRows(report, item.id).has("F3")).toBe(false);
+});
+
+it.each([
+  ["无法评估", "unable-to-assess", "缺少目标设备记录"],
+  ["未通过", "failed", "拒绝路径没有审计关联"],
+])(
+  "retains %s as an assessment result with its reason",
+  (judgment, state, reason) => {
+    const { item, snapshot } = reportFixture(
+      `| 功能点 | 评估结论 | 原因 |\n|---|---|---|\n| F1 | ${judgment} | ${reason} |`,
+    );
+    expect(
+      featureReportDetail(requirementFeatures(snapshot, item)[0].reports![0]),
+    ).toMatchObject({ state, judgment, remaining: reason });
+  },
+);
+
+it("preserves full list explanations for inconclusive reports", () => {
+  const { report } = reportFixture(
+    "### 剩余与待核对\n- 设备不可得，无法评估。\n- 缺少原始运行记录。",
+  );
+  expect(featureReportContext(report)).toContainEqual({
+    title: "剩余与待核对",
+    text: "设备不可得，无法评估。\n缺少原始运行记录。",
+  });
+});
+
+it("inlines the exact moved point and complete shared boundaries without requiring source navigation", () => {
+  const { snapshot, item } = fixture();
+  item.body =
+    "### 功能点\n1. 已移至独立要求 [REQ-CHILD](#REQ-CHILD)；原功能1的完整定义以该项为准。\n2. 已移至独立要求 [REQ-CHILD](#REQ-CHILD)；原功能2的完整定义以该项为准。";
+  snapshot.product!.items.push({
+    ...item,
+    key: "child",
+    id: "REQ-CHILD",
+    metadata: { id: "REQ-CHILD", type: "requirement" },
+    body:
+      "## 共享定义\n### 需求内容\n- 原REQ功能1：完整输入要求。" +
+      "长描述不得截断。".repeat(30) +
+      "\n- 原REQ功能2：独立的第二点。\n### 范围边界\n不能更改操作系统身份。\n### 验收要求\n验证原会话不被替换。",
+  });
+  const features = requirementFeatures(snapshot, item);
+  const first = featureDefinition(snapshot, item, features[0]);
+  expect(first).toContain("长描述不得截断。".repeat(30));
+  expect(first).toContain("不能更改操作系统身份。");
+  expect(first).toContain("验证原会话不被替换。");
+  expect(first).not.toContain("独立的第二点");
+  expect(featureDefinition(snapshot, item, features[1])).toContain(
+    "独立的第二点",
+  );
+});
+
+it("keeps ordinary feature descriptions complete independently of assessment reports", () => {
+  const { snapshot, item } = fixture();
+  item.body = "### 功能点\n- 完整描述。" + "输入和输出边界。".repeat(40);
+  const feature = requirementFeatures(snapshot, item)[0];
+  expect(featureDefinition(snapshot, item, feature)).toBe(feature.description);
 });

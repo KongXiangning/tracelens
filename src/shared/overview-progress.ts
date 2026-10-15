@@ -1,4 +1,6 @@
-import type { ProductBindingView } from "./product-types.js";
+import type { ProductBindingView, ProductItem } from "./product-types.js";
+import type { SourceRef } from "./types.js";
+import { selectAssessment } from "./product-view.js";
 import type { HistoricalWorkEvidence, Snapshot } from "./types.js";
 import type { RuntimeStep, RuntimeTask } from "./runtime-types.js";
 import { contributionDiagnostics } from "./product-contribution.js";
@@ -12,6 +14,97 @@ export interface RequirementWork {
   notStarted?: boolean;
   reasons?: string[];
   historical?: HistoricalWorkEvidence[];
+  reviews?: ProgressReview[];
+}
+
+export interface ProgressReview {
+  reportKey: string;
+  outcome: string;
+  explanation: string;
+  checkedAt?: string;
+  coverage?: string;
+  subject?: string;
+  limitations?: string;
+  source: SourceRef;
+  applicabilityIssues: string[];
+}
+
+/** A completed documentary review is a result even when it cannot establish progress. */
+export function requirementProgress(
+  snapshot: Snapshot,
+  item: ProductItem,
+  rows: ProductBindingView[],
+  issues = contributionDiagnostics(snapshot.product?.bindings || rows),
+): RequirementWork {
+  const work = requirementWork(snapshot, rows, issues);
+  const product = snapshot.product;
+  if (!product) return work;
+  const reviews: ProgressReview[] = [];
+  for (const report of product.items.filter(
+    (entry) => entry.type === "assessment" && entry.metadata.target === item.id,
+  )) {
+    const raw = report.metadata.extensions?.startup;
+    if (!report.usable || !raw || typeof raw !== "object" || Array.isArray(raw))
+      continue;
+    const startup = raw as Record<string, unknown>;
+    if (typeof startup.state !== "string" || !startup.state.trim()) continue;
+    if (["待核对", "未核对", "进展待核对"].includes(startup.state.trim()))
+      continue;
+    const applicability = report.metadata.applicability;
+    const selection =
+      applicability && report.metadata.subject
+        ? selectAssessment(
+            product,
+            item.id,
+            applicability.goal_id,
+            report.metadata.subject,
+            applicability.scope_id,
+          )
+        : undefined;
+    if (selection?.historical.some((entry) => entry.key === report.key))
+      continue;
+    const subject = report.metadata.subject;
+    reviews.push({
+      reportKey: report.key,
+      outcome: startup.state.trim(),
+      explanation:
+        typeof startup.basis === "string" && startup.basis.trim()
+          ? startup.basis.trim()
+          : "报告已记录核对结果，但没有说明判断理由。",
+      checkedAt: report.metadata.checked_at,
+      coverage: report.metadata.applicability?.coverage,
+      subject: subject?.value || undefined,
+      limitations: subject?.limitations,
+      source: report.source,
+      applicabilityIssues: (selection?.reviewIssues || [])
+        .filter((entry) => entry.reportKey === report.key)
+        .map((entry) => entry.issue.detail),
+    });
+    const review = reviews[reviews.length - 1];
+    if (
+      (!selection || selection.reasons.length) &&
+      !review.applicabilityIssues.length
+    )
+      review.applicabilityIssues.push(
+        "核对结果已保存，但报告的目标、范围或交付对象未能确认为当前适用。请结合原记录的范围阅读。",
+      );
+  }
+  return reviews.length
+    ? { ...work, reviews, pending: false, reasons: [] }
+    : work;
+}
+
+export function requirementProgressLabel(work?: RequirementWork): string {
+  if (work?.current) return "正在进行";
+  if (work?.reviews?.length) {
+    const outcomes = [...new Set(work.reviews.map((review) => review.outcome))];
+    return outcomes.length === 1
+      ? `已核对 · ${outcomes[0]}`
+      : "已核对 · 多份结果";
+  }
+  if (work?.recorded) return "已进行";
+  if (work?.notStarted) return "未开始";
+  return "进展待核对";
 }
 export function isDirectWorkCandidate(
   row: ProductBindingView,
@@ -197,5 +290,13 @@ export function requirementProgressPending(item: OverviewRequirement): boolean {
 }
 
 export function hasRequirementWork(item: OverviewRequirement): boolean {
-  return Boolean(item.work?.recorded || item.work?.current);
+  return Boolean(
+    item.work?.recorded ||
+    item.work?.current ||
+    item.work?.reviews?.some(
+      (review) =>
+        !review.applicabilityIssues.length &&
+        ["已开始过", "已开展", "进行中", "已完成"].includes(review.outcome),
+    ),
+  );
 }

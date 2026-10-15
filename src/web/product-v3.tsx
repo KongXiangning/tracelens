@@ -37,7 +37,9 @@ import {
   hasRequirementWork,
   requirementProgressPending,
   requirementWork,
+  requirementProgressLabel,
 } from "../shared/overview-progress";
+import { ProgressResult } from "./progress-result";
 import { useTemporaryNodePositions } from "./temporary-node-positions";
 import {
   ReactFlow,
@@ -60,6 +62,8 @@ import {
   type Subject,
 } from "../shared/product-view";
 import { AssessmentOverview } from "./assessment-overview";
+import { AssessmentReviewDialog } from "./assessment-review-dialog";
+import { ProjectAssessmentReview } from "./project-assessment-review";
 import {
   requirementBindings,
   requirementHierarchy,
@@ -1010,6 +1014,7 @@ const assessmentReasonLabels: Record<string, string> = {
   "definition-changed": "需求定义已变化，历史成果不能直接作为当前结论。",
   "goal-definition-changed": "目标定义已变化，历史成果不能直接作为当前结论。",
   "target-definition-unverified": "需求定义依据尚未完成来源核对。",
+  "definition-unverified": "需求定义依据尚未完成来源核对。",
   "goal-definition-unverified": "目标定义依据尚未完成来源核对。",
   "pending-evidence": "有新材料待对账；原报告结论与限制同时保留。",
   "multiple-reports": "存在多份未替代报告，暂不自动挑选其中一份。",
@@ -1282,10 +1287,23 @@ export const OverviewV3 = memo(
     planning?: () => void;
   }) {
     const [assessmentKey, setAssessmentKey] = useState<string>();
+    const [progressKey, setProgressKey] = useState<string>();
+    const [reviewKey, setReviewKey] = useState<string>();
+    const reviewTrigger = useRef<HTMLButtonElement | null>(null);
+    const closeReview = () => {
+      setReviewKey(undefined);
+      requestAnimationFrame(() => {
+        if (reviewTrigger.current?.isConnected)
+          reviewTrigger.current.focus({ preventScroll: true });
+      });
+    };
     const data = isOverviewSnapshot(context.snapshot)
       ? context.snapshot.overview!
       : buildOverviewData(context.snapshot);
     const { planned, unordered, rootGoal } = data;
+    const progressItem = [...planned, ...unordered].find(
+      (item) => item.key === progressKey,
+    );
     const [visibility, setVisibility] = useState(() =>
       readRequirementVisibility(context.snapshot.projectId),
     );
@@ -1361,6 +1379,9 @@ export const OverviewV3 = memo(
     const assessmentItem = [...planned, ...unordered].find(
       (item) => item.key === assessmentKey,
     );
+    const reviewItem = [...planned, ...unordered].find(
+      (item) => item.key === reviewKey,
+    );
     const totalTaskCount = data.taskCount;
     const openFirstTask = (item: OverviewRequirement) => {
       context.openTask(item.firstTask, item.key);
@@ -1376,10 +1397,7 @@ export const OverviewV3 = memo(
       const taskSummary = lifecycleStates
         .map((state) => `${state.label} ${state.count}`)
         .join("，");
-      let progressTag = "进展待核对";
-      if (item.work?.current) progressTag = "正在进行";
-      else if (hasRequirementWork(item)) progressTag = "已进行";
-      else if (item.work?.notStarted) progressTag = "未开始";
+      const progressTag = requirementProgressLabel(item.work);
       return (
         <article
           className="overview-route-card"
@@ -1406,8 +1424,11 @@ export const OverviewV3 = memo(
             <span className="overview-route-code" title={item.id}>
               {item.id}
             </span>
-            <span
+            <button
               className="overview-progress-tag"
+              type="button"
+              aria-label={`查看进展核对结果 · ${item.id}`}
+              onClick={() => setProgressKey(item.key)}
               data-pending={
                 (!hasRequirementWork(item) &&
                   requirementProgressPending(item)) ||
@@ -1424,14 +1445,20 @@ export const OverviewV3 = memo(
               ].join("；")}
             >
               {progressTag}
-            </span>
+            </button>
             {review && (
-              <span
+              <button
+                type="button"
                 className="overview-review-marker"
-                title="验收适用性待核对，原报告结论保留"
+                title="查看具体触发原因、报告和来源依据"
+                aria-label={`查看待核对原因 · ${item.id}`}
+                onClick={(event) => {
+                  reviewTrigger.current = event.currentTarget;
+                  setReviewKey(item.key);
+                }}
               >
-                <i aria-hidden="true">!</i>待核对
-              </span>
+                <i aria-hidden="true">!</i>适用性说明
+              </button>
             )}
           </div>
           <div className="overview-route-body">
@@ -1609,6 +1636,12 @@ export const OverviewV3 = memo(
           <CurrentWorkPanel work={data.currentWork} context={context} />
         </section>
         <FocusResults data={data} context={context} />
+        <ProjectAssessmentReview
+          key={`${context.snapshot.projectId}:${context.snapshot.id}`}
+          requirements={data.reviewRequirements || [...planned, ...unordered]}
+          snapshot={context.snapshot}
+          projectTitle={data.project?.title}
+        />
         <section className="overview-route-heading" aria-label="完整范围标题">
           <div>
             <h2 aria-label="当前进度">
@@ -1649,8 +1682,7 @@ export const OverviewV3 = memo(
         <p className="overview-progress-note">
           当前显示 {visibleRoadmap.length + visibleUnordered.length} /{" "}
           {planned.length + unordered.length} 项，隐藏 {hiddenCount}{" "}
-          项。缺少进展依据保留为待核对；Task
-          关联、关闭或计划安排不作为已进行的依据。
+          项。进展核对的结果与理由可点击状态查看；无法确认也是已保存的核对结果。
           <button className="text-link" onClick={requirements}>
             查看需求图与详情 ↗
           </button>
@@ -1695,6 +1727,14 @@ export const OverviewV3 = memo(
           groups={data.assessmentGroups}
           openProduct={context.openProduct}
         />
+        {reviewItem && (
+          <AssessmentReviewDialog
+            key={`${context.snapshot.id}:${reviewItem.key}`}
+            item={reviewItem}
+            context={context}
+            close={closeReview}
+          />
+        )}
         {assessmentItem && (
           <Modal title="验收记录" close={() => setAssessmentKey(undefined)}>
             <div className="modal-body overview-assessment-dialog">
@@ -1720,35 +1760,70 @@ export const OverviewV3 = memo(
                       <span>{report.metadata.checked_at?.split("T")[0]}</span>
                     </div>
                     {selection.reasons.length > 0 && (
-                      <p>适用性待核对，详情见报告依据。</p>
+                      <button
+                        className="text-link"
+                        onClick={() => {
+                          setAssessmentKey(undefined);
+                          reviewTrigger.current = null;
+                          setReviewKey(assessmentItem.key);
+                        }}
+                      >
+                        查看具体待核对原因 ↗
+                      </button>
                     )}
+                    {report.narrative?.map((section) => (
+                      <div
+                        className="assessment-result-narrative"
+                        key={section.title}
+                      >
+                        <h4>{section.title}</h4>
+                        <p>{section.text}</p>
+                      </div>
+                    ))}
                     <p>{report.metadata.applicability?.coverage}</p>
-                    <dl>
-                      <dt>目标 / 范围</dt>
-                      <dd>
-                        {report.metadata.applicability?.goal_id} /{" "}
-                        {report.metadata.applicability?.scope_id}
-                      </dd>
-                      <dt>交付对象</dt>
-                      <dd>
-                        {report.metadata.subject?.kind} ·{" "}
-                        {report.metadata.subject?.value}
-                        {report.metadata.subject?.revision &&
-                          ` @ ${report.metadata.subject.revision}`}
-                      </dd>
-                    </dl>
-                    <button
-                      className="overview-assessment-link"
-                      onClick={() => {
-                        setAssessmentKey(undefined);
-                        context.openProduct(report.key);
-                      }}
-                    >
-                      查看报告与依据 <span aria-hidden="true">↗</span>
-                    </button>
+                    <details className="result-evidence">
+                      <summary>评估范围与来源</summary>
+                      <dl>
+                        <dt>目标 / 范围</dt>
+                        <dd>
+                          {report.metadata.applicability?.goal_id} /{" "}
+                          {report.metadata.applicability?.scope_id}
+                        </dd>
+                        <dt>交付对象</dt>
+                        <dd>
+                          {report.metadata.subject?.kind} ·{" "}
+                          {report.metadata.subject?.value}
+                          {report.metadata.subject?.revision &&
+                            ` @ ${report.metadata.subject.revision}`}
+                        </dd>
+                      </dl>
+                      <button
+                        className="overview-assessment-link"
+                        onClick={() => {
+                          setAssessmentKey(undefined);
+                          context.openProduct(report.key);
+                        }}
+                      >
+                        查看报告与依据 <span aria-hidden="true">↗</span>
+                      </button>
+                    </details>
                   </section>
                 );
               })}
+            </div>
+          </Modal>
+        )}
+        {progressItem && (
+          <Modal title="进展核对结果" close={() => setProgressKey(undefined)}>
+            <div className="modal-body">
+              <h3>{progressItem.title}</h3>
+              <ProgressResult
+                work={progressItem.work}
+                open={(source) => {
+                  setProgressKey(undefined);
+                  context.open(source);
+                }}
+              />
             </div>
           </Modal>
         )}

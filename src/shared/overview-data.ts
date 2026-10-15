@@ -8,14 +8,20 @@ import {
   confirmedOutcomes,
   roadmapSummaries,
 } from "./overview-focus.js";
-import type { Snapshot } from "./types.js";
-import { requirementWork, type RequirementWork } from "./overview-progress.js";
+import type { Snapshot, SourceRef } from "./types.js";
+import type { AssessmentReviewIssue } from "./assessment-review.js";
+import { pendingAssessmentRecords } from "./assessment-review-export.js";
+import {
+  requirementProgress,
+  type RequirementWork,
+} from "./overview-progress.js";
 import type {
   ProductItem,
   ProductMetadata,
   ProductSnapshot,
 } from "./product-types.js";
 import { productView } from "./product-view.js";
+import { assessmentNarrative } from "./requirement-detail.js";
 import { requirementBindings } from "./product-hierarchy.js";
 import {
   assessmentGroups,
@@ -28,10 +34,12 @@ export type OverviewReport = Pick<
   ProductItem,
   "key" | "id" | "title" | "usable"
 > & {
-  metadata: Pick<
-    ProductMetadata,
-    "conclusion" | "applicability" | "subject" | "checked_at"
-  >;
+  source?: SourceRef;
+  narrative?: { title: string; text: string }[];
+  metadata: Pick<ProductMetadata, "conclusion" | "checked_at" | "target"> & {
+    applicability?: Partial<NonNullable<ProductMetadata["applicability"]>>;
+    subject?: Partial<NonNullable<ProductMetadata["subject"]>>;
+  };
 };
 export interface OverviewRequirement extends Item {
   work?: RequirementWork;
@@ -47,8 +55,13 @@ export interface OverviewRequirement extends Item {
       conclusion: NonNullable<ProductMetadata["conclusion"]>;
       reasons: string[];
     };
+    review?: { issues: AssessmentReviewIssue[] };
   }[];
 }
+export type OverviewReviewRequirement = Pick<
+  OverviewRequirement,
+  "key" | "id" | "title" | "assessmentRecords"
+> & { scope?: ProductMetadata["scope"] };
 export type OverviewAssessmentGroup = Omit<
   ReturnType<typeof assessmentGroups>[number],
   "reports"
@@ -66,6 +79,8 @@ export interface OverviewData {
   roadmapSummary?: ReturnType<typeof roadmapSummaries>;
   contributionSummary?: ContributionSummary;
   unordered: OverviewRequirement[];
+  /** All project requirements with review work, independently of card visibility. */
+  reviewRequirements?: OverviewReviewRequirement[];
   taskCount: number;
   tasks: Pick<
     Snapshot["tasks"][number],
@@ -98,14 +113,71 @@ export function isOverviewSnapshot(
 function itemSummary(item: ProductItem): Item {
   return { key: item.key, id: item.id, title: item.title, type: item.type };
 }
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+function metadataText(value: unknown): string | undefined {
+  return typeof value === "string" && value.length ? value : undefined;
+}
+/** Invalid reports retain valid original identity fields, never unchecked objects. */
+function reportMetadata(report: ProductItem): OverviewReport["metadata"] {
+  const metadata = metadataRecord(report.rawMetadata ?? report.metadata);
+  const rawApplicability = metadataRecord(metadata.applicability);
+  const rawSubject = metadataRecord(metadata.subject);
+  const applicability = {
+    goal_id: metadataText(rawApplicability.goal_id),
+    scope_id: metadataText(rawApplicability.scope_id),
+    coverage: metadataText(rawApplicability.coverage),
+  };
+  const subject = {
+    kind:
+      typeof rawSubject.kind === "string" &&
+      ["working-copy", "commit", "release", "unknown"].includes(rawSubject.kind)
+        ? rawSubject.kind
+        : undefined,
+    value: rawSubject.value === null ? null : metadataText(rawSubject.value),
+    revision: metadataText(rawSubject.revision),
+    limitations: metadataText(rawSubject.limitations),
+  };
+  const conclusion = [
+    "satisfied",
+    "partially-satisfied",
+    "not-satisfied",
+    "undetermined",
+  ].includes(metadata.conclusion as string)
+    ? (metadata.conclusion as ProductMetadata["conclusion"])
+    : undefined;
+  const checkedAt = metadataText(metadata.checked_at);
+  return {
+    target: metadataText(metadata.target),
+    conclusion,
+    applicability: Object.values(applicability).some(
+      (value) => value !== undefined,
+    )
+      ? applicability
+      : undefined,
+    subject: Object.values(subject).some((value) => value !== undefined)
+      ? subject
+      : undefined,
+    checked_at:
+      checkedAt &&
+      /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(checkedAt) &&
+      Number.isFinite(Date.parse(checkedAt))
+        ? checkedAt
+        : undefined,
+  };
+}
 function reportSummary(report: ProductItem): OverviewReport {
-  const { conclusion, applicability, subject, checked_at } = report.metadata;
   return {
     key: report.key,
     id: report.id,
     title: report.title,
     usable: report.usable,
-    metadata: { conclusion, applicability, subject, checked_at },
+    source: report.source,
+    narrative: assessmentNarrative(report),
+    metadata: reportMetadata(report),
   };
 }
 export function requirementDescription(item: ProductItem): string {
@@ -143,12 +215,41 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
     ]),
   );
   const contributionIssues = contributionDiagnostics(product?.bindings || []);
+  const assessmentRecords = new Map<
+    string,
+    OverviewRequirement["assessmentRecords"]
+  >();
+  function requirementAssessments(item: ProductItem) {
+    let records = assessmentRecords.get(item.key);
+    if (!records) {
+      records = overviewAssessmentRecords(product!, item).map(
+        ({ report, selection }) => ({
+          report: reportSummary(report),
+          selection: {
+            conclusion: selection.conclusion,
+            reasons: selection.reasons,
+          },
+          ...(selection.reasons.length
+            ? {
+                review: {
+                  issues: (selection.reviewIssues || [])
+                    .filter((entry) => entry.reportKey === report.key)
+                    .map((entry) => entry.issue),
+                },
+              }
+            : {}),
+        }),
+      );
+      assessmentRecords.set(item.key, records);
+    }
+    return records;
+  }
   function requirement(item: ProductItem): OverviewRequirement {
     const rows = bindings.get(item.key)!;
     return {
       ...itemSummary(item),
       description: requirementDescription(item),
-      work: requirementWork(snapshot, rows, contributionIssues),
+      work: requirementProgress(snapshot, item, rows, contributionIssues),
       contributionSummary: contributionSummary(rows, item.key),
       taskState: overviewTaskStates(snapshot, rows),
       firstTask: rows
@@ -174,15 +275,7 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
           r.link.state === "active" &&
           r.resolution === "resolved",
       ).length,
-      assessmentRecords: overviewAssessmentRecords(product!, item).map(
-        ({ report, selection }) => ({
-          report: reportSummary(report),
-          selection: {
-            conclusion: selection.conclusion,
-            reasons: selection.reasons,
-          },
-        }),
-      ),
+      assessmentRecords: requirementAssessments(item),
     };
   }
   const focus = currentWork(snapshot);
@@ -210,6 +303,22 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
     rootGoal: model?.rootGoal ? itemSummary(model.rootGoal) : undefined,
     planned: planned.map(requirement),
     unordered: unordered.map(requirement),
+    reviewRequirements: (product?.items || [])
+      .filter((item) => item.usable && item.type === "requirement")
+      .map((item): OverviewReviewRequirement => {
+        const summary = {
+          key: item.key,
+          id: item.id,
+          title: item.title,
+          scope: item.metadata.scope,
+          assessmentRecords: requirementAssessments(item),
+        };
+        return {
+          ...summary,
+          assessmentRecords: pendingAssessmentRecords(summary),
+        };
+      })
+      .filter((item) => item.assessmentRecords.length > 0),
     taskCount: overviewTaskStates(snapshot, [
       ...new Map(
         [...planned, ...unordered]

@@ -24,7 +24,8 @@
     "test:browser:full-scope": "node tests/full-scope-browser.mjs",
     "test:browser:structure": "node tests/structure-browser.mjs",
     "test:browser:overview": "node tests/overview-browser.mjs",
-    "test:browser:focus": "node tests/binding-focus-browser.mjs"
+    "test:browser:focus": "node tests/binding-focus-browser.mjs",
+    "test:browser:features": "node tests/requirement-task-navigation-browser.mjs && node tests/requirement-features-real-browser.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.5",

@@ -1,5 +1,13 @@
 // Deterministic VN-01 consumer, adapted from upstream scoped.ts (MIT).
 import { scopedProductVersion } from "./product-roadmap.js";
+import {
+  definitionReviewIssues,
+  reportReviewSources,
+  reviewReference,
+  reviewSourceStatus,
+  reviewValue,
+  type AssessmentReviewIssue,
+} from "./assessment-review.js";
 import type {
   ProductItem,
   ProductMetadata,
@@ -19,6 +27,7 @@ export interface AssessmentSelection {
   historical: ProductItem[];
   pending: ProductItem[];
   reasons: string[];
+  reviewIssues?: { reportKey: string; issue: AssessmentReviewIssue }[];
   scopeId?: string;
 }
 const normalized = (text: string) => text.replace(/\r\n|\r/g, "\n");
@@ -137,6 +146,9 @@ export function selectAssessment(
   const reasons: string[] = [],
     reports: ProductItem[] = [],
     historical: ProductItem[] = [];
+  const reviewIssues: NonNullable<AssessmentSelection["reviewIssues"]> = [];
+  const review = (report: ProductItem, issue: AssessmentReviewIssue) =>
+    reviewIssues.push({ reportKey: report.key, issue });
   const pending = product.items.filter(
     (i) => i.type === "assessment" && !located(metadata(i)),
   );
@@ -150,6 +162,7 @@ export function selectAssessment(
     historical,
     pending,
     reasons: [...new Set(reasons)],
+    reviewIssues,
     scopeId: selectedScope,
   });
   const fail = (reason: string) => {
@@ -212,13 +225,32 @@ export function selectAssessment(
   );
   const edges = new Map<string, string[]>(),
     invalid = new Set<string>();
+  const conflicts = new Map<
+    string,
+    { detail: string; related: ProductItem[] }[]
+  >();
+  const conflict = (
+    report: ProductItem,
+    detail: string,
+    related: ProductItem[],
+  ) =>
+    conflicts.set(report.key, [
+      ...(conflicts.get(report.key) || []),
+      { detail, related },
+    ]);
   for (const item of all) {
     const valid: string[] = [];
     const supersedes = metadata(item).supersedes;
     for (const id of Array.isArray(supersedes) ? supersedes : []) {
       const found = product.items.filter((i) => i.id === id);
-      if (found.length !== 1 || !all.includes(found[0])) invalid.add(item.id);
-      else valid.push(id);
+      if (found.length !== 1 || !all.includes(found[0])) {
+        invalid.add(item.id);
+        let detail = `supersedes 引用 ${id}，但该条目不属于相同需求、目标、范围和交付对象的验收报告。`;
+        if (!found.length) detail = `supersedes 引用 ${id}，但未找到对应条目。`;
+        else if (found.length > 1)
+          detail = `supersedes 引用 ${id}，但存在 ${found.length} 个同 ID 条目，无法唯一确认。`;
+        conflict(item, detail, [item, ...found]);
+      } else valid.push(id);
     }
     edges.set(item.id, valid);
   }
@@ -235,30 +267,103 @@ export function selectAssessment(
   const removed = new Set<string>();
   for (const item of all)
     for (const id of edges.get(item.id) || []) {
-      if (reaches(id, item.id)) invalid.add(item.id);
-      else removed.add(id);
+      if (reaches(id, item.id)) {
+        invalid.add(item.id);
+        const cycle = all.filter(
+          (candidate) =>
+            reaches(item.id, candidate.id) && reaches(candidate.id, item.id),
+        );
+        conflict(
+          item,
+          `报告替代关系形成循环，涉及：${cycle.map((candidate) => candidate.id).join("、")}。`,
+          cycle,
+        );
+      } else removed.add(id);
     }
   for (const item of all)
     (removed.has(item.id) ? historical : reports).push(item);
   if (!reports.length) return fail("no-applicable-report");
-  if (
-    reports.some(
-      (i) =>
-        invalid.has(i.id) ||
-        product.items.filter((x) => x.id === i.id).length !== 1,
-    )
-  )
-    reasons.push("conflict");
-  if (reports.some((i) => !i.usable || !scopedProductVersion(i.version)))
-    reasons.push("metadata-incomplete");
-  if (reports.length > 1) reasons.push("multiple-reports");
+  let reportConflict = false,
+    metadataIncomplete = false;
+  for (const report of reports) {
+    if (
+      invalid.has(report.id) ||
+      product.items.filter((x) => x.id === report.id).length !== 1
+    ) {
+      reportConflict = true;
+      const details = [...(conflicts.get(report.key) || [])];
+      const duplicates = product.items.filter((item) => item.id === report.id);
+      if (duplicates.length > 1)
+        details.push({
+          detail: `存在 ${duplicates.length} 个 ID 为 ${report.id} 的条目，无法唯一确认报告。`,
+          related: duplicates,
+        });
+      const related = [...new Set(details.flatMap((entry) => entry.related))];
+      review(report, {
+        code: "report-conflict",
+        title: "报告标识或替代关系冲突",
+        detail: details.map((entry) => entry.detail).join("；"),
+        action:
+          "核对涉及报告的 ID、目标、范围及交付对象；修正替代关系并明确仍适用的报告。",
+        sources: reportReviewSources(related),
+      });
+    }
+    if (!report.usable || !scopedProductVersion(report.version)) {
+      metadataIncomplete = true;
+      review(report, {
+        code: "report-metadata-incomplete",
+        title: "报告字段不完整或版本不受支持",
+        detail:
+          report.diagnostics
+            .map((diagnostic) => `${diagnostic.code}：${diagnostic.message}`)
+            .join("；") ||
+          `报告 ${report.id} 未通过元数据校验，或其版本不能用于当前范围验收。`,
+        action:
+          "根据报告字段诊断补齐或修正元数据，使用受支持的报告版本后重新核验。",
+        sources: reportReviewSources([report]),
+      });
+    }
+  }
+  if (reportConflict) reasons.push("conflict");
+  if (metadataIncomplete) reasons.push("metadata-incomplete");
+  if (reports.length > 1) {
+    reasons.push("multiple-reports");
+    for (const report of reports)
+      review(report, {
+        code: "multiple-reports",
+        title: "同一验收对象存在多份当前报告",
+        detail: `相同需求、目标、范围和交付对象下，有 ${reports.length} 份未被明确替代的报告：${reports.map((item) => item.id).join("、")}。`,
+        action:
+          "逐份核对报告适用范围及结论，确认有效报告，并通过明确的 supersedes 关系处理旧报告。",
+        sources: reportReviewSources(reports),
+      });
+  }
   for (const report of reports) {
     const m = metadata(report);
     if (
       typeof m.applicability?.coverage !== "string" ||
       normalized(m.applicability.coverage) !== normalized(scope.coverage)
-    )
+    ) {
       reasons.push("scope-definition-changed");
+      review(report, {
+        code: "scope-definition-changed",
+        title: "验收覆盖范围变化",
+        detail: `报告记录的范围 ${scope.scope_id} 与当前目标声明的覆盖范围不一致。`,
+        action:
+          "逐项比较报告覆盖范围与当前范围，补核新增或变化部分；必要时重新验收。",
+        comparisons: [
+          {
+            label: "验收覆盖范围",
+            recorded: reviewValue(m.applicability?.coverage),
+            current: scope.coverage,
+          },
+        ],
+        sources: [
+          ...reportReviewSources([report]),
+          { label: `当前目标 ${goal.id} 的范围声明`, source: goal.source },
+        ],
+      });
+    }
     for (const prefix of ["target", "goal"] as const) {
       const definition = prefix === "target" ? target : goal;
       const name = prefix === "target" ? "definition" : "goal-definition";
@@ -279,22 +384,21 @@ export function selectAssessment(
         comparison.scopeId === scope.scope_id &&
         comparison.basisDefinitionSha256 === digest &&
         comparison.currentDefinitionSha256 === definition.definitionSha256;
-      if (
+      const algorithmChanged =
         [
           "vnext-product-definition/v1",
           "vnext-requirement-definition/v1",
         ].includes(algorithm || "") &&
-        algorithm !== definition.definitionAlgorithm
-      )
-        reasons.push("definition-algorithm-changed");
-      if (
+        algorithm !== definition.definitionAlgorithm;
+      if (algorithmChanged) reasons.push("definition-algorithm-changed");
+      const definitionChanged = Boolean(
         algorithm === definition.definitionAlgorithm &&
         digest &&
         digest !== definition.definitionSha256 &&
-        !sameGoalScope
-      )
-        reasons.push(`${name}-changed`);
-      if (
+        !sameGoalScope,
+      );
+      if (definitionChanged) reasons.push(`${name}-changed`);
+      const unverified =
         !digest ||
         !basis ||
         basis.kind !== "file" ||
@@ -304,11 +408,45 @@ export function selectAssessment(
         checked.locationState !== "located" ||
         checked.definitionAlgorithm !== algorithm ||
         checked.definitionSha256 !== digest ||
-        checked.byteState === "changed"
-      )
-        reasons.push(`${name}-unverified`);
+        checked.byteState === "changed";
+      if (unverified) reasons.push(`${name}-unverified`);
+      for (const issue of definitionReviewIssues({
+        prefix,
+        definition,
+        algorithm,
+        digest,
+        basis,
+        checked,
+        algorithmChanged,
+        definitionChanged,
+        unverified,
+      }))
+        review(report, issue);
     }
-    if (m.pending_sources?.length) reasons.push("pending-evidence");
+    if (m.pending_sources?.length) {
+      reasons.push("pending-evidence");
+      const sources = Array.isArray(m.pending_sources) ? m.pending_sources : [];
+      review(report, {
+        code: "pending-evidence",
+        title: "报告登记了待对账材料",
+        detail: `报告 ${report.id} 的 pending_sources 登记了 ${sources.length || "字段异常的"} 份待核对材料，尚未确认其是否影响验收结论。`,
+        action:
+          "逐份读取待对账材料，与报告的实现和验证结论比较，处理差异后更新报告与待对账清单。",
+        sources: sources.map((reference, index) => {
+          const checked = product.sources.find(
+            (source) =>
+              source.ownerKey === report.key &&
+              source.role === `pending_sources[${index}]`,
+          );
+          return {
+            label: `待对账材料 ${index + 1}`,
+            reference: reviewReference(reference),
+            source: checked?.source || undefined,
+            status: reviewSourceStatus(checked),
+          };
+        }),
+      });
+    }
   }
   return result();
 }

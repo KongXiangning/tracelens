@@ -56,7 +56,7 @@ export function OverviewFilterBar({
         </div>
       </fieldset>
       <p>
-        已开展只显示已有直接工作依据的需求；进展待核对可包含已有局部工作、但其他范围依据仍待确认的需求。
+        已开展包含明确的执行依据或适用的进展核对结论；已有核对结果也包含“未开始”和“无法确认”。
       </p>
       <fieldset className="overview-conclusion-filters">
         <legend>

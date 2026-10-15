@@ -374,10 +374,10 @@ try {
     );
     await detail.waitFor();
     assert.equal(await detail.locator(".rd-feature").count(), 4);
-    assert.match(await detail.locator(".rd-count").innerText(), /1 \/ 4/);
     assert.equal(
-      await detail.getByRole("progressbar").getAttribute("aria-valuenow"),
-      "25",
+      await detail.getByRole("progressbar").count(),
+      0,
+      "Task execution must not produce a feature completion percentage",
     );
     await detail.locator("#rd-body summary").click();
     assert.match(await detail.locator("#rd-body").innerText(), /需求正文起点/);
@@ -390,7 +390,7 @@ try {
       assert.equal(
         await functionalFeature.locator(".rd-feature-description").isVisible(),
         false,
-        "Feature details are collapsed by default",
+        "Feature descriptions are folded initially and open inline",
       );
       await functionalFeature.locator(".rd-feature-heading").click();
     }
@@ -401,7 +401,7 @@ try {
         .locator(".rd-feature-description")
         .isVisible(),
       true,
-      "One expansion shows the complete feature description",
+      "One expansion reveals the complete feature description inline",
     );
     await page.evaluate(() => {
       document.scrollingElement.scrollTop = 0;
@@ -413,17 +413,25 @@ try {
     if (pass === 0) {
       await detail
         .getByRole("group", { name: "功能点筛选" })
-        .getByRole("button", { name: "进行中 1", exact: true })
+        .getByRole("button", { name: "未逐点列出 4", exact: true })
         .click();
+      await detail.locator(".rd-task-records > summary").click();
       await detail
-        .locator(".rd-feature .rd-bound-task button.text-link")
+        .locator(".rd-aside .rd-bound-task button.text-link")
+        .filter({ hasText: "导航合成任务 b" })
         .click();
       await page.locator(".tasks-page").waitFor();
       await page.goBack();
       await detail.waitFor();
-      assert.equal(await detail.locator(".rd-feature").count(), 1);
+      assert.equal(await detail.locator(".rd-feature").count(), 4);
       assert.equal(
-        await detail.locator(".rd-feature .rd-feature-body").isVisible(),
+        await detail
+          .getByRole("button", { name: "未逐点列出 4", exact: true })
+          .getAttribute("aria-pressed"),
+        "true",
+      );
+      assert.equal(
+        await functionalFeature.locator(".rd-feature-body").isVisible(),
         true,
       );
       await detail
@@ -602,10 +610,15 @@ try {
   await bodyDetail.waitFor();
   assert.equal(await bodyDetail.locator(".rd-feature").count(), 6);
   assert.equal(
-    await bodyDetail.getByRole("progressbar").getAttribute("aria-valuenow"),
-    null,
+    await bodyDetail.getByRole("progressbar").count(),
+    0,
     "Missing per-point execution must not be reported as 0% completed",
   );
+  await bodyDetail.locator(".rd-report-basis > summary").click();
+  await bodyDetail
+    .getByRole("combobox", { name: "功能点评估报告" })
+    .selectOption("body-feature-report");
+  await bodyDetail.locator(".rd-report-basis > summary").click();
   const bodyFeature = bodyDetail.locator(".rd-feature").first();
   assert.equal(
     await bodyFeature.locator(".rd-feature-body").isVisible(),
@@ -617,13 +630,26 @@ try {
     0,
     "Requirement-level bindings must not leak to a body feature",
   );
+  assert.doesNotMatch(
+    await bodyFeature.innerText(),
+    /条关联|待关联|功能点与 Task 的关联/,
+  );
+  assert.equal(
+    await bodyDetail.locator(".rd-feature .rd-bound-task").count(),
+    0,
+  );
+  await bodyDetail.locator(".rd-task-records > summary").click();
+  assert.match(
+    await bodyDetail.locator(".rd-aside .rd-bound-tasks").innerText(),
+    /覆盖范围：/,
+  );
   assert.match(
     await bodyFeature.locator(".rd-feature-heading").innerText(),
-    /原报告：已实施/,
+    /已实施/,
   );
   assert.equal(
     await bodyFeature
-      .locator(".rd-feature-report dd")
+      .locator(".rd-feature-report > dl dd")
       .filter({ hasText: "本轮仅静态核对" })
       .isVisible(),
     true,
@@ -638,8 +664,8 @@ try {
   await bodyFeature.locator(".rd-feature-heading").click();
   assert.equal(
     await bodyFeature.locator(".rd-feature-description").count(),
-    0,
-    "A title-only definition is not repeated as its detailed explanation",
+    1,
+    "The original definition remains readable independently of assessment state",
   );
   assert.match(
     await bodyFeature.locator(".rd-feature-report").innerText(),

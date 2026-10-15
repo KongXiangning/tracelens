@@ -1,5 +1,8 @@
 import { LazyDetails, PagedItems } from "./lazy-details";
-import type { OverviewAssessmentGroup } from "../shared/overview-data";
+import type {
+  OverviewAssessmentGroup,
+  OverviewReport,
+} from "../shared/overview-data";
 import type { ProductContext } from "./product";
 import { assessmentGroups } from "../shared/overview-model";
 import { conclusionLabels } from "../shared/product-view";
@@ -69,7 +72,7 @@ export function AssessmentOverview({
                     来源核对：{group.pending} 待处理 · {group.failedChecks}{" "}
                     异常。文件摘要一致不代表业务重新验收。
                   </p>
-                  <PagedItems items={group.reports}>
+                  <PagedItems<OverviewReport> items={group.reports}>
                     {(reports) => (
                       <ul>
                         {reports.map((report) => (

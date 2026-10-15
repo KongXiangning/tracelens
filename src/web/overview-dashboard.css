@@ -688,6 +688,15 @@
   font-style: normal;
   font-weight: 700;
 }
+.overview-review-marker:hover {
+  color: #70450c;
+  background: #ffebbd;
+  border-color: #bd934c;
+}
+.overview-review-marker:focus-visible {
+  outline: 2px solid #895d1b;
+  outline-offset: 3px;
+}
 .overview-filters {
   margin-top: 16px;
   padding: 15px 18px;
@@ -2020,6 +2029,152 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.assessment-review-dialog {
+  color: var(--overview-ink);
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.assessment-review-dialog header h3 {
+  font-size: 16px;
+}
+.assessment-review-dialog header p {
+  margin-top: 8px;
+}
+.assessment-review-snapshot,
+.assessment-review-copy > span,
+.assessment-review-context dt {
+  color: #647061;
+  font-size: 12px;
+}
+.assessment-review-copy,
+.assessment-review-report-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.assessment-review-text summary {
+  color: var(--overview-link);
+  cursor: pointer;
+}
+.assessment-review-text textarea {
+  width: 100%;
+  min-width: 0;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.assessment-review-report {
+  min-width: 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--overview-rule);
+}
+.assessment-review-report h4 {
+  font-size: 14px;
+}
+.assessment-review-context {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 12px 0;
+}
+.assessment-review-context dd {
+  min-width: 0;
+  margin: 0;
+}
+.assessment-review-issue {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid #e1d3b6;
+  border-radius: 7px;
+  background: #fffcf4;
+}
+.assessment-review-issue h5 {
+  margin: 0;
+  color: #79551e;
+  font-size: 13px;
+}
+.assessment-review-issue p {
+  margin-top: 8px;
+}
+.assessment-review-comparisons {
+  margin: 12px 0;
+}
+.assessment-review-comparisons > div + div {
+  margin-top: 12px;
+}
+.assessment-review-comparisons dt {
+  font-weight: 600;
+}
+.assessment-review-comparisons dd {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 8px;
+  margin: 5px 0 0;
+  font-size: 11px;
+}
+.assessment-review-comparisons code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.assessment-review-sources > div {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #ebe3d1;
+}
+.assessment-review-sources .source-link,
+.assessment-review-report-links .source-link {
+  max-width: 100%;
+}
+.assessment-review-sources .source-link span,
+.assessment-review-report-links .source-link span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.assessment-review-action {
+  color: #674f29;
+}
+.overview-review-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin: 20px 0 8px;
+  padding: 14px 18px;
+  border: 1px solid var(--overview-rule);
+  border-radius: 9px;
+  background: #fdfdf9;
+  font-size: 13px;
+}
+.overview-review-export p {
+  margin-top: 4px;
+  color: #647061;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.overview-review-export-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.overview-review-export-action [role="status"] {
+  color: var(--overview-link);
+  font-size: 12px;
+}
+.project-assessment-review-dialog {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.project-assessment-review-dialog textarea {
+  width: 100%;
+  min-width: 0;
+}
 .overview-pending {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -2248,4 +2403,62 @@
   .overview-focus-panel {
     padding: 17px;
   }
+}
+
+.progress-result p,
+.rd-result-narrative p,
+.assessment-result-narrative p {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+}
+.progress-result section + section {
+  margin-top: 24px;
+}
+.progress-result-status {
+  font-weight: 600;
+  color: #40644c;
+}
+.progress-result-scope {
+  color: #627268;
+  font-size: 13px;
+}
+.result-evidence {
+  margin: 12px 0;
+  font-size: 12px;
+  color: #627268;
+  overflow-wrap: anywhere;
+}
+.result-evidence > summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+.result-evidence[open] {
+  padding-bottom: 8px;
+}
+.overview-progress-tag {
+  cursor: pointer;
+  border: 0;
+  max-width: 200px;
+  white-space: normal;
+  text-align: left;
+}
+.rd-result-narrative {
+  margin: 18px 0;
+}
+.rd-result-narrative h3 {
+  font-size: 14px;
+}
+.rd-result-applicability {
+  margin: 14px 0;
+  font-size: 13px;
+  color: #826533;
+}
+.rd-result-applicability summary {
+  cursor: pointer;
+}
+.rd-badge[data-implementation="unable-to-assess"],
+.rd-badge[data-implementation="failed"] {
+  background: #faf2e3;
+  color: #8b5d17;
 }

@@ -191,6 +191,10 @@ function references(
     many(`planning_baseline.exceptions[${i}].sources`, exception.sources),
   );
   many("pending_sources", m.pending_sources);
+  m.evidence_dispositions?.forEach((entry, index) => {
+    one(`evidence_dispositions[${index}].source`, entry.source);
+    many(`evidence_dispositions[${index}].sources`, entry.sources);
+  });
   one("target_basis", m.target_basis);
   one("goal_basis", m.goal_basis);
   one("raw_ref", m.raw_ref);

@@ -658,6 +658,9 @@ try {
             id: `${id}:report:${index}`,
             metadata: {
               ...template.assessmentRecords[0].report.metadata,
+              applicability: {
+                ...template.assessmentRecords[0].report.metadata.applicability,
+              },
               conclusion,
             },
           },
@@ -682,6 +685,7 @@ try {
       issues: [
         {
           code: "source-file-changed",
+          category: "source-change",
           title: "来源文件变化",
           detail: "来源文件摘要不同；需求定义摘要相同。",
           action: "核对文件修改是否影响原报告依据，再记录核对结果。",
@@ -732,6 +736,7 @@ try {
       issues: [
         {
           code: "definition-changed",
+          category: "scope-change",
           title: "需求定义变化",
           detail: "R-IMPORT 的当前需求定义摘要与报告记录不同。",
           action: "比较原需求和当前需求，重新核对报告是否覆盖新增要求。",
@@ -756,16 +761,41 @@ try {
         },
       ],
     };
+    const sharedBoundary = {
+      code: "pending-evidence",
+      category: "scope-change",
+      change: {
+        id: "shared-boundary",
+        kind: "scope-change",
+        source: {
+          kind: "file",
+          path: "decisions/shared-boundary.md",
+          sha256: "e".repeat(64),
+        },
+      },
+      title: "共享职责变更",
+      detail: "同一职责变更只调查一次，分别保留领域义务映射。",
+      action: "核对实际受影响的局部义务。",
+    };
+    const blue = fixtureCard("S-BLUE", ["undetermined"], true);
+    blue.assessmentRecords[0].review = { issues: [sharedBoundary] };
+    blue.assessmentRecords[0].report.metadata.applicability.coverage =
+      "BLUE 的领域义务";
     data.planned = [
       green,
       amber,
-      fixtureCard("S-BLUE", ["undetermined"], true),
+      blue,
       fixtureCard("S-MIXED", ["satisfied", "partially-satisfied"], false),
       fixtureCard("S-EMPTY", [], false),
       fixtureCard("S-DONE", ["satisfied"], false, "已完成"),
       fixtureCard("S-PENDING", ["satisfied"], true, "身份未确认"),
     ];
     data.unordered = [fixtureCard("U-AMBER", ["partially-satisfied"], true)];
+    data.unordered[0].assessmentRecords[0].review = {
+      issues: [sharedBoundary],
+    };
+    data.unordered[0].assessmentRecords[0].report.metadata.applicability.coverage =
+      "AMBER 的领域义务";
     // These are deliberately synthetic summary fields, not an actual scan result.
     // A project export includes non-current requirements that have no overview card.
     data.reviewRequirements = emptyProjectReviewFixture
@@ -804,10 +834,29 @@ try {
   );
   const syntheticProjectReview = await copyAllReviews(page);
   assert.deepEqual(syntheticProjectReview.data.summary, {
+    changes: 5,
     requirements: 6,
     reports: 6,
     issues: 6,
   });
+  const sharedChange = syntheticProjectReview.data.changeGroups.find((group) =>
+    group.changeIds.includes("shared-boundary"),
+  );
+  assert.equal(sharedChange.affectedReports.length, 2);
+  const projectChanges = page.locator(".project-assessment-review-groups");
+  await projectChanges.locator(":scope > summary").click();
+  const sharedChangeView = projectChanges
+    .locator(".assessment-review-change")
+    .filter({ hasText: "shared-boundary" });
+  assert.equal(await sharedChangeView.count(), 1);
+  for (const text of [
+    "S-BLUE:report:0",
+    "U-AMBER:report:0",
+    "BLUE 的领域义务",
+    "AMBER 的领域义务",
+  ])
+    assert.match(await sharedChangeView.innerText(), new RegExp(text));
+  await projectChanges.locator(":scope > summary").click();
   assert.deepEqual(
     syntheticProjectReview.data.requirements
       .map((entry) => entry.requirement.id)

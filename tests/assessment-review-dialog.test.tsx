@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { OverviewRequirement } from "../src/shared/overview-data";
 import type { OverviewContext } from "../src/web/product";
+import type { EvidenceDispositionView } from "../src/shared/product-types";
+import { ProjectAssessmentReview } from "../src/web/project-assessment-review";
 import {
   AssessmentReviewDialog,
   assessmentReviewText,
@@ -156,4 +158,98 @@ it("does not substitute an undetermined verdict for a missing original conclusio
   );
   expect(html).toContain("未记录或字段异常");
   expect(html).not.toContain("尚未判定");
+});
+
+it("shows one shared change with the local scope of each affected report", () => {
+  const first = structuredClone(item);
+  const issue = first.assessmentRecords[0].review!.issues[0];
+  issue.category = "scope-change";
+  issue.change = {
+    id: "shared-boundary",
+    kind: "scope-change",
+    source: {
+      kind: "file",
+      path: "decisions/boundary.md",
+      sha256: "a".repeat(64),
+    },
+  };
+  const second = structuredClone(first);
+  second.key = "another-requirement";
+  second.id = "R-JUDICIAL";
+  second.assessmentRecords[0].report.key = "another-report";
+  second.assessmentRecords[0].report.id = "A-JUDICIAL";
+  second.assessmentRecords[0].report.metadata.applicability!.coverage =
+    "司法领域语义";
+  const html = renderToStaticMarkup(
+    <ProjectAssessmentReview
+      requirements={[first, second]}
+      snapshot={snapshot}
+      context={context}
+    />,
+  );
+  expect(html).toContain("1 项变更 · 影响 2 项需求、2 份报告");
+  expect(html.match(/data-review-category="scope-change"/g)).toHaveLength(1);
+  expect(html).toContain("职责或验收范围变化");
+  expect(html).toContain("单设备导入");
+  expect(html).toContain("司法领域语义");
+  expect(html).toContain("A-JUDICIAL");
+  expect(html).toContain("原报告结论：");
+  expect(html).toContain("查看报告与依据");
+  expect(html).not.toContain("A-HEALTHY");
+});
+
+it("keeps a reused disposition visible without turning a clean report into pending work", () => {
+  const clean = structuredClone(item);
+  clean.assessmentRecords = [clean.assessmentRecords[0]];
+  clean.assessmentRecords[0].review!.issues = [];
+  clean.assessmentRecords[0].selection.reasons = [];
+  const disposition: EvidenceDispositionView = {
+    change_id: "already-reviewed-boundary",
+    kind: "scope-change",
+    source: {
+      kind: "file",
+      path: "decisions/boundary.md",
+      sha256: "a".repeat(64),
+    },
+    disposition: "no-impact",
+    reason: "领域语义的义务版本未变，继续适用",
+    checked_at: "2026-10-15T08:00:00Z",
+    basis: {
+      target: clean.id,
+      goal_id: "G",
+      scope_id: "S",
+      coverage: "单设备导入",
+      subject: {
+        kind: "commit",
+        value: "project",
+        revision: "original-revision",
+      },
+      target_definition_algorithm: "definition/v1",
+      target_definition_sha256: "a".repeat(64),
+      goal_definition_algorithm: "definition/v1",
+      goal_definition_sha256: "b".repeat(64),
+      goal_scope_definition_sha256: "b".repeat(64),
+      report_sources: [],
+      report_algorithm: "vnext-assessment-disposition/v1",
+      report_sha256: "c".repeat(64),
+    },
+    reuse_status: "reused",
+    reuse_reasons: [],
+  };
+  clean.assessmentRecords[0].selection.evidenceDispositions = [disposition];
+  const html = renderToStaticMarkup(
+    <AssessmentReviewDialog item={clean} context={context} close={() => {}} />,
+  );
+  expect(html).toContain("0 项待处理变更，影响 0 份报告");
+  expect(html).toContain("已复用的局部处置");
+  expect(html).toContain(disposition.reason);
+  expect(html).not.toContain('data-review-report="A-IMPORT"');
+  expect(html).toContain("单设备导入");
+  const text = assessmentReviewText(clean, snapshot);
+  const data = JSON.parse(text.slice(text.indexOf('{\n  "requirement"')));
+  expect(data.reports).toEqual([]);
+  expect(data.changeGroups).toEqual([]);
+  expect(data.reusedReports[0].evidenceDispositions[0].reuse_status).toBe(
+    "reused",
+  );
 });

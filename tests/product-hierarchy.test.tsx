@@ -12,7 +12,7 @@ import type {
 } from "../src/shared/product-types.js";
 import type { Snapshot, Task } from "../src/shared/types.js";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CompactTasks } from "../src/web/product.js";
+import { CompactTasks, ProductDetail } from "../src/web/product.js";
 import { OverviewV3 } from "../src/web/product-v3.js";
 
 const source = {
@@ -171,6 +171,47 @@ it("collects only current composition bindings once, retaining scope/role/unknow
     ["implementation", "coverage b3"],
   ]);
 });
+
+it.each([5, 6])(
+  "renders scoped requirement details for v%s with inherited active bindings and separate dismissed history",
+  (version) => {
+    const { product, items } = graph();
+    for (const entry of items) entry.version = version;
+    const dismissed = binding("dismissed-own", "A", "old-task");
+    dismissed.binding.state = "dismissed";
+    product.bindings = [
+      binding("own", "A", "one"),
+      binding("inherited", "SHARED", "two"),
+      dismissed,
+    ];
+    const snapshot = {
+      product,
+      tasks: [],
+      documents: [],
+      warnings: [],
+      relations: [],
+    } as unknown as Snapshot;
+    const html = renderToStaticMarkup(
+      <ProductDetail
+        item={items[0]}
+        context={{
+          snapshot,
+          open: () => {},
+          openTask: () => {},
+          openProduct: () => {},
+          relations: () => {},
+        }}
+      />,
+    );
+    expect(html).toContain("compact-task-list");
+    expect(html).toContain("关联任务与范围 · 2");
+    expect(html).toContain("coverage inherited");
+    expect(html).toContain("自身已否定关联");
+    expect(html).toContain("coverage dismissed-own");
+    expect(html).not.toContain("已报告交付范围");
+    expect(html).not.toContain("未选择交付摘要");
+  },
+);
 it("keeps trusted Task lifecycle/navigation when another row conflicts, and retains two null rows", () => {
   const { product } = graph();
   const rows = [

@@ -71,6 +71,7 @@ import {
 import { assessmentGoal, productStructure } from "../shared/product-structure";
 import { buildProductGraph, ProductRelationPanel } from "./product-graph";
 import {
+  AssessmentEvidenceDetails,
   ProductDetail,
   Body as ProductBody,
   ProductStatusPanel,
@@ -1231,6 +1232,7 @@ export function ScopedConclusion({
             查看结论依据 · {report.id}
           </button>
           <OriginalAssessment report={report} />
+          <AssessmentEvidenceDetails item={report} context={context} />
           <SourceButton source={report.source} open={context.open} />
         </div>
       ))}
@@ -1638,6 +1640,7 @@ export const OverviewV3 = memo(
         <FocusResults data={data} context={context} />
         <ProjectAssessmentReview
           key={`${context.snapshot.projectId}:${context.snapshot.id}`}
+          context={context}
           requirements={data.reviewRequirements || [...planned, ...unordered]}
           snapshot={context.snapshot}
           projectTitle={data.project?.title}
@@ -2445,6 +2448,7 @@ export function EvidencePanel({
                   </p>
                 ))}
                 <SourceButton source={report.source} open={context.open} />
+                <AssessmentEvidenceDetails item={report} context={context} />
               </article>
             ))}
           </div>
@@ -2554,6 +2558,12 @@ function OtherItemOverview({
           这是可核对的资料条目，不自动改变当前需求的结论。
         </p>
         <SourceButton source={item.source} open={context.open} />
+        {item.type === "assessment" && item.usable && (
+          <>
+            <OriginalAssessment report={item} />
+            <AssessmentEvidenceDetails item={item} context={context} />
+          </>
+        )}
       </section>
     </div>
   );
@@ -2725,7 +2735,11 @@ function RequirementsInspector({
         )}
         <details className="requirements-v3-advanced-detail">
           <summary>完整原文、关系与原始字段</summary>
-          <ProductDetail item={item} context={context} />
+          <ProductDetail
+            item={item}
+            context={context}
+            includeAssessmentEvidence={tab !== "overview"}
+          />
         </details>
       </div>
       <footer className="requirements-v3-inspector-footer">

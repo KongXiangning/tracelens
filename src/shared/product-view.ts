@@ -2,16 +2,23 @@
 import { scopedProductVersion } from "./product-roadmap.js";
 import {
   definitionReviewIssues,
+  assessmentReviewCategory,
+  evidenceReuseReasonLabels,
   reportReviewSources,
   reviewReference,
   reviewSourceStatus,
   reviewValue,
   type AssessmentReviewIssue,
 } from "./assessment-review.js";
+import {
+  assessmentEvidence,
+  dispositionSourceKey,
+} from "./evidence-dispositions.js";
 import type {
   ProductItem,
   ProductMetadata,
   ProductSnapshot,
+  EvidenceDispositionView,
 } from "./product-types.js";
 export const conclusionLabels = {
   satisfied: "已满足",
@@ -28,6 +35,10 @@ export interface AssessmentSelection {
   pending: ProductItem[];
   reasons: string[];
   reviewIssues?: { reportKey: string; issue: AssessmentReviewIssue }[];
+  evidenceDispositions?: {
+    reportKey: string;
+    disposition: EvidenceDispositionView;
+  }[];
   scopeId?: string;
 }
 const normalized = (text: string) => text.replace(/\r\n|\r/g, "\n");
@@ -147,8 +158,17 @@ export function selectAssessment(
     reports: ProductItem[] = [],
     historical: ProductItem[] = [];
   const reviewIssues: NonNullable<AssessmentSelection["reviewIssues"]> = [];
+  const evidenceDispositions: NonNullable<
+    AssessmentSelection["evidenceDispositions"]
+  > = [];
   const review = (report: ProductItem, issue: AssessmentReviewIssue) =>
-    reviewIssues.push({ reportKey: report.key, issue });
+    reviewIssues.push({
+      reportKey: report.key,
+      issue: {
+        ...issue,
+        category: issue.category || assessmentReviewCategory(issue.code),
+      },
+    });
   const pending = product.items.filter(
     (i) => i.type === "assessment" && !located(metadata(i)),
   );
@@ -163,6 +183,7 @@ export function selectAssessment(
     pending,
     reasons: [...new Set(reasons)],
     reviewIssues,
+    ...(evidenceDispositions.length ? { evidenceDispositions } : {}),
     scopeId: selectedScope,
   });
   const fail = (reason: string) => {
@@ -347,6 +368,19 @@ export function selectAssessment(
       reasons.push("scope-definition-changed");
       review(report, {
         code: "scope-definition-changed",
+        ...(typeof m.applicability?.coverage === "string"
+          ? {
+              scopeChange: {
+                targetKey: target.key,
+                targetId: target.id,
+                goalKey: goal.key,
+                goalId: goal.id,
+                scopeId: scope.scope_id,
+                recordedCoverage: m.applicability.coverage,
+                currentCoverage: scope.coverage,
+              },
+            }
+          : {}),
         title: "验收覆盖范围变化",
         detail: `报告记录的范围 ${scope.scope_id} 与当前目标声明的覆盖范围不一致。`,
         action:
@@ -423,29 +457,72 @@ export function selectAssessment(
       }))
         review(report, issue);
     }
-    if (m.pending_sources?.length) {
+    const evidence = assessmentEvidence(product, report);
+    evidenceDispositions.push(
+      ...evidence.evidence_dispositions.map((disposition) => ({
+        reportKey: report.key,
+        disposition,
+      })),
+    );
+    if (evidence.pending_sources.length) {
       reasons.push("pending-evidence");
-      const sources = Array.isArray(m.pending_sources) ? m.pending_sources : [];
-      review(report, {
-        code: "pending-evidence",
-        title: "报告登记了待对账材料",
-        detail: `报告 ${report.id} 的 pending_sources 登记了 ${sources.length || "字段异常的"} 份待核对材料，尚未确认其是否影响验收结论。`,
-        action:
-          "逐份读取待对账材料，与报告的实现和验证结论比较，处理差异后更新报告与待对账清单。",
-        sources: sources.map((reference, index) => {
-          const checked = product.sources.find(
-            (source) =>
-              source.ownerKey === report.key &&
-              source.role === `pending_sources[${index}]`,
-          );
-          return {
-            label: `待对账材料 ${index + 1}`,
-            reference: reviewReference(reference),
-            source: checked?.source || undefined,
-            status: reviewSourceStatus(checked),
-          };
-        }),
-      });
+      for (const reference of evidence.pending_sources) {
+        const index = (m.pending_sources || []).findIndex(
+          (source) =>
+            dispositionSourceKey(source) === dispositionSourceKey(reference),
+        );
+        const dispositions = evidence.evidence_dispositions.filter(
+          (entry) =>
+            dispositionSourceKey(entry.source) ===
+            dispositionSourceKey(reference),
+        );
+        const kinds = [...new Set(dispositions.map((entry) => entry.kind))];
+        const kind = kinds.length === 1 ? kinds[0] : undefined;
+        const ids = [...new Set(dispositions.map((entry) => entry.change_id))];
+        const checked = product.sources.find(
+          (source) =>
+            source.ownerKey === report.key &&
+            source.role === `pending_sources[${index}]`,
+        );
+        const stale = dispositions
+          .filter((entry) => entry.reuse_status === "not-reusable")
+          .flatMap((entry) => entry.reuse_reasons);
+        review(report, {
+          code: "pending-evidence",
+          category: kind || "unclassified",
+          change: {
+            ...(ids.length === 1 ? { id: ids[0] } : {}),
+            kind,
+            source: reference,
+          },
+          title: "报告登记了待对账材料",
+          detail: `报告 ${report.id} 登记了此材料，尚未完成当前范围的对账。${stale.length ? `先前处置不再适用：${[...new Set(stale)].map((reason) => evidenceReuseReasonLabels[reason] || reason).join("、")}。` : ""}`,
+          action:
+            "按本次变化核对实际受影响的义务与证据；可复用依据未变的已记录处置。仅补核变化部分，不要求重跑整份需求验收。",
+          sources: [
+            {
+              label: `待对账材料 ${index + 1}`,
+              reference: reviewReference(reference),
+              source: checked?.source || undefined,
+              status: reviewSourceStatus(checked),
+            },
+          ],
+        });
+        if (dispositions.some((entry) => entry.reuse_status === "conflict"))
+          review(report, {
+            code: "disposition-conflict",
+            category: "report-conflict",
+            change: {
+              ...(ids.length === 1 ? { id: ids[0] } : {}),
+              kind,
+              source: reference,
+            },
+            title: "同一材料的局部处置相互冲突",
+            detail:
+              "精确来源与当前范围下记录了不同处置，不能按时间或任取一条消除待核对。",
+            action: "核对并纠正冲突的处置记录；保留真实延期和原报告结果。",
+          });
+      }
     }
   }
   return result();

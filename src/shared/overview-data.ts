@@ -19,6 +19,7 @@ import type {
   ProductItem,
   ProductMetadata,
   ProductSnapshot,
+  EvidenceDispositionView,
 } from "./product-types.js";
 import { productView } from "./product-view.js";
 import { assessmentNarrative } from "./requirement-detail.js";
@@ -54,6 +55,7 @@ export interface OverviewRequirement extends Item {
     selection: {
       conclusion: NonNullable<ProductMetadata["conclusion"]>;
       reasons: string[];
+      evidenceDispositions?: EvidenceDispositionView[];
     };
     review?: { issues: AssessmentReviewIssue[] };
   }[];
@@ -228,6 +230,13 @@ export function buildOverviewData(snapshot: Snapshot): OverviewData {
           selection: {
             conclusion: selection.conclusion,
             reasons: selection.reasons,
+            ...(selection.evidenceDispositions?.length
+              ? {
+                  evidenceDispositions: selection.evidenceDispositions
+                    .filter((entry) => entry.reportKey === report.key)
+                    .map((entry) => entry.disposition),
+                }
+              : {}),
           },
           ...(selection.reasons.length
             ? {

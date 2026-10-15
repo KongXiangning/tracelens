@@ -91,3 +91,31 @@ The pinned test-only producer bundle in `tests/product-oracle/roadmap-v5/` suppl
 independent differential tests for all selectors, four statuses, membership,
 context, arrangements, working copies, sources and exact-version exceptions.
 All copied/adapted code remains under the accompanying MIT license.
+
+## 2026-10-15 v6 local evidence dispositions
+
+Producer working-tree baseline: `26af10ef0d9224c44d906ccbf4d362412b28e067` in
+`vibe-coding-workflow-system`, including the local v6 implementation. This is a
+working-tree handoff, not a published release or a claim that the baseline commit
+contains these changes. The unchanged generated `product-doc-v6.json` has SHA-256
+`15b0c464781db1823c34a2ac93c8f49ca215dd318008af771b09d9e2a4c2a787`.
+v1–v5 schema files remain unchanged.
+
+`shared/evidence-dispositions.ts` adapts producer `dispositions.ts`:
+`vnext-assessment-disposition/v1` fingerprints the report independently of appended
+positive evidence. Reuse requires exact local scope, subject, definition and report
+context, preservation of the original report sources, and same-version accessible
+judgment sources. Other requirement scope declarations do not reopen this scope;
+goal self-assessments retain the whole goal definition. Deferred/conflicting
+judgments and new evidence remain pending. Original definition, historical basis
+and report-conflict checks remain independent. TraceLens only consumes snapshot
+bytes and never runs a helper or business code from an observed project.
+
+The producer's `scripts/check-evidence-dispositions-consumers.ts <TraceLens-root>`
+compares source, bundled Node helper and this consumer on 22 synthetic cases,
+including unchanged reads, positive evidence additions, unrelated and own scope
+changes, new counterevidence, changed/missing source bytes, preserved evidence,
+deferred/conflicting judgments and legacy v5. Original report bytes remain unchanged
+by all reads. Local validation also covers the snapshot/overview transport and
+browser grouping at desktop and mobile widths; this is not real-project delivery
+assessment or deployment evidence.

@@ -15,6 +15,7 @@ import { ArrowRight, FileText, Network, Search, Settings2 } from "lucide-react";
 import type { NavigationReport, Snapshot, Task } from "../shared/types";
 import type {
   ProductAssessmentView,
+  EvidenceDispositionView,
   ProductBindingView,
   ProductItem,
   ProductSnapshot,
@@ -35,6 +36,12 @@ import { OverviewDashboard } from "./overview-dashboard";
 import { ProjectRecords } from "./pages";
 import { lifecycleLabels } from "./runtime";
 import { requirementBindings } from "../shared/product-hierarchy";
+import { scopedProductVersion } from "../shared/product-roadmap";
+import {
+  assessmentEvidence,
+  dispositionSourceKey,
+} from "../shared/evidence-dispositions";
+import { DispositionDetails } from "./assessment-disposition-details";
 
 import {
   productLabels,
@@ -479,15 +486,17 @@ function SourceReference({ reference }: { reference: ProductSource }) {
 export function ProductSourceRow({
   check,
   open,
+  roleLabel,
 }: {
   check: ProductSourceCheck;
   open: OpenSource;
+  roleLabel?: string;
 }) {
   return (
     <li className="product-source">
       <div className="product-inline">
         <span className="relation-method" title={check.role}>
-          {sourceRole(check.role)}
+          {roleLabel || sourceRole(check.role)}
         </span>
         <span className="status neutral">{readLabels[check.readState]}</span>
         <span className="status neutral">
@@ -528,11 +537,13 @@ export function ProductEvidence({
   product,
   ownerKey,
   open,
+  roleLabel,
 }: {
   sources?: ProductSource[];
   product: ProductSnapshot;
   ownerKey: string;
   open: OpenSource;
+  roleLabel?: string;
 }) {
   return (
     <ul className="product-evidence-list">
@@ -543,9 +554,15 @@ export function ProductEvidence({
             JSON.stringify(source.reference) === JSON.stringify(reference),
         );
         return check ? (
-          <ProductSourceRow key={i} check={check} open={open} />
+          <ProductSourceRow
+            key={i}
+            check={check}
+            open={open}
+            roleLabel={roleLabel}
+          />
         ) : (
           <li key={i}>
+            {roleLabel && <span className="relation-method">{roleLabel}</span>}
             <SourceReference reference={reference} />
             <p className="muted">来源核对结果未知，未定位到本快照原文。</p>
           </li>
@@ -842,17 +859,136 @@ export function Body({
     </section>
   );
 }
+export function AssessmentEvidenceDetails({
+  item,
+  context,
+}: {
+  item: ProductItem;
+  context: ProductContext;
+}) {
+  const product = context.snapshot.product!;
+  const evidence = assessmentEvidence(product, item);
+  const reused = evidence.evidence_dispositions.filter(
+    (entry) => entry.reuse_status === "reused",
+  );
+  const outstanding = evidence.evidence_dispositions.filter(
+    (entry) => entry.reuse_status !== "reused",
+  );
+  function renderDisposition(entry: EvidenceDispositionView, index: number) {
+    return (
+      <DispositionDetails
+        key={`${entry.change_id}:${index}`}
+        disposition={entry}
+        snapshotAt={context.snapshot.completedAt}
+        renderSource={(reference, roleLabel) => (
+          <ProductEvidence
+            sources={[reference]}
+            product={product}
+            ownerKey={item.key}
+            open={context.open}
+            roleLabel={roleLabel}
+          />
+        )}
+      />
+    );
+  }
+  return (
+    <div className="assessment-evidence" data-evidence-report={item.id}>
+      {evidence.pending_sources.length > 0 && (
+        <section
+          className="product-pending"
+          role="note"
+          data-evidence-state="pending"
+        >
+          <h4>待对账新材料 · {evidence.pending_sources.length} 项</h4>
+          <p>以下材料仍待局部核对；原报告结论与待对账信息同时保留。</p>
+          <ProductEvidence
+            sources={evidence.pending_sources}
+            product={product}
+            ownerKey={item.key}
+            open={context.open}
+          />
+        </section>
+      )}
+      {evidence.handled_sources.length > 0 && (
+        <details data-evidence-state="handled">
+          <summary>
+            已处理的历史材料 · {evidence.handled_sources.length} 项
+          </summary>
+          <p className="muted">
+            原始待对账记录保留，已由下述可复用处置处理，不计入当前待对账材料。
+          </p>
+          <ProductEvidence
+            sources={evidence.handled_sources}
+            product={product}
+            ownerKey={item.key}
+            open={context.open}
+            roleLabel="已处理的历史材料"
+          />
+        </details>
+      )}
+      {reused.length > 0 && (
+        <details data-evidence-state="reused">
+          <summary>已复用的局部处置 · {reused.length} 项</summary>
+          {reused.map(renderDisposition)}
+        </details>
+      )}
+      {outstanding.length > 0 && (
+        <details data-evidence-state="unresolved">
+          <summary>仍待核对的局部处置 · {outstanding.length} 项</summary>
+          {outstanding.map(renderDisposition)}
+        </details>
+      )}
+    </div>
+  );
+}
+
+function AssessmentEvidenceSummary({
+  item,
+  context,
+}: {
+  item: ProductItem;
+  context: ProductContext;
+}) {
+  const evidence = assessmentEvidence(context.snapshot.product!, item);
+  return (
+    <div data-evidence-summary={item.id}>
+      {evidence.pending_sources.length > 0 && (
+        <p className="warning-text" data-evidence-state="pending">
+          待对账新材料 {evidence.pending_sources.length} 项，仍待局部核对
+        </p>
+      )}
+      {evidence.handled_sources.length > 0 && (
+        <p className="muted" data-evidence-state="handled">
+          已处理的历史材料 {evidence.handled_sources.length}{" "}
+          项，不计入当前待对账材料。
+          <button
+            className="text-link"
+            onClick={() => context.openProduct(item.key)}
+          >
+            查看已复用的局部处置
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AssessmentFacts({
   item,
   view,
   context,
+  includeEvidence = true,
 }: {
   item: ProductItem;
   view?: ProductAssessmentView;
   context: ProductContext;
+  includeEvidence?: boolean;
 }) {
   const metadata = item.metadata;
-  const pending = list(metadata.pending_sources);
+  const hasPendingEvidence =
+    assessmentEvidence(context.snapshot.product!, item).pending_sources.length >
+    0;
   return (
     <div className="product-assessment">
       <div className="product-inline">
@@ -912,19 +1048,12 @@ function AssessmentFacts({
       </dl>
       {view && <p className="muted">{view.detail}</p>}
       <p className="banner">
-        当前实现适用性仍需核对。摘要相同、任务关闭或修复结束都不构成新的通过报告。
+        {hasPendingEvidence
+          ? "当前实现适用性仍需核对。摘要相同、任务关闭或修复结束都不构成新的通过报告。"
+          : "以下保留原报告结论；摘要相同、局部处置复用、任务关闭或修复结束都不构成新的通过报告。"}
       </p>
-      {pending.length > 0 && (
-        <div className="product-pending" role="note">
-          <h4>待对账新材料 · {pending.length} 项</h4>
-          <p>以下新材料尚未纳入原报告；原有报告结论与待对账信息同时保留。</p>
-          <ProductEvidence
-            sources={pending}
-            product={context.snapshot.product!}
-            ownerKey={item.key}
-            open={context.open}
-          />
-        </div>
+      {includeEvidence && (
+        <AssessmentEvidenceDetails item={item} context={context} />
       )}
     </div>
   );
@@ -1247,20 +1376,29 @@ export function ProductDetail({
   item,
   context,
   includeWork = true,
+  includeAssessmentEvidence = true,
 }: {
   item: ProductItem;
   context: ProductContext;
   includeWork?: boolean;
+  includeAssessmentEvidence?: boolean;
 }) {
   const product = context.snapshot.product!;
   const bindings = product.bindings.filter(
     (binding) => binding.ownerKey === item.key,
   );
-  const currentBindings = [3, 4, 5].includes(item.version || 0)
+  const currentBindings = scopedProductVersion(item.version)
     ? requirementBindings(product, item)
     : bindings;
   const sources = product.sources.filter(
     (source) => source.ownerKey === item.key,
+  );
+  const handledSources = new Set(
+    item.type === "assessment"
+      ? assessmentEvidence(product, item).handled_sources.map(
+          dispositionSourceKey,
+        )
+      : [],
   );
   return (
     <article className="product-detail" data-product-id={item.id}>
@@ -1312,7 +1450,7 @@ export function ProductDetail({
             <Inventory item={item} context={context} />
           )}
           {item.type === "requirement" &&
-            ![3, 4, 5].includes(item.version || 0) && (
+            !scopedProductVersion(item.version) && (
               <RequirementAssessment item={item} context={context} />
             )}
           {item.type === "assessment" && (
@@ -1329,6 +1467,7 @@ export function ProductDetail({
                     entry.state === "selected",
                 )}
                 context={context}
+                includeEvidence={includeAssessmentEvidence}
               />
             </>
           )}
@@ -1406,14 +1545,14 @@ export function ProductDetail({
           {(item.type === "goal" || item.type === "requirement") && (
             <section>
               <h3>关联任务与范围 · {currentBindings.length}</h3>
-              {[3, 4, 5].includes(item.version || 0) &&
+              {scopedProductVersion(item.version) &&
                 item.type === "requirement" && (
                   <p className="muted">
                     自身及当前组成子需求的有效关联；来源与角色分别保留，不表示父需求已交付。
                   </p>
                 )}
               {currentBindings.length ? (
-                [3, 4, 5].includes(item.version || 0) ? (
+                scopedProductVersion(item.version) ? (
                   <CompactTasks bindings={currentBindings} context={context} />
                 ) : (
                   bindings.map((binding) => (
@@ -1429,7 +1568,7 @@ export function ProductDetail({
                   未记录任务关联；不表示该业务范围未实现。
                 </p>
               )}
-              {[3, 4, 5].includes(item.version || 0) &&
+              {scopedProductVersion(item.version) &&
                 bindings.some((b) => b.binding.state === "dismissed") && (
                   <details>
                     <summary>自身已否定关联</summary>
@@ -1456,6 +1595,12 @@ export function ProductDetail({
                 key={source.id}
                 check={source}
                 open={context.open}
+                roleLabel={
+                  source.role.startsWith("pending_sources") &&
+                  handledSources.has(dispositionSourceKey(source.reference))
+                    ? "已处理的历史材料"
+                    : undefined
+                }
               />
             ))}
           </ul>
@@ -1647,13 +1792,7 @@ function WorkReports({
                     核对 {report.id} 的原覆盖范围与依据
                     <ArrowRight size={13} />
                   </button>
-                  {list(report.metadata.pending_sources).length > 0 && (
-                    <p className="warning-text">
-                      待对账新材料{" "}
-                      {list(report.metadata.pending_sources).length}{" "}
-                      项，未纳入原结论
-                    </p>
-                  )}
+                  <AssessmentEvidenceSummary item={report} context={context} />
                   <p className="muted">
                     报告适用范围需与本工作项覆盖逐项核对，当前代码适用性未知。
                   </p>
@@ -2100,12 +2239,7 @@ function RequirementSummary({
         实施：{reportLabel(report?.metadata.implementation, "implementation")}
         ；验证：{reportLabel(report?.metadata.verification, "verification")}
       </p>
-      {report && list(report.metadata.pending_sources).length > 0 && (
-        <small className="muted">
-          待核对材料 {list(report.metadata.pending_sources).length}{" "}
-          项（未计入原报告结论）
-        </small>
-      )}
+      {report && <AssessmentEvidenceSummary item={report} context={context} />}
     </div>
   );
 }

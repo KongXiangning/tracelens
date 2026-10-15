@@ -4,6 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import { scopedProductVersion } from "../shared/product-roadmap.js";
+import { dispositionReportText } from "../shared/evidence-dispositions.js";
 import {
   Ajv2020,
   type ErrorObject,
@@ -30,6 +31,7 @@ import documentV2 from "./product-assets/product-doc-v2.json" with { type: "json
 import documentV3 from "./product-assets/product-doc-v3.json" with { type: "json" };
 import documentV4 from "./product-assets/product-doc-v4.json" with { type: "json" };
 import documentV5 from "./product-assets/product-doc-v5.json" with { type: "json" };
+import documentV6 from "./product-assets/product-doc-v6.json" with { type: "json" };
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -77,7 +79,8 @@ function validators(
     | typeof documentV2
     | typeof documentV3
     | typeof documentV4
-    | typeof documentV5,
+    | typeof documentV5
+    | typeof documentV6,
   version: number,
 ) {
   const root = ajv.compile({
@@ -110,6 +113,7 @@ const documentValidators = {
   3: validators(documentV3, 3),
   4: validators(documentV4, 4),
   5: validators(documentV5, 5),
+  6: validators(documentV6, 6),
 };
 const manifestValidators = {
   1: ajv.compile(manifestV1),
@@ -469,17 +473,19 @@ export function parseProductDocument(
     );
     const schema = record(yaml.value) ? yaml.value.schema : undefined;
     const version =
-      schema === "vnext-product-doc/v5"
-        ? 5
-        : schema === "vnext-product-doc/v4"
-          ? 4
-          : schema === "vnext-product-doc/v3"
-            ? 3
-            : schema === "vnext-product-doc/v2"
-              ? 2
-              : schema === "vnext-product-doc/v1"
-                ? 1
-                : null;
+      schema === "vnext-product-doc/v6"
+        ? 6
+        : schema === "vnext-product-doc/v5"
+          ? 5
+          : schema === "vnext-product-doc/v4"
+            ? 4
+            : schema === "vnext-product-doc/v3"
+              ? 3
+              : schema === "vnext-product-doc/v2"
+                ? 2
+                : schema === "vnext-product-doc/v1"
+                  ? 1
+                  : null;
     if (!version)
       return fail(
         "UNSUPPORTED_VERSION",
@@ -598,6 +604,18 @@ export function parseProductDocument(
           !Number.isFinite(Date.parse(m.checked_at ?? ""))
         )
           problem("checked_at must be an actual ISO time with timezone");
+        for (const entry of Array.isArray(m.evidence_dispositions)
+          ? m.evidence_dispositions
+          : []) {
+          if (
+            entry &&
+            (!/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(entry.checked_at) ||
+              !Number.isFinite(Date.parse(entry.checked_at)))
+          )
+            problem(
+              "evidence_dispositions.checked_at must be an actual ISO time with timezone",
+            );
+        }
         if (
           m.subject?.kind === "working-copy" &&
           !m.subject.revision &&
@@ -704,6 +722,21 @@ export function parseProductDocument(
           ? productDefinitionDigest(item)
           : requirementDefinitionDigest(item);
       }
+      if (item.usable && item.type === "assessment" && version === 6)
+        item.dispositionSha256 = hash(
+          dispositionReportText(item.metadata, item.body),
+        );
+      if (item.usable && item.type === "goal" && scopedProductVersion(version))
+        item.assessmentScopeDigests = (
+          item.metadata.assessment_scopes || []
+        ).map((scope) => ({
+          target: scope.target,
+          scope_id: scope.scope_id,
+          sha256: productDefinitionDigest({
+            ...item,
+            metadata: { ...item.metadata, assessment_scopes: [scope] },
+          }),
+        }));
       items.push(item);
     }
     for (const heading of identified) {

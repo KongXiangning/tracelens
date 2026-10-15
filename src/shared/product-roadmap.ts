@@ -6,9 +6,9 @@ import type {
 } from "./product-types.js";
 
 export const scopedProductVersion = (version?: number): boolean =>
-  version === 3 || version === 4 || version === 5;
+  version === 3 || version === 4 || version === 5 || version === 6;
 export const roadmapProductVersion = (version?: number): boolean =>
-  version === 4 || version === 5;
+  version === 4 || version === 5 || version === 6;
 
 export type ProductPlanningSelector = (
   | { kind: "project-current" }

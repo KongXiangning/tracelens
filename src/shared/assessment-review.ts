@@ -6,6 +6,17 @@ import type {
 import type { SourceRef } from "./types.js";
 
 export interface AssessmentReviewIssue {
+  category?: AssessmentReviewCategory;
+  change?: { id?: string; kind?: string; source: ProductSource };
+  scopeChange?: {
+    targetKey: string;
+    targetId: string;
+    goalKey: string;
+    goalId: string;
+    scopeId: string;
+    recordedCoverage: string;
+    currentCoverage: string;
+  };
   code: string;
   title: string;
   detail: string;
@@ -18,6 +29,47 @@ export interface AssessmentReviewIssue {
     status?: string;
   }[];
 }
+
+export type AssessmentReviewCategory =
+  | "scope-change"
+  | "counterevidence"
+  | "delivery-evidence"
+  | "source-change"
+  | "report-conflict"
+  | "metadata"
+  | "unclassified";
+
+export function assessmentReviewCategory(
+  code: string,
+): AssessmentReviewCategory {
+  if (code === "pending-evidence") return "unclassified";
+  if (
+    code === "multiple-reports" ||
+    code === "report-conflict" ||
+    code === "disposition-conflict"
+  )
+    return "report-conflict";
+  if (
+    code === "scope-definition-changed" ||
+    code === "target-definition-changed" ||
+    code === "goal-definition-changed"
+  )
+    return "scope-change";
+  if (
+    code.includes("source-file-changed") ||
+    code.includes("basis-not-read") ||
+    code.includes("basis-not-located")
+  )
+    return "source-change";
+  return "metadata";
+}
+
+export const evidenceReuseReasonLabels: Record<string, string> = {
+  "basis-changed": "需求、范围、对象或原报告依据已变化",
+  "source-unverified": "材料或判断依据无法按原版本核验",
+  "evidence-not-incorporated": "材料尚未纳入报告交付依据",
+  "conflicting-dispositions": "同一材料存在相互冲突的处置",
+};
 
 export function reviewValue(value: unknown): string {
   if (value === undefined || value === null || value === "") return "未记录";
@@ -135,6 +187,15 @@ export function definitionReviewIssues(input: {
       action,
       comparisons,
       sources,
+      ...([
+        "source-file-changed",
+        "basis-not-read",
+        "basis-not-located",
+      ].includes(code) &&
+      basis?.kind === "file" &&
+      basis.sha256
+        ? { change: { kind: "source-change", source: basis } }
+        : {}),
     });
   const compare = (label: string, recorded: unknown, current: unknown) => [
     { label, recorded: reviewValue(recorded), current: reviewValue(current) },

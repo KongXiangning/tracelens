@@ -2069,7 +2069,7 @@
   padding-top: 18px;
   border-top: 1px solid var(--overview-rule);
 }
-.assessment-review-report h4 {
+.assessment-review-report h5 {
   font-size: 14px;
 }
 .assessment-review-context {
@@ -2090,7 +2090,7 @@
   border-radius: 7px;
   background: #fffcf4;
 }
-.assessment-review-issue h5 {
+.assessment-review-issue h6 {
   margin: 0;
   color: #79551e;
   font-size: 13px;
@@ -2164,6 +2164,61 @@
 }
 .overview-review-export-action [role="status"] {
   color: var(--overview-link);
+  font-size: 12px;
+}
+.assessment-review-change {
+  min-width: 0;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--overview-rule);
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.assessment-review-change h4 {
+  margin: 0;
+  color: var(--overview-ink);
+  font-size: 14px;
+}
+.assessment-review-reused {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #d7e1d2;
+  border-radius: 7px;
+  background: #f8fcf6;
+}
+.assessment-review-reused h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.assessment-review-reused details {
+  margin-top: 12px;
+}
+.assessment-review-reused summary {
+  cursor: pointer;
+}
+.assessment-review-change .assessment-review-report {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.project-assessment-review-groups {
+  flex-basis: 100%;
+  order: 1;
+  min-width: 0;
+}
+.project-assessment-review-groups summary {
+  cursor: pointer;
+  color: var(--overview-link);
+}
+.project-assessment-review-groups ul {
+  padding-left: 20px;
+}
+.project-assessment-review-groups li {
+  margin-top: 10px;
+}
+.project-assessment-review-groups li > span {
+  display: block;
+  margin-top: 3px;
+  color: #647061;
   font-size: 12px;
 }
 .project-assessment-review-dialog {

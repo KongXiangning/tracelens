@@ -262,7 +262,12 @@ it("exports exact project and snapshot identities, original report objects, and 
     snapshotId: snapshotIdentity.id,
     completedAt: snapshotIdentity.completedAt,
   });
-  expect(data.summary).toEqual({ requirements: 4, reports: 5, issues: 6 });
+  expect(data.summary).toEqual({
+    changes: 6,
+    requirements: 4,
+    reports: 5,
+    issues: 6,
+  });
   expect(data.summary).toEqual(assessmentReviewSummary(items));
   const file = data.requirements[0].reports[0];
   expect(file.report).toEqual({
@@ -358,7 +363,12 @@ it("deduplicates repeated requirement and report keys while retaining additional
   const before = JSON.stringify(items);
   const repeated = [items[0], extra, ...items.slice(1), ...items];
   const { data } = projectData(repeated);
-  expect(data.summary).toEqual({ requirements: 4, reports: 6, issues: 8 });
+  expect(data.summary).toEqual({
+    changes: 7,
+    requirements: 4,
+    reports: 6,
+    issues: 8,
+  });
   expect(data.requirements[0].reports[0].issues).toHaveLength(2);
   expect(data.requirements[0].reports[0].issues[1].sources[0].source).toEqual(
     source("evidence/extra.md", 46),
@@ -383,7 +393,12 @@ it("deduplicates repeated requirement and report keys while retaining additional
   const separateIdentity = structuredClone(items[0]);
   separateIdentity.key = "different-requirement-key";
   const distinct = projectData([items[0], separateIdentity]).data;
-  expect(distinct.summary).toEqual({ requirements: 2, reports: 2, issues: 2 });
+  expect(distinct.summary).toEqual({
+    changes: 1,
+    requirements: 2,
+    reports: 2,
+    issues: 2,
+  });
 });
 
 it("ignores clean reports even when their shared selection has reasons, and retains legacy reason codes when detailed issues are unavailable", () => {
@@ -435,7 +450,12 @@ it("ignores clean reports even when their shared selection has reasons, and reta
     pendingAssessmentRecords(item).map((record) => record.report.id),
   ).toEqual(["A-LEGACY"]);
   const { data } = projectData([item]);
-  expect(data.summary).toEqual({ requirements: 1, reports: 1, issues: 2 });
+  expect(data.summary).toEqual({
+    changes: 2,
+    requirements: 1,
+    reports: 1,
+    issues: 2,
+  });
   expect(data.requirements[0].reports[0].reasonCodes).toEqual([
     "definition-unverified",
     "pending-evidence",
@@ -448,8 +468,10 @@ it("ignores clean reports even when their shared selection has reasons, and reta
   expect(singleData).toEqual({
     requirement: { id: item.id, title: item.title },
     reports: data.requirements[0].reports,
+    changeGroups: data.changeGroups,
   });
   expect(projectData([]).data.summary).toEqual({
+    changes: 0,
     requirements: 0,
     reports: 0,
     issues: 0,

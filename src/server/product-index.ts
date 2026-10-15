@@ -1,4 +1,5 @@
 import { scopedProductVersion } from "../shared/product-roadmap.js";
+import { assessmentEvidence } from "../shared/evidence-dispositions.js";
 import { reconcileProductRoadmaps } from "./product-roadmap.js";
 import { documentPathKey } from "./config.js";
 import { stateKey } from "./parser.js";
@@ -691,7 +692,7 @@ export function buildProductIndex(
           item,
           "实施或验证报告缺少原始来源；报告标签不证明交付",
         );
-      if (m.pending_sources?.length)
+      if (assessmentEvidence(product, item).pending_sources.length)
         report(
           "PENDING_SOURCES",
           item,
@@ -772,8 +773,12 @@ export function buildProductIndex(
             : "unknown";
         view.detail =
           "报告仅适用于所记对象、版本与覆盖范围；定义对齐和历史原件核对不证明当前代码适用";
-        if (found.metadata.pending_sources?.length)
-          view.detail += `；${found.metadata.pending_sources.length} 份新材料仍待对账`;
+        const pendingEvidence = assessmentEvidence(
+          product,
+          found,
+        ).pending_sources;
+        if (pendingEvidence.length)
+          view.detail += `；${pendingEvidence.length} 份新材料仍待对账`;
       } else
         report(
           "UNRESOLVED_TARGET",

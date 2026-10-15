@@ -79,6 +79,37 @@ export interface ProductWorkItem {
   replaces?: string[];
   sources?: ProductSource[];
 }
+export type EvidenceChangeKind =
+  "scope-change" | "counterevidence" | "delivery-evidence" | "source-change";
+export interface EvidenceDispositionBasis {
+  target: string;
+  goal_id: string;
+  scope_id: string;
+  coverage: string;
+  subject: NonNullable<ProductMetadata["subject"]>;
+  target_definition_algorithm: string;
+  target_definition_sha256: string;
+  goal_definition_algorithm: string;
+  goal_definition_sha256: string;
+  goal_scope_definition_sha256: string;
+  report_sources: ProductSource[];
+  report_algorithm: "vnext-assessment-disposition/v1";
+  report_sha256: string;
+}
+export interface ProductEvidenceDisposition {
+  change_id: string;
+  kind: EvidenceChangeKind;
+  source: ProductSource;
+  disposition: "no-impact" | "evidence-incorporated" | "deferred";
+  reason: string;
+  checked_at: string;
+  basis: EvidenceDispositionBasis;
+  sources?: ProductSource[];
+}
+export interface EvidenceDispositionView extends ProductEvidenceDisposition {
+  reuse_status: "reused" | "deferred" | "not-reusable" | "conflict";
+  reuse_reasons: string[];
+}
 export interface ProductMetadata {
   root_goal_id?: string | null;
   requirement_order?: string[];
@@ -123,6 +154,7 @@ export interface ProductMetadata {
   implementation?: string;
   verification?: string;
   pending_sources?: ProductSource[];
+  evidence_dispositions?: ProductEvidenceDisposition[];
   raw_ref?: ProductSource;
   submitted_at?: string;
   origin?: { channel: string; locator?: string; occurred_at?: string | null };
@@ -147,6 +179,13 @@ export interface ProductDiagnostic {
   source?: SourceRef;
 }
 export interface ProductItem {
+  /** Per-report fingerprint; independent of its document's bytes and appended evidence. */
+  dispositionSha256?: string;
+  assessmentScopeDigests?: {
+    target: string;
+    scope_id: string;
+    sha256: string | null;
+  }[];
   version?: number;
   definitionAlgorithm?: string | null;
   key: string;

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import type { AssessmentReviewIssue } from "../shared/assessment-review";
-import type { OverviewRequirement } from "../shared/overview-data";
+import type {
+  OverviewReport,
+  OverviewRequirement,
+} from "../shared/overview-data";
 import type { ProductSource } from "../shared/product-types";
 import type { OverviewContext } from "./product";
 import { conclusionLabels } from "../shared/product-view";
@@ -8,7 +11,9 @@ import {
   assessmentReviewText,
   pendingAssessmentRecords,
 } from "../shared/assessment-review-export";
+import { assessmentReviewGroups } from "../shared/assessment-review-groups";
 import { Modal, SourceButton } from "./components";
+import { DispositionDetails } from "./assessment-disposition-details";
 
 export { assessmentReviewText } from "../shared/assessment-review-export";
 
@@ -42,7 +47,7 @@ function ReviewIssue({
       className="assessment-review-issue"
       data-review-reason={issue.code}
     >
-      <h5>{issue.title}</h5>
+      <h6>{issue.title}</h6>
       <p>{issue.detail}</p>
       <p className="assessment-review-action">
         <strong>处理说明：</strong>
@@ -93,6 +98,70 @@ function ReviewIssue({
   );
 }
 
+function ReportContext({ report }: { report: OverviewReport }) {
+  const { applicability, subject, conclusion, checked_at } = report.metadata;
+  return (
+    <dl className="assessment-review-context">
+      <dt>原报告结论</dt>
+      <dd>
+        {conclusion ? conclusionLabels[conclusion] : "未记录或字段异常"} ·{" "}
+        {checked_at || "时间未记录"}
+      </dd>
+      <dt>目标 / 范围</dt>
+      <dd>
+        {applicability?.goal_id || "未记录"} /{" "}
+        {applicability?.scope_id || "未记录"}
+      </dd>
+      <dt>覆盖范围</dt>
+      <dd>{applicability?.coverage || "未记录"}</dd>
+      <dt>交付对象</dt>
+      <dd>
+        {subject?.kind || "未记录"} · {subject?.value || "未记录"}
+        {subject?.revision && ` @ ${subject.revision}`}
+      </dd>
+      {subject?.limitations && (
+        <>
+          <dt>对象限制</dt>
+          <dd>{subject.limitations}</dd>
+        </>
+      )}
+    </dl>
+  );
+}
+
+function ReportLinks({
+  report,
+  context,
+  close,
+}: {
+  report: OverviewReport;
+  context: OverviewContext;
+  close: () => void;
+}) {
+  return (
+    <div className="assessment-review-report-links">
+      <button
+        className="text-link"
+        onClick={() => {
+          close();
+          context.openProduct(report.key);
+        }}
+      >
+        查看报告与依据 ↗
+      </button>
+      {report.source && (
+        <SourceButton
+          source={report.source}
+          open={(source) => {
+            close();
+            context.open(source);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function AssessmentReviewDialog({
   item,
   context,
@@ -106,6 +175,12 @@ export function AssessmentReviewDialog({
   const [copyError, setCopyError] = useState("");
   const [textOpen, setTextOpen] = useState(false);
   const records = pendingAssessmentRecords(item);
+  const reusedRecords = item.assessmentRecords.filter((record) =>
+    record.selection.evidenceDispositions?.some(
+      (disposition) => disposition.reuse_status === "reused",
+    ),
+  );
+  const groups = assessmentReviewGroups([item]);
   const text = assessmentReviewText(item, context.snapshot);
 
   async function copy(): Promise<void> {
@@ -128,8 +203,8 @@ export function AssessmentReviewDialog({
             {item.id} · {item.title}
           </h3>
           <p>
-            以下 {records.length}{" "}
-            份报告存在待核对项。每项列出触发依据与需要确认的内容。
+            {groups.length} 项待处理变更，影响 {records.length} 份报告。
+            同一变更合并查看，各报告仅核对实际受影响的范围。
           </p>
           <p className="assessment-review-snapshot">
             读取完成：{context.snapshot.completedAt || "未记录"}
@@ -151,84 +226,92 @@ export function AssessmentReviewDialog({
           <textarea aria-label="待核对信息" readOnly rows={12} value={text} />
         </details>
         {copyError && <p role="alert">{copyError}</p>}
-        {records.map((record) => {
-          const { report, review } = record;
-          const { applicability, subject, conclusion, checked_at } =
-            report.metadata;
-          return (
-            <section
-              className="assessment-review-report"
-              key={report.key}
-              data-review-report={report.id}
-            >
-              <h4>
-                {report.id} · {report.title}
-              </h4>
-              <dl className="assessment-review-context">
-                <dt>原报告结论</dt>
-                <dd>
-                  {conclusion
-                    ? conclusionLabels[conclusion]
-                    : "未记录或字段异常"}{" "}
-                  · {checked_at || "时间未记录"}
-                </dd>
-                <dt>目标 / 范围</dt>
-                <dd>
-                  {applicability?.goal_id || "未记录"} /{" "}
-                  {applicability?.scope_id || "未记录"}
-                </dd>
-                <dt>覆盖范围</dt>
-                <dd>{applicability?.coverage || "未记录"}</dd>
-                <dt>交付对象</dt>
-                <dd>
-                  {subject?.kind || "未记录"} · {subject?.value || "未记录"}
-                  {subject?.revision && ` @ ${subject.revision}`}
-                </dd>
-                {subject?.limitations && (
-                  <>
-                    <dt>对象限制</dt>
-                    <dd>{subject.limitations}</dd>
-                  </>
-                )}
-              </dl>
-              <div className="assessment-review-report-links">
-                <button
-                  className="text-link"
-                  onClick={() => {
-                    close();
-                    context.openProduct(report.key);
-                  }}
+        {!!reusedRecords.length && (
+          <section
+            className="assessment-review-reused"
+            data-evidence-state="reused"
+          >
+            <h4>已复用的局部处置</h4>
+            <p>适用条件未变的处置已复用，不计入待处理变更。</p>
+            {reusedRecords.map(({ report, selection }) => (
+              <details key={report.key}>
+                <summary>
+                  {report.id} · {report.title}
+                </summary>
+                <ReportContext report={report} />
+                <ReportLinks report={report} context={context} close={close} />
+                {selection
+                  .evidenceDispositions!.filter(
+                    (disposition) => disposition.reuse_status === "reused",
+                  )
+                  .map((disposition, index) => (
+                    <DispositionDetails
+                      key={`${disposition.change_id}:${index}`}
+                      disposition={disposition}
+                      snapshotAt={context.snapshot.completedAt}
+                      renderSource={(reference, label) => (
+                        <p>
+                          <strong>{label}：</strong>
+                          {reviewSourceText(reference)}
+                        </p>
+                      )}
+                    />
+                  ))}
+              </details>
+            ))}
+          </section>
+        )}
+        {groups.map((group) => (
+          <section
+            className="assessment-review-change"
+            key={group.key}
+            data-review-category={group.category}
+          >
+            <header>
+              <h4>{group.label}</h4>
+              <p>影响 {group.members.length} 份报告</p>
+              {group.source && <p>{reviewSourceText(group.source)}</p>}
+              {!!group.changeIds.length && (
+                <p>变更标识：{group.changeIds.join("、")}</p>
+              )}
+            </header>
+            {group.members.map(({ record }) => {
+              const { report, review } = record;
+              return (
+                <section
+                  className="assessment-review-report"
+                  key={report.key}
+                  data-review-report={report.id}
                 >
-                  查看报告与依据 ↗
-                </button>
-                {report.source && (
-                  <SourceButton
-                    source={report.source}
-                    open={(source) => {
-                      close();
-                      context.open(source);
-                    }}
-                  />
-                )}
-              </div>
-              {review ? (
-                review.issues.map((issue, index) => (
-                  <ReviewIssue
-                    key={`${issue.code}:${index}`}
-                    issue={issue}
+                  <h5>
+                    {report.id} · {report.title}
+                  </h5>
+                  <ReportContext report={report} />
+                  <ReportLinks
+                    report={report}
                     context={context}
                     close={close}
                   />
-                ))
-              ) : (
-                <p>
-                  本次记录未包含判定明细，请刷新项目后查看。已记录状态：
-                  {record.selection.reasons.join("、")}。
-                </p>
-              )}
-            </section>
-          );
-        })}
+                  {review ? (
+                    review.issues.map((issue, index) => (
+                      <ReviewIssue
+                        key={`${issue.code}:${index}`}
+                        issue={issue}
+                        context={context}
+                        close={close}
+                      />
+                    ))
+                  ) : (
+                    <p>
+                      本次记录未包含判定明细，请刷新项目后查看。已记录状态：
+                      {record.selection.reasons.join("、")}。
+                    </p>
+                  )}
+                </section>
+              );
+            })}
+          </section>
+        ))}
       </div>
     </Modal>
   );

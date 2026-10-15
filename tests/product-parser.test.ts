@@ -998,6 +998,7 @@ describe("fixed v4 / additive v5 contracts", () => {
     for (const [version, expected] of [
       [4, "eca5e89455715bf25601c25d7599b75b743830ba1530d7e5a3027e283f582472"],
       [5, "a3797f92ba11e1b678c78b77d82a37e8501bb26cf8794b038cdaecbe0a9f3561"],
+      [6, "15b0c464781db1823c34a2ac93c8f49ca215dd318008af771b09d9e2a4c2a787"],
     ] as const)
       expect(
         digest(
@@ -1006,7 +1007,7 @@ describe("fixed v4 / additive v5 contracts", () => {
           ),
         ),
       ).toBe(expected);
-    const result = parse(document([requirement()], requirementBody(), 6));
+    const result = parse(document([requirement()], requirementBody(), 7));
     expect(result.items).toEqual([]);
     expect(
       result.diagnostics.some((d) => d.code === "UNSUPPORTED_VERSION"),
